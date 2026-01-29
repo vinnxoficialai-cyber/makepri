@@ -1,0 +1,152 @@
+
+export enum ProductCategory {
+    COSMETIC = 'Cosmético',
+    CLOTHING = 'Roupa',
+    ACCESSORY = 'Acessório',
+    ELECTRONIC = 'Eletrônico',
+    BUNDLE = 'Kit / Combo' // New Category
+}
+
+export interface BundleComponent {
+    productId: string;
+    quantity: number;
+}
+
+export interface Product {
+    id: string;
+    sku: string;
+    name: string;
+    category: ProductCategory;
+    priceCost: number;
+    priceSale: number;
+    stock: number;
+    minStock: number;
+    unit: string;
+    imageUrl?: string;
+    expiryDate?: string;
+    // Extended fields
+    brand?: string;
+    size?: string;
+    color?: string;
+    segment?: string;
+    collection?: string;
+    description?: string;
+    supplier?: string; 
+    createdAt?: string; 
+    updatedAt?: string; 
+    commissionRate?: number; 
+    // Bundle specific
+    type?: 'single' | 'bundle'; // 'single' is default
+    bundleComponents?: BundleComponent[];
+}
+
+export interface CompanySettings {
+    name: string;
+    logoUrl: string;
+    logoWidth: number; // Percentage or px width
+    cnpj?: string;
+    email?: string;
+    phone?: string;
+    address?: string;
+    city?: string;
+    website?: string;
+    receiptMessage?: string;
+}
+
+export interface SalesGoal {
+    storeGoal: number;
+    userGoals: Record<string, number>; // Map userId to goal amount (value)
+    goalTypes: Record<string, 'daily' | 'monthly'>; // Map userId to goal type
+}
+
+export interface Customer {
+    id: string;
+    name: string;
+    email: string;
+    phone: string;
+    cpf?: string; 
+    address?: string;
+    city?: string; 
+    state?: string; 
+    birthDate?: string;
+    totalSpent: number;
+    lastPurchase: string;
+    status: 'Active' | 'Inactive';
+    notes?: string; 
+}
+
+export interface Task {
+    id: string;
+    title: string;
+    description: string;
+    assignedTo: string; 
+    createdBy: string; 
+    dueDate: string; 
+    priority: 'low' | 'medium' | 'high';
+    status: 'pending' | 'completed';
+}
+
+export interface DeliveryOrder {
+    id: string;
+    customerName: string;
+    phone: string;
+    address: string;
+    city: string;
+    source: 'WhatsApp' | 'E-commerce' | 'Loja Física';
+    method: 'Motoboy' | 'Correios' | 'Jadlog' | 'Retirada';
+    trackingCode?: string;
+    status: 'Pendente' | 'Em Preparo' | 'Em Rota' | 'Entregue' | 'Cancelado' | 'Problema';
+    totalValue: number;
+    fee?: number; // Delivery fee specific for payout
+    motoboyName?: string; // Specific motoboy assigned
+    notes?: string; // Observation field
+    date: string;
+    itemsSummary: string; // Ex: "2x Batom, 1x Base"
+}
+
+export interface CartItem extends Product {
+    quantity: number;
+}
+
+export interface Transaction {
+    id: string;
+    date: string;
+    customerName: string;
+    total: number;
+    status: 'Completed' | 'Pending' | 'Cancelled';
+    type: 'Sale' | 'Refund';
+    // Extended properties for Receipt History
+    items?: CartItem[];
+    paymentMethod?: string;
+    installments?: number;
+    subTotal?: number;
+    discountValue?: number;
+    deliveryFee?: number;
+    changeAmount?: number;
+    isDelivery?: boolean;
+    motoboy?: string;
+    customerSnapshot?: Customer | null;
+}
+
+export interface FinancialRecord {
+    id: string;
+    description: string;
+    amount: number;
+    type: 'Income' | 'Expense';
+    date: string;
+    category: string;
+    status: 'Paid' | 'Pending';
+}
+
+export type ModuleType = 'dashboard' | 'inventory' | 'pos' | 'crm' | 'finance' | 'reports' | 'cash' | 'settings' | 'ecommerce' | 'tasks' | 'bundles' | 'ai' | 'goals' | 'delivery' | 'team';
+export type UserRole = 'Administrador' | 'Gerente' | 'Vendedor' | 'Estoquista' | 'Caixa' | 'Motoboy';
+
+export interface User {
+    id: string;
+    name: string;
+    email: string;
+    role: UserRole;
+    permissions: ModuleType[];
+    avatarUrl?: string;
+    active: boolean;
+}

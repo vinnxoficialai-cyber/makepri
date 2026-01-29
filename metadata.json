@@ -1,0 +1,7 @@
+{
+  "name": "Pri MAKE ERP",
+  "description": "Sistema integrado de gestão empresarial (ERP) focado em varejo, com controle de estoque, PDV, financeiro e CRM.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
