@@ -126,8 +126,12 @@ const Dashboard: React.FC<DashboardProps> = ({ user, users = [], salesGoals, onN
         .filter(t => t.date.startsWith(currentMonth) && t.status === 'Completed')
         .reduce((acc, curr) => acc + curr.total, 0);
 
-    // If salesperson, simulate their slice of sales
-    const myPersonalSalesMonth = isSalesperson ? currentMonthSales * 0.15 : 0;
+    // Vendas específicas do vendedor logado
+    const myPersonalSalesMonth = isSalesperson
+        ? transactions
+            .filter(t => t.date.startsWith(currentMonth) && t.status === 'Completed' && t.sellerId === user.id)
+            .reduce((acc, curr) => acc + curr.total, 0)
+        : 0;
     const commissionBase = isSalesperson ? myPersonalSalesMonth : currentMonthSales;
 
     const COMMISSION_THRESHOLD = 3000;
@@ -170,9 +174,14 @@ const Dashboard: React.FC<DashboardProps> = ({ user, users = [], salesGoals, onN
         const monthlyTarget = goalType === 'monthly' ? rawGoal : rawGoal * 30;
         const dailyTarget = goalType === 'daily' ? rawGoal : rawGoal / 30;
 
-        // Mock Actual Sales (In a real app, filter transactions by user ID)
-        const salesMonth = 0;
-        const salesToday = 0;
+        // Calcular Vendas Reais por Usuário via sellerId
+        const salesMonth = transactions
+            .filter(t => t.date.startsWith(currentMonth) && t.status === 'Completed' && t.sellerId === u.id)
+            .reduce((acc, curr) => acc + curr.total, 0);
+
+        const salesToday = transactions
+            .filter(t => t.date.startsWith(today) && t.status === 'Completed' && t.sellerId === u.id)
+            .reduce((acc, curr) => acc + curr.total, 0);
 
         return {
             id: u.id,
@@ -527,32 +536,34 @@ const Dashboard: React.FC<DashboardProps> = ({ user, users = [], salesGoals, onN
                         )}
                     </div>
 
-                    {/* Revenue History Chart (Area Chart) */}
-                    <div className="bg-white dark:bg-gray-800 p-6 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm transition-colors">
-                        <div className="flex justify-between items-center mb-6">
-                            <h3 className="font-bold text-gray-800 dark:text-white flex items-center gap-2">
-                                <TrendingUp className="text-emerald-500" size={20} /> Histórico de Receita
-                            </h3>
-                            <span className="text-xs text-gray-400 bg-gray-50 dark:bg-gray-700/50 px-2 py-1 rounded">Semestral</span>
+                    {/* Revenue History Chart (Area Chart) - HIDDEN FOR SALESPERSON */}
+                    {!isSalesperson && (
+                        <div className="bg-white dark:bg-gray-800 p-6 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm transition-colors">
+                            <div className="flex justify-between items-center mb-6">
+                                <h3 className="font-bold text-gray-800 dark:text-white flex items-center gap-2">
+                                    <TrendingUp className="text-emerald-500" size={20} /> Histórico de Receita
+                                </h3>
+                                <span className="text-xs text-gray-400 bg-gray-50 dark:bg-gray-700/50 px-2 py-1 rounded">Semestral</span>
+                            </div>
+                            <div className="h-64 w-full">
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <AreaChart data={dataSales}>
+                                        <defs>
+                                            <linearGradient id="colorVendas" x1="0" y1="0" x2="0" y2="1">
+                                                <stop offset="5%" stopColor="#ec4899" stopOpacity={0.8} />
+                                                <stop offset="95%" stopColor="#ec4899" stopOpacity={0} />
+                                            </linearGradient>
+                                        </defs>
+                                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
+                                        <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#9ca3af', fontSize: 12 }} />
+                                        <YAxis axisLine={false} tickLine={false} tick={{ fill: '#9ca3af', fontSize: 12 }} />
+                                        <Tooltip content={<CustomTooltip />} cursor={{ stroke: '#ec4899', strokeWidth: 1, strokeDasharray: '3 3' }} />
+                                        <Area type="monotone" dataKey="vendas" stroke="#ec4899" fillOpacity={1} fill="url(#colorVendas)" strokeWidth={2} />
+                                    </AreaChart>
+                                </ResponsiveContainer>
+                            </div>
                         </div>
-                        <div className="h-64 w-full">
-                            <ResponsiveContainer width="100%" height="100%">
-                                <AreaChart data={dataSales}>
-                                    <defs>
-                                        <linearGradient id="colorVendas" x1="0" y1="0" x2="0" y2="1">
-                                            <stop offset="5%" stopColor="#ec4899" stopOpacity={0.8} />
-                                            <stop offset="95%" stopColor="#ec4899" stopOpacity={0} />
-                                        </linearGradient>
-                                    </defs>
-                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
-                                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#9ca3af', fontSize: 12 }} />
-                                    <YAxis axisLine={false} tickLine={false} tick={{ fill: '#9ca3af', fontSize: 12 }} />
-                                    <Tooltip content={<CustomTooltip />} cursor={{ stroke: '#ec4899', strokeWidth: 1, strokeDasharray: '3 3' }} />
-                                    <Area type="monotone" dataKey="vendas" stroke="#ec4899" fillOpacity={1} fill="url(#colorVendas)" strokeWidth={2} />
-                                </AreaChart>
-                            </ResponsiveContainer>
-                        </div>
-                    </div>
+                    )}
 
                     {/* Top Categories Chart (Pie Chart) */}
                     <div className="bg-white dark:bg-gray-800 p-6 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm transition-colors">
@@ -663,242 +674,244 @@ const Dashboard: React.FC<DashboardProps> = ({ user, users = [], salesGoals, onN
             </div>
 
             {/* QUICK SALE MODAL */}
-            {isPosModalOpen && (
-                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-                    <div className="absolute inset-0 bg-gray-900/60 backdrop-blur-sm" onClick={() => setIsPosModalOpen(false)}></div>
-                    <div className="bg-white dark:bg-gray-800 w-full max-w-4xl h-[85vh] rounded-2xl shadow-2xl relative flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            {
+                isPosModalOpen && (
+                    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+                        <div className="absolute inset-0 bg-gray-900/60 backdrop-blur-sm" onClick={() => setIsPosModalOpen(false)}></div>
+                        <div className="bg-white dark:bg-gray-800 w-full max-w-4xl h-[85vh] rounded-2xl shadow-2xl relative flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
 
-                        {/* Modal Header */}
-                        <div className="bg-gray-900 dark:bg-black text-white p-4 flex justify-between items-center shadow-md z-10">
-                            <div className="flex items-center gap-3">
-                                <div className="p-2 bg-[#ffc8cb] rounded-lg">
-                                    <ShoppingCart size={20} className="text-gray-900" />
-                                </div>
-                                <div>
-                                    <h3 className="text-lg font-bold">Nova Venda Rápida</h3>
-                                    <p className="text-xs text-gray-400">Caixa: Principal | Operador: {user.name}</p>
-                                </div>
-                            </div>
-                            <button onClick={() => setIsPosModalOpen(false)} className="p-2 hover:bg-gray-700 rounded-full transition-colors">
-                                <X size={20} />
-                            </button>
-                        </div>
-
-                        {/* Modal Body */}
-                        <div className="flex-1 overflow-hidden flex flex-col md:flex-row">
-                            {/* Left: Product Lookup */}
-                            <div className="hidden md:flex flex-1 flex-col bg-gray-50 dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700">
-                                <div className="p-4 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 space-y-3">
-                                    {/* SKU Input */}
-                                    <div className="flex gap-2">
-                                        <form onSubmit={handleSkuSubmit} className="relative flex-1">
-                                            <Barcode className="absolute left-3 top-1/2 -translate-y-1/2 text-pink-500" size={20} />
-                                            <input
-                                                ref={skuInputRef}
-                                                type="text"
-                                                placeholder="Bipar Código / SKU + Enter"
-                                                className="w-full pl-10 pr-4 py-3 border-2 border-[#ffc8cb] rounded-xl focus:border-pink-400 focus:ring-0 text-base font-semibold shadow-sm outline-none transition-all bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                                                value={skuInput}
-                                                onChange={(e) => setSkuInput(e.target.value)}
-                                                autoFocus
-                                            />
-                                        </form>
-                                        <button
-                                            onClick={() => setIsScannerOpen(!isScannerOpen)}
-                                            className={`p-3 rounded-xl transition-colors border-2 ${isScannerOpen ? 'bg-pink-100 border-pink-500 text-pink-600' : 'bg-gray-100 dark:bg-gray-700 border-gray-200 dark:border-gray-600 hover:bg-gray-200 dark:hover:bg-gray-600 dark:text-gray-200'}`}
-                                            title="Ler Código de Barras"
-                                        >
-                                            <Camera size={24} />
-                                        </button>
+                            {/* Modal Header */}
+                            <div className="bg-gray-900 dark:bg-black text-white p-4 flex justify-between items-center shadow-md z-10">
+                                <div className="flex items-center gap-3">
+                                    <div className="p-2 bg-[#ffc8cb] rounded-lg">
+                                        <ShoppingCart size={20} className="text-gray-900" />
                                     </div>
-
-                                    {/* Scanner Area */}
-                                    {isScannerOpen && (
-                                        <div className="animate-in slide-in-from-top-5">
-                                            <BarcodeScanner
-                                                onScanSuccess={handleScanSuccess}
-                                                onScanFailure={(err) => console.log(err)}
-                                            />
-                                            <div className="text-center mt-2">
-                                                <button onClick={() => setIsScannerOpen(false)} className="text-xs text-red-500 font-bold hover:underline">Fechar Câmera</button>
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {/* Name Search */}
-                                    <div className="relative">
-                                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-                                        <input
-                                            type="text"
-                                            placeholder="Buscar produto por nome..."
-                                            className="w-full pl-10 pr-4 py-2 bg-gray-100 dark:bg-gray-700 dark:text-white border-none rounded-lg focus:ring-2 focus:ring-gray-200 dark:focus:ring-gray-600 text-sm"
-                                            value={posSearchTerm}
-                                            onChange={(e) => setPosSearchTerm(e.target.value)}
-                                        />
+                                    <div>
+                                        <h3 className="text-lg font-bold">Nova Venda Rápida</h3>
+                                        <p className="text-xs text-gray-400">Caixa: Principal | Operador: {user.name}</p>
                                     </div>
                                 </div>
-
-                                {/* ... (Product List Logic) ... */}
-                                <div className="flex-1 overflow-y-auto p-4">
-                                    {posSearchTerm ? (
-                                        <div className="space-y-2">
-                                            <h4 className="text-xs font-bold text-gray-400 uppercase mb-2">Resultados da busca</h4>
-                                            {filteredPosProducts.map(product => (
-                                                <div
-                                                    key={product.id}
-                                                    onClick={() => addToCart(product)}
-                                                    className="bg-white dark:bg-gray-800 p-3 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm hover:border-[#ffc8cb] cursor-pointer flex justify-between items-center group transition-all"
-                                                >
-                                                    <div className="flex items-center gap-3">
-                                                        <div className="w-10 h-10 bg-gray-100 dark:bg-gray-700 rounded-md overflow-hidden">
-                                                            {product.imageUrl && <img src={product.imageUrl} className="w-full h-full object-cover" />}
-                                                        </div>
-                                                        <div>
-                                                            <p className="font-bold text-gray-800 dark:text-white text-sm">{product.name}</p>
-                                                            <p className="text-xs text-gray-500 dark:text-gray-400 font-mono">{product.sku}</p>
-                                                        </div>
-                                                    </div>
-                                                    <div className="text-right">
-                                                        <p className="font-bold text-pink-600 dark:text-pink-400">R$ {product.priceSale.toFixed(2)}</p>
-                                                        <p className="text-[10px] text-gray-400">{product.stock} un</p>
-                                                    </div>
-                                                </div>
-                                            ))}
-                                            {filteredPosProducts.length === 0 && (
-                                                <p className="text-center text-sm text-gray-400 mt-4">Nenhum produto encontrado.</p>
-                                            )}
-                                        </div>
-                                    ) : (
-                                        <div className="flex flex-col items-center justify-center h-full text-gray-400 opacity-60">
-                                            <Barcode size={48} className="mb-2" />
-                                            <p className="text-sm font-medium">Aguardando leitura de código</p>
-                                            <p className="text-xs">ou digite para buscar</p>
-                                        </div>
-                                    )}
-                                </div>
+                                <button onClick={() => setIsPosModalOpen(false)} className="p-2 hover:bg-gray-700 rounded-full transition-colors">
+                                    <X size={20} />
+                                </button>
                             </div>
 
-                            {/* Right: Cart & Checkout (Existing logic) */}
-                            <div className="w-full md:w-[400px] bg-white dark:bg-gray-800 flex flex-col h-full border-l dark:border-gray-700">
-                                {/* Customer Select */}
-                                <div className="p-4 border-b border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50">
-                                    <label className="text-xs font-bold text-gray-50 uppercase mb-1 block">Cliente</label>
-                                    <div className="flex gap-2">
-                                        <div className="relative flex-1">
-                                            <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
-                                            <select
-                                                className="w-full pl-9 pr-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:border-pink-400 outline-none appearance-none bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                                                value={selectedCustomer?.id || ''}
-                                                onChange={(e) => setSelectedCustomer(customers.find(c => c.id === e.target.value) || null)}
+                            {/* Modal Body */}
+                            <div className="flex-1 overflow-hidden flex flex-col md:flex-row">
+                                {/* Left: Product Lookup */}
+                                <div className="hidden md:flex flex-1 flex-col bg-gray-50 dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700">
+                                    <div className="p-4 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 space-y-3">
+                                        {/* SKU Input */}
+                                        <div className="flex gap-2">
+                                            <form onSubmit={handleSkuSubmit} className="relative flex-1">
+                                                <Barcode className="absolute left-3 top-1/2 -translate-y-1/2 text-pink-500" size={20} />
+                                                <input
+                                                    ref={skuInputRef}
+                                                    type="text"
+                                                    placeholder="Bipar Código / SKU + Enter"
+                                                    className="w-full pl-10 pr-4 py-3 border-2 border-[#ffc8cb] rounded-xl focus:border-pink-400 focus:ring-0 text-base font-semibold shadow-sm outline-none transition-all bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                                                    value={skuInput}
+                                                    onChange={(e) => setSkuInput(e.target.value)}
+                                                    autoFocus
+                                                />
+                                            </form>
+                                            <button
+                                                onClick={() => setIsScannerOpen(!isScannerOpen)}
+                                                className={`p-3 rounded-xl transition-colors border-2 ${isScannerOpen ? 'bg-pink-100 border-pink-500 text-pink-600' : 'bg-gray-100 dark:bg-gray-700 border-gray-200 dark:border-gray-600 hover:bg-gray-200 dark:hover:bg-gray-600 dark:text-gray-200'}`}
+                                                title="Ler Código de Barras"
                                             >
-                                                <option value="">Cliente Balcão (Avulso)</option>
-                                                {customers.map(c => (
-                                                    <option key={c.id} value={c.id}>{c.name}</option>
-                                                ))}
-                                            </select>
+                                                <Camera size={24} />
+                                            </button>
                                         </div>
-                                        <button className="px-3 bg-pink-100 dark:bg-pink-900 text-pink-600 dark:text-pink-300 rounded-lg hover:bg-pink-200 dark:hover:bg-pink-800 transition-colors" title="Adicionar Cliente Rápido">
-                                            <Plus size={18} />
-                                        </button>
-                                    </div>
-                                    {selectedCustomer && (
-                                        <p className="text-xs text-pink-600 dark:text-pink-400 mt-1 ml-1 font-medium">{selectedCustomer.phone}</p>
-                                    )}
-                                </div>
 
-                                {/* MOBILE ONLY: SKU INPUT & Scanner Button */}
-                                <div className="p-4 bg-white dark:bg-gray-800 border-b border-gray-100 dark:border-gray-700 md:hidden">
-                                    <div className="flex gap-2">
-                                        <form onSubmit={handleSkuSubmit} className="relative flex-1">
-                                            <Barcode className="absolute left-3 top-1/2 -translate-y-1/2 text-pink-500" size={20} />
-                                            <input
-                                                type="text"
-                                                placeholder="Bipar Código / SKU"
-                                                className="w-full pl-10 pr-4 py-3 border-2 border-[#ffc8cb] rounded-xl focus:border-pink-400 focus:ring-0 text-base font-semibold shadow-sm outline-none transition-all bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                                                value={skuInput}
-                                                onChange={(e) => setSkuInput(e.target.value)}
-                                            />
-                                        </form>
-                                        <button
-                                            onClick={() => setIsScannerOpen(!isScannerOpen)}
-                                            className={`p-3 rounded-xl transition-colors border-2 ${isScannerOpen ? 'bg-pink-100 border-pink-500 text-pink-600' : 'bg-gray-100 dark:bg-gray-700 border-gray-200 dark:border-gray-600'}`}
-                                        >
-                                            <Camera size={24} />
-                                        </button>
-                                    </div>
-                                    {/* Mobile Scanner Area */}
-                                    {isScannerOpen && (
-                                        <div className="mt-4">
-                                            <BarcodeScanner
-                                                onScanSuccess={handleScanSuccess}
-                                                onScanFailure={(err) => console.log(err)}
-                                            />
-                                        </div>
-                                    )}
-                                </div>
-
-                                {/* Cart Items */}
-                                <div className="flex-1 overflow-y-auto p-4 space-y-3">
-                                    {cart.length === 0 ? (
-                                        <div className="h-full flex flex-col items-center justify-center text-gray-300 dark:text-gray-600">
-                                            <ShoppingCart size={40} className="mb-2" />
-                                            <p className="text-sm">Carrinho vazio</p>
-                                        </div>
-                                    ) : (
-                                        cart.map(item => (
-                                            <div key={item.id} className="flex justify-between items-start border-b border-gray-50 dark:border-gray-700 pb-3 last:border-0 last:pb-0 animate-in slide-in-from-right-2 duration-200">
-                                                <div className="flex-1">
-                                                    <p className="text-sm font-semibold text-gray-800 dark:text-white line-clamp-1">{item.name}</p>
-                                                    <p className="text-xs text-gray-500 dark:text-gray-400">R$ {item.priceSale.toFixed(2)} un</p>
-                                                </div>
-                                                <div className="flex items-center gap-3">
-                                                    <div className="flex items-center bg-gray-100 dark:bg-gray-700 rounded-lg text-gray-800 dark:text-white">
-                                                        <button onClick={() => updateQuantity(item.id, -1)} className="p-1 hover:text-red-500 px-2"><Minus size={12} /></button>
-                                                        <span className="text-xs font-bold w-4 text-center">{item.quantity}</span>
-                                                        <button onClick={() => updateQuantity(item.id, 1)} className="p-1 hover:text-green-500 px-2"><Plus size={12} /></button>
-                                                    </div>
-                                                    <p className="text-sm font-bold text-gray-800 dark:text-white w-16 text-right">
-                                                        R$ {(item.priceSale * item.quantity).toFixed(2)}
-                                                    </p>
-                                                    <button onClick={() => removeFromCart(item.id)} className="text-gray-400 hover:text-red-500">
-                                                        <Trash2 size={14} />
-                                                    </button>
+                                        {/* Scanner Area */}
+                                        {isScannerOpen && (
+                                            <div className="animate-in slide-in-from-top-5">
+                                                <BarcodeScanner
+                                                    onScanSuccess={handleScanSuccess}
+                                                    onScanFailure={(err) => console.log(err)}
+                                                />
+                                                <div className="text-center mt-2">
+                                                    <button onClick={() => setIsScannerOpen(false)} className="text-xs text-red-500 font-bold hover:underline">Fechar Câmera</button>
                                                 </div>
                                             </div>
-                                        ))
-                                    )}
-                                </div>
+                                        )}
 
-                                {/* Totals & Action */}
-                                <div className="p-5 bg-gray-50 dark:bg-gray-900/50 border-t border-gray-200 dark:border-gray-700">
-                                    <div className="flex justify-between items-center mb-4">
-                                        <span className="text-gray-500 dark:text-gray-400 font-medium">Total a Pagar</span>
-                                        <span className="text-3xl font-bold text-gray-900 dark:text-white">R$ {cartTotal.toFixed(2)}</span>
+                                        {/* Name Search */}
+                                        <div className="relative">
+                                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                                            <input
+                                                type="text"
+                                                placeholder="Buscar produto por nome..."
+                                                className="w-full pl-10 pr-4 py-2 bg-gray-100 dark:bg-gray-700 dark:text-white border-none rounded-lg focus:ring-2 focus:ring-gray-200 dark:focus:ring-gray-600 text-sm"
+                                                value={posSearchTerm}
+                                                onChange={(e) => setPosSearchTerm(e.target.value)}
+                                            />
+                                        </div>
                                     </div>
 
-                                    <button
-                                        onClick={handleFinalizeSale}
-                                        disabled={cart.length === 0}
-                                        className={`w-full py-3 rounded-xl font-bold text-lg shadow-lg transition-all flex items-center justify-center gap-2 ${saleSuccess
-                                            ? 'bg-green-500 text-white'
-                                            : cart.length === 0
-                                                ? 'bg-gray-200 dark:bg-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed'
-                                                : 'bg-[#ffc8cb] hover:bg-[#ffb6b9] text-gray-900 hover:shadow-pink-200 hover:-translate-y-0.5'
-                                            }`}
-                                    >
-                                        {saleSuccess ? (
-                                            <> <CheckCircle /> Venda Realizada! </>
+                                    {/* ... (Product List Logic) ... */}
+                                    <div className="flex-1 overflow-y-auto p-4">
+                                        {posSearchTerm ? (
+                                            <div className="space-y-2">
+                                                <h4 className="text-xs font-bold text-gray-400 uppercase mb-2">Resultados da busca</h4>
+                                                {filteredPosProducts.map(product => (
+                                                    <div
+                                                        key={product.id}
+                                                        onClick={() => addToCart(product)}
+                                                        className="bg-white dark:bg-gray-800 p-3 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm hover:border-[#ffc8cb] cursor-pointer flex justify-between items-center group transition-all"
+                                                    >
+                                                        <div className="flex items-center gap-3">
+                                                            <div className="w-10 h-10 bg-gray-100 dark:bg-gray-700 rounded-md overflow-hidden">
+                                                                {product.imageUrl && <img src={product.imageUrl} className="w-full h-full object-cover" />}
+                                                            </div>
+                                                            <div>
+                                                                <p className="font-bold text-gray-800 dark:text-white text-sm">{product.name}</p>
+                                                                <p className="text-xs text-gray-500 dark:text-gray-400 font-mono">{product.sku}</p>
+                                                            </div>
+                                                        </div>
+                                                        <div className="text-right">
+                                                            <p className="font-bold text-pink-600 dark:text-pink-400">R$ {product.priceSale.toFixed(2)}</p>
+                                                            <p className="text-[10px] text-gray-400">{product.stock} un</p>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                                {filteredPosProducts.length === 0 && (
+                                                    <p className="text-center text-sm text-gray-400 mt-4">Nenhum produto encontrado.</p>
+                                                )}
+                                            </div>
                                         ) : (
-                                            'Finalizar Venda'
+                                            <div className="flex flex-col items-center justify-center h-full text-gray-400 opacity-60">
+                                                <Barcode size={48} className="mb-2" />
+                                                <p className="text-sm font-medium">Aguardando leitura de código</p>
+                                                <p className="text-xs">ou digite para buscar</p>
+                                            </div>
                                         )}
-                                    </button>
+                                    </div>
+                                </div>
+
+                                {/* Right: Cart & Checkout (Existing logic) */}
+                                <div className="w-full md:w-[400px] bg-white dark:bg-gray-800 flex flex-col h-full border-l dark:border-gray-700">
+                                    {/* Customer Select */}
+                                    <div className="p-4 border-b border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50">
+                                        <label className="text-xs font-bold text-gray-50 uppercase mb-1 block">Cliente</label>
+                                        <div className="flex gap-2">
+                                            <div className="relative flex-1">
+                                                <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                                                <select
+                                                    className="w-full pl-9 pr-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:border-pink-400 outline-none appearance-none bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                                                    value={selectedCustomer?.id || ''}
+                                                    onChange={(e) => setSelectedCustomer(customers.find(c => c.id === e.target.value) || null)}
+                                                >
+                                                    <option value="">Cliente Balcão (Avulso)</option>
+                                                    {customers.map(c => (
+                                                        <option key={c.id} value={c.id}>{c.name}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                            <button className="px-3 bg-pink-100 dark:bg-pink-900 text-pink-600 dark:text-pink-300 rounded-lg hover:bg-pink-200 dark:hover:bg-pink-800 transition-colors" title="Adicionar Cliente Rápido">
+                                                <Plus size={18} />
+                                            </button>
+                                        </div>
+                                        {selectedCustomer && (
+                                            <p className="text-xs text-pink-600 dark:text-pink-400 mt-1 ml-1 font-medium">{selectedCustomer.phone}</p>
+                                        )}
+                                    </div>
+
+                                    {/* MOBILE ONLY: SKU INPUT & Scanner Button */}
+                                    <div className="p-4 bg-white dark:bg-gray-800 border-b border-gray-100 dark:border-gray-700 md:hidden">
+                                        <div className="flex gap-2">
+                                            <form onSubmit={handleSkuSubmit} className="relative flex-1">
+                                                <Barcode className="absolute left-3 top-1/2 -translate-y-1/2 text-pink-500" size={20} />
+                                                <input
+                                                    type="text"
+                                                    placeholder="Bipar Código / SKU"
+                                                    className="w-full pl-10 pr-4 py-3 border-2 border-[#ffc8cb] rounded-xl focus:border-pink-400 focus:ring-0 text-base font-semibold shadow-sm outline-none transition-all bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                                                    value={skuInput}
+                                                    onChange={(e) => setSkuInput(e.target.value)}
+                                                />
+                                            </form>
+                                            <button
+                                                onClick={() => setIsScannerOpen(!isScannerOpen)}
+                                                className={`p-3 rounded-xl transition-colors border-2 ${isScannerOpen ? 'bg-pink-100 border-pink-500 text-pink-600' : 'bg-gray-100 dark:bg-gray-700 border-gray-200 dark:border-gray-600'}`}
+                                            >
+                                                <Camera size={24} />
+                                            </button>
+                                        </div>
+                                        {/* Mobile Scanner Area */}
+                                        {isScannerOpen && (
+                                            <div className="mt-4">
+                                                <BarcodeScanner
+                                                    onScanSuccess={handleScanSuccess}
+                                                    onScanFailure={(err) => console.log(err)}
+                                                />
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Cart Items */}
+                                    <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                                        {cart.length === 0 ? (
+                                            <div className="h-full flex flex-col items-center justify-center text-gray-300 dark:text-gray-600">
+                                                <ShoppingCart size={40} className="mb-2" />
+                                                <p className="text-sm">Carrinho vazio</p>
+                                            </div>
+                                        ) : (
+                                            cart.map(item => (
+                                                <div key={item.id} className="flex justify-between items-start border-b border-gray-50 dark:border-gray-700 pb-3 last:border-0 last:pb-0 animate-in slide-in-from-right-2 duration-200">
+                                                    <div className="flex-1">
+                                                        <p className="text-sm font-semibold text-gray-800 dark:text-white line-clamp-1">{item.name}</p>
+                                                        <p className="text-xs text-gray-500 dark:text-gray-400">R$ {item.priceSale.toFixed(2)} un</p>
+                                                    </div>
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="flex items-center bg-gray-100 dark:bg-gray-700 rounded-lg text-gray-800 dark:text-white">
+                                                            <button onClick={() => updateQuantity(item.id, -1)} className="p-1 hover:text-red-500 px-2"><Minus size={12} /></button>
+                                                            <span className="text-xs font-bold w-4 text-center">{item.quantity}</span>
+                                                            <button onClick={() => updateQuantity(item.id, 1)} className="p-1 hover:text-green-500 px-2"><Plus size={12} /></button>
+                                                        </div>
+                                                        <p className="text-sm font-bold text-gray-800 dark:text-white w-16 text-right">
+                                                            R$ {(item.priceSale * item.quantity).toFixed(2)}
+                                                        </p>
+                                                        <button onClick={() => removeFromCart(item.id)} className="text-gray-400 hover:text-red-500">
+                                                            <Trash2 size={14} />
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            ))
+                                        )}
+                                    </div>
+
+                                    {/* Totals & Action */}
+                                    <div className="p-5 bg-gray-50 dark:bg-gray-900/50 border-t border-gray-200 dark:border-gray-700">
+                                        <div className="flex justify-between items-center mb-4">
+                                            <span className="text-gray-500 dark:text-gray-400 font-medium">Total a Pagar</span>
+                                            <span className="text-3xl font-bold text-gray-900 dark:text-white">R$ {cartTotal.toFixed(2)}</span>
+                                        </div>
+
+                                        <button
+                                            onClick={handleFinalizeSale}
+                                            disabled={cart.length === 0}
+                                            className={`w-full py-3 rounded-xl font-bold text-lg shadow-lg transition-all flex items-center justify-center gap-2 ${saleSuccess
+                                                ? 'bg-green-500 text-white'
+                                                : cart.length === 0
+                                                    ? 'bg-gray-200 dark:bg-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed'
+                                                    : 'bg-[#ffc8cb] hover:bg-[#ffb6b9] text-gray-900 hover:shadow-pink-200 hover:-translate-y-0.5'
+                                                }`}
+                                        >
+                                            {saleSuccess ? (
+                                                <> <CheckCircle /> Venda Realizada! </>
+                                            ) : (
+                                                'Finalizar Venda'
+                                            )}
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                         </div>
                     </div>
-                </div>
-            )}
-        </div>
+                )
+            }
+        </div >
     );
 };
 

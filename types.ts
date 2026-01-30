@@ -126,6 +126,12 @@ export interface Transaction {
     isDelivery?: boolean;
     motoboy?: string;
     customerSnapshot?: Customer | null;
+    // Vendedor responsável
+    sellerId?: string;
+    sellerName?: string;
+
+    created_at?: string;
+    updated_at?: string;
 }
 
 export interface FinancialRecord {

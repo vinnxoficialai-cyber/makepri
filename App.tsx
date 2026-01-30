@@ -22,7 +22,7 @@ import {
 import { MOCK_USERS, MOCK_DELIVERIES } from './constants';
 import { User, ModuleType, CompanySettings, SalesGoal, DeliveryOrder } from './types';
 import { testarIntegracaoCompleta } from './test-supabase';
-import { useSettings, useUsers } from './lib/hooks';
+import { useSettings, useUsers, useSalesGoals } from './lib/hooks';
 
 // --- MOBILE BOTTOM NAVIGATION COMPONENT ---
 interface MobileBottomNavProps {
@@ -143,12 +143,8 @@ const App: React.FC = () => {
         receiptMessage: 'Obrigado pela preferência!'
     });
 
-    // Global Sales Goals State - ZERADO
-    const [salesGoals, setSalesGoals] = useState<SalesGoal>({
-        storeGoal: 0,
-        userGoals: {},
-        goalTypes: {}
-    });
+    // Global Sales Goals State - Carregar do Supabase
+    const { salesGoals, refresh: refreshGoals, saveUserGoal } = useSalesGoals();
 
     // Global Deliveries State (Moved from Delivery.tsx to allow POS integration)
     const [globalDeliveries, setGlobalDeliveries] = useState<DeliveryOrder[]>(MOCK_DELIVERIES);
@@ -301,7 +297,7 @@ const App: React.FC = () => {
                         companySettings={companySettings}
                         setCompanySettings={setCompanySettings}
                         salesGoals={salesGoals}
-                        setSalesGoals={setSalesGoals}
+                        onUpdateGoal={saveUserGoal}
                     />
                 );
             case 'bundles':
@@ -317,7 +313,7 @@ const App: React.FC = () => {
                         setUsers={setUsers}
                         currentUser={currentUser}
                         salesGoals={salesGoals}
-                        setSalesGoals={setSalesGoals}
+                        onUpdateGoal={saveUserGoal}
                     />
                 );
             case 'delivery':

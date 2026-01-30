@@ -299,7 +299,9 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
                 changeAmount: calculatedChange,
                 isDelivery: saleType === 'delivery',
                 motoboy: selectedMotoboy,
-                customerSnapshot: selectedCustomer
+                customerSnapshot: selectedCustomer,
+                sellerId: user?.id,
+                sellerName: user?.name
             };
 
             // Salvar transação no Supabase
@@ -318,7 +320,9 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
                 changeAmount: calculatedChange,
                 isDelivery: saleType === 'delivery',
                 motoboy: selectedMotoboy,
-                customerSnapshot: selectedCustomer
+                customerSnapshot: selectedCustomer,
+                sellerId: user?.id,
+                sellerName: user?.name
             });
 
             // 📦 CRIAR ENTREGA (se for delivery)

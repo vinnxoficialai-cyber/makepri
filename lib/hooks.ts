@@ -5,7 +5,8 @@ import {
     UserService,
     TransactionService,
     SettingsService,
-    DeliveryService
+    DeliveryService,
+    SalesGoalService
 } from './database';
 import type {
     Product,
@@ -13,7 +14,8 @@ import type {
     User,
     Transaction,
     CompanySettings,
-    DeliveryOrder
+    DeliveryOrder,
+    SalesGoal
 } from '../types';
 
 // =====================================================
@@ -394,5 +396,79 @@ export function useDeliveries() {
         loading,
         error,
         refresh: loadDeliveries
+    };
+}
+
+// =====================================================
+// HOOK: useSalesGoals
+// =====================================================
+
+export function useSalesGoals() {
+    const [salesGoals, setSalesGoals] = useState<SalesGoal>({
+        storeGoal: 0,
+        userGoals: {},
+        goalTypes: {}
+    });
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+
+    const loadGoals = async () => {
+        try {
+            setLoading(true);
+            setError(null);
+
+            // Define period (Current Month)
+            const date = new Date();
+            const periodStart = new Date(date.getFullYear(), date.getMonth(), 1).toISOString().split('T')[0];
+            const periodEnd = new Date(date.getFullYear(), date.getMonth() + 1, 0).toISOString().split('T')[0];
+
+            const storeGoalPromise = SalesGoalService.getStoreGoal(periodStart, periodEnd);
+            const userGoalsPromise = SalesGoalService.getUserGoals(periodStart, periodEnd);
+
+            const [storeGoal, { userGoals, goalTypes }] = await Promise.all([storeGoalPromise, userGoalsPromise]);
+
+            setSalesGoals({
+                storeGoal,
+                userGoals,
+                goalTypes
+            });
+        } catch (err: any) {
+            setError(err.message || 'Erro ao carregar metas');
+            console.error('Erro ao carregar metas:', err);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        loadGoals();
+    }, []);
+
+    const saveUserGoal = async (userId: string, amount: number, type: 'daily' | 'monthly') => {
+        try {
+            const date = new Date();
+            const periodStart = new Date(date.getFullYear(), date.getMonth(), 1).toISOString().split('T')[0];
+            const periodEnd = new Date(date.getFullYear(), date.getMonth() + 1, 0).toISOString().split('T')[0];
+
+            await SalesGoalService.saveUserGoal(userId, amount, type, periodStart, periodEnd);
+
+            // Update local state
+            setSalesGoals(prev => ({
+                ...prev,
+                userGoals: { ...prev.userGoals, [userId]: amount },
+                goalTypes: { ...prev.goalTypes, [userId]: type }
+            }));
+        } catch (err: any) {
+            setError(err.message || 'Erro ao salvar meta do usuário');
+            throw err;
+        }
+    };
+
+    return {
+        salesGoals,
+        loading,
+        error,
+        refresh: loadGoals,
+        saveUserGoal
     };
 }

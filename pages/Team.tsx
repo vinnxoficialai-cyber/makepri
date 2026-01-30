@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect } from 'react';
-import { 
-    Users, CheckSquare, Target, Trophy, Calendar, Plus, 
-    ChevronLeft, ChevronRight, CheckCircle2, 
+import {
+    Users, CheckSquare, Target, Trophy, Calendar, Plus,
+    ChevronLeft, ChevronRight, CheckCircle2,
     User as UserIcon, Trash2, X, ShoppingBag, Clock,
     Sun, Moon
 } from 'lucide-react';
@@ -19,10 +19,10 @@ interface TeamProps {
     setUsers: (users: User[]) => void;
     currentUser: User;
     salesGoals: SalesGoal;
-    setSalesGoals: (goals: SalesGoal) => void;
+    onUpdateGoal: (userId: string, amount: number, type: 'daily' | 'monthly') => void;
 }
 
-const Team: React.FC<TeamProps> = ({ users, currentUser, salesGoals, setSalesGoals }) => {
+const Team: React.FC<TeamProps> = ({ users, currentUser, salesGoals, onUpdateGoal }) => {
     // Check if current user is a Salesperson (Vendedor)
     const isSalesperson = currentUser.role === 'Vendedor';
 
@@ -30,7 +30,7 @@ const Team: React.FC<TeamProps> = ({ users, currentUser, salesGoals, setSalesGoa
     const [activeTab, setActiveTab] = useState<'members' | 'tasks' | 'goals'>(
         isSalesperson ? 'tasks' : 'members'
     );
-    
+
     // --- GOALS STATE ---
     const [selectedDate, setSelectedDate] = useState(new Date());
     const [salesBySeller, setSalesBySeller] = useState<Record<string, number>>({});
@@ -43,7 +43,7 @@ const Team: React.FC<TeamProps> = ({ users, currentUser, salesGoals, setSalesGoa
     const [taskFilter, setTaskFilter] = useState<'all' | 'mine'>('all');
     const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
     const [newTask, setNewTask] = useState<Partial<Task>>({
-        title: '', description: '', assignedTo: currentUser.id, 
+        title: '', description: '', assignedTo: currentUser.id,
         dueDate: new Date().toISOString().split('T')[0], priority: 'medium', status: 'pending'
     });
 
@@ -54,9 +54,9 @@ const Team: React.FC<TeamProps> = ({ users, currentUser, salesGoals, setSalesGoa
     // --- SHARED COMPUTED ---
     // 1. Get all active sales staff
     const allSalesUsers = users.filter(u => u.active && (u.role === 'Vendedor' || u.role === 'Gerente' || u.role === 'Administrador'));
-    
+
     // 2. Determine which users to display in the list (Filter for Salesperson)
-    const visibleSalesUsers = isSalesperson 
+    const visibleSalesUsers = isSalesperson
         ? allSalesUsers.filter(u => u.id === currentUser.id)
         : allSalesUsers;
 
@@ -96,40 +96,14 @@ const Team: React.FC<TeamProps> = ({ users, currentUser, salesGoals, setSalesGoa
 
     const handleGoalChange = (userId: string, value: string) => {
         const numValue = parseFloat(value) || 0;
-        
-        const updatedUserGoals = { ...salesGoals.userGoals, [userId]: numValue };
-        
-        // Recalculate Store Goal
-        const newStoreGoal = Object.entries(updatedUserGoals).reduce((acc: number, [uid, val]) => {
-            const numVal = val as number;
-            const type = salesGoals.goalTypes[uid] || 'monthly';
-            const monthlyEquivalent = type === 'daily' ? numVal * 30 : numVal;
-            return acc + monthlyEquivalent;
-        }, 0);
+        const type = salesGoals.goalTypes[userId] || 'monthly';
 
-        setSalesGoals({
-            ...salesGoals,
-            storeGoal: newStoreGoal,
-            userGoals: updatedUserGoals
-        });
+        onUpdateGoal(userId, numValue, type);
     };
 
     const handleGoalTypeChange = (userId: string, type: 'daily' | 'monthly') => {
-        const updatedGoalTypes = { ...salesGoals.goalTypes, [userId]: type };
-        
-        // Recalculate Store Goal with new types
-        const newStoreGoal = Object.entries(salesGoals.userGoals).reduce((acc: number, [uid, val]) => {
-            const numVal = val as number;
-            const t = updatedGoalTypes[uid] || 'monthly';
-            const monthlyEquivalent = t === 'daily' ? numVal * 30 : numVal;
-            return acc + monthlyEquivalent;
-        }, 0);
-
-        setSalesGoals({
-            ...salesGoals,
-            storeGoal: newStoreGoal,
-            goalTypes: updatedGoalTypes
-        });
+        const currentAmount = salesGoals.userGoals[userId] || 0;
+        onUpdateGoal(userId, currentAmount, type);
     };
 
     // --- TASK HANDLERS ---
@@ -169,24 +143,24 @@ const Team: React.FC<TeamProps> = ({ users, currentUser, salesGoals, setSalesGoa
                     <h2 className="text-2xl font-bold text-gray-800 dark:text-white">Central da Equipe</h2>
                     <p className="text-gray-500 dark:text-gray-400">Acompanhe o desempenho e tarefas do time.</p>
                 </div>
-                
+
                 <div className="flex bg-gray-100 dark:bg-gray-700 p-1 rounded-xl">
                     {/* HIDE 'MEMBERS' BUTTON IF USER IS SALESPERSON */}
                     {!isSalesperson && (
-                        <button 
+                        <button
                             onClick={() => setActiveTab('members')}
                             className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${activeTab === 'members' ? 'bg-white dark:bg-gray-600 text-pink-600 dark:text-pink-400 shadow-sm' : 'text-gray-500 dark:text-gray-400'}`}
                         >
                             <Users size={16} /> Membros
                         </button>
                     )}
-                    <button 
+                    <button
                         onClick={() => setActiveTab('tasks')}
                         className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${activeTab === 'tasks' ? 'bg-white dark:bg-gray-600 text-indigo-600 dark:text-indigo-400 shadow-sm' : 'text-gray-500 dark:text-gray-400'}`}
                     >
                         <CheckSquare size={16} /> Tarefas
                     </button>
-                    <button 
+                    <button
                         onClick={() => setActiveTab('goals')}
                         className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${activeTab === 'goals' ? 'bg-white dark:bg-gray-600 text-emerald-600 dark:text-emerald-400 shadow-sm' : 'text-gray-500 dark:text-gray-400'}`}
                     >
@@ -202,15 +176,15 @@ const Team: React.FC<TeamProps> = ({ users, currentUser, salesGoals, setSalesGoa
                         const currentSales = salesBySeller[user.id] || 0;
                         const goalVal = salesGoals.userGoals[user.id] || 0;
                         const type = salesGoals.goalTypes[user.id] || 'monthly';
-                        
+
                         // For progress bar visualization, project daily goal to monthly if needed
                         const monthlyTarget = type === 'daily' ? goalVal * 30 : goalVal;
                         const progress = monthlyTarget > 0 ? (currentSales / monthlyTarget) * 100 : 0;
                         const pendingTasks = tasks.filter(t => t.assignedTo === user.id && t.status === 'pending').length;
 
                         return (
-                            <div 
-                                key={user.id} 
+                            <div
+                                key={user.id}
                                 onClick={() => handleMemberClick(user)}
                                 className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden flex flex-col hover:border-pink-300 transition-all cursor-pointer group"
                             >
@@ -243,12 +217,12 @@ const Team: React.FC<TeamProps> = ({ users, currentUser, salesGoals, setSalesGoa
                                             <span className="font-bold text-gray-800 dark:text-white">{Math.round(progress)}% da Meta</span>
                                         </div>
                                         <div className="w-full bg-gray-200 dark:bg-gray-700 h-2 rounded-full overflow-hidden">
-                                            <div className={`h-full rounded-full ${progress >= 100 ? 'bg-emerald-500' : 'bg-pink-500'}`} style={{width: `${Math.min(progress, 100)}%`}}></div>
+                                            <div className={`h-full rounded-full ${progress >= 100 ? 'bg-emerald-500' : 'bg-pink-500'}`} style={{ width: `${Math.min(progress, 100)}%` }}></div>
                                         </div>
                                         <div className="flex justify-between text-xs mt-1 text-gray-400">
                                             <span>R$ {currentSales.toLocaleString('pt-BR')}</span>
                                             <span>
-                                                {type === 'daily' ? 'Meta Dia: ' : 'Meta Mês: '} 
+                                                {type === 'daily' ? 'Meta Dia: ' : 'Meta Mês: '}
                                                 R$ {goalVal.toLocaleString('pt-BR')}
                                             </span>
                                         </div>
@@ -269,27 +243,27 @@ const Team: React.FC<TeamProps> = ({ users, currentUser, salesGoals, setSalesGoa
                 <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
                     <div className="p-4 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center bg-gray-50 dark:bg-gray-700/30">
                         <div className="flex gap-2">
-                            <button 
+                            <button
                                 onClick={() => setTaskFilter('all')}
                                 className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${taskFilter === 'all' ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300' : 'text-gray-500 hover:text-gray-700'}`}
                             >
                                 Todas
                             </button>
-                            <button 
+                            <button
                                 onClick={() => setTaskFilter('mine')}
                                 className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${taskFilter === 'mine' ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300' : 'text-gray-500 hover:text-gray-700'}`}
                             >
                                 Minhas
                             </button>
                         </div>
-                        <button 
+                        <button
                             onClick={() => setIsTaskModalOpen(true)}
                             className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg text-sm font-bold flex items-center gap-1 shadow-sm"
                         >
                             <Plus size={16} /> Nova Tarefa
                         </button>
                     </div>
-                    
+
                     <div className="p-4 grid gap-3">
                         {filteredTasks.map(task => (
                             <div key={task.id} className={`p-4 rounded-xl border flex items-center gap-4 transition-all ${task.status === 'completed' ? 'bg-gray-50 dark:bg-gray-800/50 border-gray-100 dark:border-gray-700 opacity-60' : 'bg-white dark:bg-gray-800 border-l-4 border-l-indigo-500 border-t-gray-100 border-r-gray-100 border-b-gray-100 dark:border-gray-700'}`}>
@@ -321,7 +295,7 @@ const Team: React.FC<TeamProps> = ({ users, currentUser, salesGoals, setSalesGoa
                             <div className="absolute top-0 right-0 p-4 opacity-10 transform translate-x-4 -translate-y-4">
                                 <Trophy size={140} />
                             </div>
-                            
+
                             <div className="relative z-10">
                                 <div className="flex items-center gap-4 bg-gray-700/50 p-1.5 rounded-xl border border-gray-600 mb-6 w-fit">
                                     <button onClick={() => changeMonth(-1)} className="p-1 hover:bg-gray-600 rounded-lg transition-colors"><ChevronLeft size={16} /></button>
@@ -332,7 +306,7 @@ const Team: React.FC<TeamProps> = ({ users, currentUser, salesGoals, setSalesGoa
                                 <div className="flex items-center gap-2 text-pink-300 mb-2 font-bold uppercase tracking-wider text-xs">
                                     <Target size={14} /> Meta Global da Loja
                                 </div>
-                                
+
                                 <div className="mt-2">
                                     <span className="text-4xl font-bold tracking-tight">R$ {totalTeamGoal.toLocaleString('pt-BR')}</span>
                                     <p className="text-sm text-gray-400 mt-1">Soma das metas mensais (projetadas)</p>
@@ -344,8 +318,8 @@ const Team: React.FC<TeamProps> = ({ users, currentUser, salesGoals, setSalesGoa
                                         <span>{storeProgress.toFixed(1)}%</span>
                                     </div>
                                     <div className="w-full bg-gray-700/50 rounded-full h-3 overflow-hidden backdrop-blur-sm border border-white/5">
-                                        <div 
-                                            className="bg-gradient-to-r from-pink-500 to-purple-500 h-full transition-all duration-1000 ease-out shadow-[0_0_10px_rgba(236,72,153,0.5)]" 
+                                        <div
+                                            className="bg-gradient-to-r from-pink-500 to-purple-500 h-full transition-all duration-1000 ease-out shadow-[0_0_10px_rgba(236,72,153,0.5)]"
                                             style={{ width: `${Math.min(storeProgress, 100)}%` }}
                                         ></div>
                                     </div>
@@ -368,13 +342,13 @@ const Team: React.FC<TeamProps> = ({ users, currentUser, salesGoals, setSalesGoa
                                 *Edite os valores e tipos
                             </div>
                         </div>
-                        
+
                         <div className="p-6 space-y-4 flex-1 overflow-y-auto max-h-[500px]">
                             {visibleSalesUsers.map(member => {
                                 const currentMeta = salesGoals.userGoals[member.id] || 0;
                                 const goalType = salesGoals.goalTypes[member.id] || 'monthly';
                                 const currentSales = salesBySeller[member.id] || 0;
-                                
+
                                 // Progress calc (project daily to monthly for bar)
                                 const monthlyTarget = goalType === 'daily' ? currentMeta * 30 : currentMeta;
                                 const progress = monthlyTarget > 0 ? (currentSales / monthlyTarget) * 100 : 0;
@@ -391,7 +365,7 @@ const Team: React.FC<TeamProps> = ({ users, currentUser, salesGoals, setSalesGoa
                                                     </div>
                                                 )}
                                             </div>
-                                            
+
                                             <div className="min-w-0">
                                                 <p className="font-bold text-gray-800 dark:text-white truncate">{member.name}</p>
                                                 <div className="flex items-center gap-2">
@@ -412,13 +386,13 @@ const Team: React.FC<TeamProps> = ({ users, currentUser, salesGoals, setSalesGoa
                                         <div className="flex items-center gap-3 w-full sm:w-auto">
                                             {/* Type Toggle */}
                                             <div className="flex bg-gray-100 dark:bg-gray-700 p-0.5 rounded-lg">
-                                                <button 
+                                                <button
                                                     onClick={() => handleGoalTypeChange(member.id, 'daily')}
                                                     className={`px-2 py-1 text-[10px] font-bold rounded transition-colors ${goalType === 'daily' ? 'bg-white dark:bg-gray-600 text-pink-600 dark:text-pink-400 shadow-sm' : 'text-gray-500'}`}
                                                 >
                                                     Dia
                                                 </button>
-                                                <button 
+                                                <button
                                                     onClick={() => handleGoalTypeChange(member.id, 'monthly')}
                                                     className={`px-2 py-1 text-[10px] font-bold rounded transition-colors ${goalType === 'monthly' ? 'bg-white dark:bg-gray-600 text-pink-600 dark:text-pink-400 shadow-sm' : 'text-gray-500'}`}
                                                 >
@@ -428,8 +402,8 @@ const Team: React.FC<TeamProps> = ({ users, currentUser, salesGoals, setSalesGoa
 
                                             <div className="relative w-full sm:w-32 group">
                                                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm font-bold group-focus-within:text-pink-500 transition-colors">R$</span>
-                                                <input 
-                                                    type="number" 
+                                                <input
+                                                    type="number"
                                                     value={salesGoals.userGoals[member.id] || ''}
                                                     onChange={(e) => handleGoalChange(member.id, e.target.value)}
                                                     placeholder="0.00"
@@ -451,14 +425,14 @@ const Team: React.FC<TeamProps> = ({ users, currentUser, salesGoals, setSalesGoa
                 <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
                     <div className="absolute inset-0 bg-gray-900/60 backdrop-blur-sm" onClick={() => setIsMemberModalOpen(false)}></div>
                     <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-lg relative flex flex-col animate-in fade-in zoom-in-95 duration-200 overflow-hidden p-6">
-                        
-                        <button 
-                            onClick={() => setIsMemberModalOpen(false)} 
+
+                        <button
+                            onClick={() => setIsMemberModalOpen(false)}
                             className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 p-1 rounded-full transition-colors"
                         >
                             <X size={20} />
                         </button>
-                        
+
                         <div className="flex flex-col flex-1 mt-2">
                             <div className="self-center mb-4">
                                 <div className="w-24 h-24 rounded-full border-4 border-gray-100 dark:border-gray-700 overflow-hidden shadow-lg bg-gray-200 dark:bg-gray-700">
@@ -509,38 +483,38 @@ const Team: React.FC<TeamProps> = ({ users, currentUser, salesGoals, setSalesGoa
                     <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-lg relative p-6 animate-in fade-in zoom-in-95">
                         <h3 className="font-bold text-lg mb-4 dark:text-white">Nova Tarefa</h3>
                         <form onSubmit={handleSaveTask} className="space-y-4">
-                            <input 
-                                required 
-                                type="text" 
-                                className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none" 
-                                placeholder="Título da Tarefa" 
-                                value={newTask.title} 
-                                onChange={e => setNewTask({...newTask, title: e.target.value})} 
+                            <input
+                                required
+                                type="text"
+                                className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+                                placeholder="Título da Tarefa"
+                                value={newTask.title}
+                                onChange={e => setNewTask({ ...newTask, title: e.target.value })}
                             />
-                            <textarea 
-                                className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none" 
-                                placeholder="Descrição..." 
-                                value={newTask.description} 
-                                onChange={e => setNewTask({...newTask, description: e.target.value})} 
+                            <textarea
+                                className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+                                placeholder="Descrição..."
+                                value={newTask.description}
+                                onChange={e => setNewTask({ ...newTask, description: e.target.value })}
                             />
                             <div className="grid grid-cols-2 gap-4">
-                                <select 
-                                    className="p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none" 
-                                    value={newTask.assignedTo} 
-                                    onChange={e => setNewTask({...newTask, assignedTo: e.target.value})}
+                                <select
+                                    className="p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+                                    value={newTask.assignedTo}
+                                    onChange={e => setNewTask({ ...newTask, assignedTo: e.target.value })}
                                 >
                                     {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
                                 </select>
-                                <input 
-                                    type="date" 
-                                    className="p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none" 
-                                    value={newTask.dueDate} 
-                                    onChange={e => setNewTask({...newTask, dueDate: e.target.value})} 
+                                <input
+                                    type="date"
+                                    className="p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+                                    value={newTask.dueDate}
+                                    onChange={e => setNewTask({ ...newTask, dueDate: e.target.value })}
                                 />
                             </div>
                             <div className="flex gap-2">
                                 {['low', 'medium', 'high'].map(p => (
-                                    <div key={p} onClick={() => setNewTask({...newTask, priority: p as any})} className={`flex-1 p-2 rounded text-center text-xs font-bold uppercase cursor-pointer border transition-colors ${newTask.priority === p ? 'bg-indigo-100 border-indigo-500 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300' : 'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-600 text-gray-500'}`}>{p}</div>
+                                    <div key={p} onClick={() => setNewTask({ ...newTask, priority: p as any })} className={`flex-1 p-2 rounded text-center text-xs font-bold uppercase cursor-pointer border transition-colors ${newTask.priority === p ? 'bg-indigo-100 border-indigo-500 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300' : 'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-600 text-gray-500'}`}>{p}</div>
                                 ))}
                             </div>
                             <button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl mt-2 transition-colors">Criar Tarefa</button>

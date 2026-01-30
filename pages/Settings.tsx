@@ -14,11 +14,11 @@ interface SettingsProps {
     companySettings: CompanySettings;
     setCompanySettings: (settings: CompanySettings) => void;
     salesGoals: SalesGoal;
-    setSalesGoals: (goals: SalesGoal) => void;
+    onUpdateGoal: (userId: string, amount: number, type: 'daily' | 'monthly') => void;
 }
 
 const Settings: React.FC<SettingsProps> = ({
-    users, setUsers, currentUser, setCurrentUser, companySettings, setCompanySettings, salesGoals, setSalesGoals
+    users, setUsers, currentUser, setCurrentUser, companySettings, setCompanySettings, salesGoals, onUpdateGoal
 }) => {
     const [activeTab, setActiveTab] = useState<'users' | 'company'>('users');
     const [isUserModalOpen, setIsUserModalOpen] = useState(false);
@@ -259,22 +259,8 @@ const Settings: React.FC<SettingsProps> = ({
 
             // Update Sales Goal for this user
             if (targetUserId) {
-                const updatedUserGoals = { ...salesGoals.userGoals, [targetUserId]: goalValue };
-                const updatedGoalTypes = { ...salesGoals.goalTypes, [targetUserId]: goalType };
-
-                // Calculate total store goal (Monthly equivalent: Daily * 30, Monthly * 1)
-                const newStoreGoal = Object.entries(updatedUserGoals).reduce((acc: number, [uid, val]) => {
-                    const numVal = val as number;
-                    const type = updatedGoalTypes[uid] || 'monthly';
-                    const monthlyEquivalent = type === 'daily' ? numVal * 30 : numVal;
-                    return acc + monthlyEquivalent;
-                }, 0);
-
-                setSalesGoals({
-                    storeGoal: newStoreGoal,
-                    userGoals: updatedUserGoals,
-                    goalTypes: updatedGoalTypes
-                });
+                // Save to database/hook via callback
+                onUpdateGoal(targetUserId, goalValue, goalType);
             }
 
             setIsUserModalOpen(false);
