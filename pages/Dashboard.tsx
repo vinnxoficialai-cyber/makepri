@@ -1,18 +1,19 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { 
-    BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
+import {
+    BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
     PieChart, Pie, Cell, AreaChart, Area
 } from 'recharts';
-import { 
-    ArrowUpRight, ArrowDownRight, Package, Users, DollarSign, AlertTriangle, 
-    Lock, ShoppingCart, Award, Cake, Target, TrendingUp, X, Search, Barcode, 
+import {
+    ArrowUpRight, ArrowDownRight, Package, Users, DollarSign, AlertTriangle,
+    Lock, ShoppingCart, Award, Cake, Target, TrendingUp, X, Search, Barcode,
     Plus, Minus, Trash2, User as UserIcon, CheckCircle, Clock, Truck, MapPin, Bike, Globe,
     Calendar as CalendarIcon, Sun, Camera, Gift, PieChart as PieChartIcon
 } from 'lucide-react';
 import { MOCK_PRODUCTS, MOCK_TRANSACTIONS, MOCK_CUSTOMERS, MOCK_USERS, MOCK_DELIVERIES } from '../constants';
 import { User, Product, CartItem, Customer, SalesGoal } from '../types';
 import BarcodeScanner from '../components/BarcodeScanner';
+import { useProducts, useTransactions, useCustomers, useDeliveries } from '../lib/hooks';
 
 // Mock Data for Revenue History (Populated for visualization)
 const dataSales = [
@@ -50,7 +51,7 @@ const CustomTooltip = ({ active, payload, label }: any) => {
             <div className="bg-white dark:bg-gray-800 p-3 rounded-xl shadow-xl border border-gray-100 dark:border-gray-700">
                 <p className="text-sm font-bold text-gray-800 dark:text-white mb-1">{label}</p>
                 <p className="text-sm text-pink-600 dark:text-pink-400 font-bold">
-                    R$ {Number(payload[0].value).toLocaleString('pt-BR', {minimumFractionDigits: 2})}
+                    R$ {Number(payload[0].value).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                 </p>
             </div>
         );
@@ -81,61 +82,85 @@ const Dashboard: React.FC<DashboardProps> = ({ user, users = [], salesGoals, onN
     const [saleSuccess, setSaleSuccess] = useState(false);
     const skuInputRef = useRef<HTMLInputElement>(null);
 
+    // --- SUPABASE HOOKS ---
+    const { products: supabaseProducts, loading: productsLoading } = useProducts();
+    const { transactions: supabaseTransactions, loading: transactionsLoading } = useTransactions();
+    const { customers: supabaseCustomers, loading: customersLoading } = useCustomers();
+    const { deliveries: supabaseDeliveries, loading: deliveriesLoading } = useDeliveries();
+
+    // Usar dados do Supabase ou fallback para MOCK
+    const products = supabaseProducts.length > 0 ? supabaseProducts : MOCK_PRODUCTS;
+    const transactions = supabaseTransactions.length > 0 ? supabaseTransactions : MOCK_TRANSACTIONS;
+    const customers = supabaseCustomers.length > 0 ? supabaseCustomers : MOCK_CUSTOMERS;
+    const deliveries = supabaseDeliveries.length > 0 ? supabaseDeliveries : MOCK_DELIVERIES;
+
     // --- ROLE CHECK ---
     const isSalesperson = user.role === 'Vendedor';
     const isManagerOrAdmin = user.role === 'Administrador' || user.role === 'Gerente';
 
     // --- DASHBOARD CALCULATIONS ---
-    const lowStockCount = MOCK_PRODUCTS.filter(p => p.stock <= p.minStock).length;
-    
-    // Simulate "Today" as actual date or just 0 since empty
-    const salesToday = MOCK_TRANSACTIONS
-        .filter(t => t.date === new Date().toISOString().split('T')[0] && t.status === 'Completed')
+    const lowStockCount = products.filter(p => p.stock <= p.minStock).length;
+
+    // Data de hoje (comparação correta)
+    const today = new Date().toISOString().split('T')[0];
+
+    // Vendas de hoje (corrigido: usar startsWith para comparar datas)
+    const salesToday = transactions
+        .filter(t => t.date.startsWith(today) && t.status === 'Completed')
         .reduce((acc, curr) => acc + curr.total, 0);
+
+    // Entregas pendentes (array para uso posterior)
+    const pendingDeliveries = deliveries.filter(d =>
+        d.status === 'Pendente' || d.status === 'Em Rota'
+    );
+    const pendingDeliveriesCount = pendingDeliveries.length;
 
     // Mock Online Sales (derived from total for demo purposes)
-    const onlineSalesToday = salesToday * 0.42; 
+    const onlineSalesToday = 0; // Site em construção, zerado
+
+    // Mês atual (corrigido: usar mês atual dinamicamente)
+    const currentMonth = new Date().toISOString().slice(0, 7); // "2026-01"
 
     // Commission Calculation (UPDATED LOGIC: Tiered System)
-    const currentMonthSales = MOCK_TRANSACTIONS
-        .filter(t => t.date.startsWith('2024-05') && t.status === 'Completed')
+    const currentMonthSales = transactions
+        .filter(t => t.date.startsWith(currentMonth) && t.status === 'Completed')
         .reduce((acc, curr) => acc + curr.total, 0);
-    
+
     // If salesperson, simulate their slice of sales
-    const myPersonalSalesMonth = isSalesperson ? currentMonthSales * 0.15 : 0; 
+    const myPersonalSalesMonth = isSalesperson ? currentMonthSales * 0.15 : 0;
     const commissionBase = isSalesperson ? myPersonalSalesMonth : currentMonthSales;
-    
+
     const COMMISSION_THRESHOLD = 3000;
-    
+
     // Logic: 0 to 3000 = 1%, Above 3000 = 2% (on Total)
     const isHighTier = commissionBase > COMMISSION_THRESHOLD;
     const currentRate = isHighTier ? 0.02 : 0.01;
     const commission = commissionBase * currentRate;
-    
-    const commissionSubtext = isHighTier 
-        ? "Tier 2 (2%) Ativo! Parabéns!" 
+
+    const commissionSubtext = isHighTier
+        ? "Tier 2 (2%) Ativo! Parabéns!"
         : `Tier 1 (1%). Faltam R$ ${Math.max(0, COMMISSION_THRESHOLD - commissionBase).toFixed(2)} p/ 2%`;
 
     // Helper for Stalled Products
     const getDaysSinceUpdate = (dateString?: string) => {
         if (!dateString) return 0;
-        const today = new Date(); 
+        const today = new Date();
         const updated = new Date(dateString);
         const diffTime = Math.abs(today.getTime() - updated.getTime());
-        return Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+        return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
     };
 
-    const stalledCount = MOCK_PRODUCTS.filter(p => getDaysSinceUpdate(p.updatedAt) > 30).length;
+    const stalledCount = products.filter(p => getDaysSinceUpdate(p.updatedAt) > 30).length;
 
     // --- LOGISTICS CALCULATIONS ---
-    const pendingDeliveries = MOCK_DELIVERIES.filter(d => d.status === 'Pendente' || d.status === 'Em Preparo');
+    const pendingDeliveriesList = deliveries.filter(d => d.status === 'Pendente' || d.status === 'Em Preparo');
     // Filter specifically for Shipping (Correios/Jadlog) or generally any pending including Motoboy
-    const itemsToShip = pendingDeliveries.length;
-    const ecommercePending = pendingDeliveries.filter(d => d.source === 'E-commerce').length;
+    const itemsToShip = pendingDeliveriesList.length;
+    const ecommercePending = pendingDeliveriesList.filter(d => d.source === 'E-commerce').length;
 
     // --- SALES GOALS CALCULATIONS ---
     const activeSellers = users.filter(u => u.active && (u.role === 'Vendedor' || u.role === 'Gerente' || u.role === 'Administrador'));
-    
+
     // Enhanced Logic: Calculate Daily and Monthly targets for everyone
     const sellersPerformance = activeSellers.map(u => {
         const rawGoal = salesGoals?.userGoals?.[u.id] || 0;
@@ -146,8 +171,8 @@ const Dashboard: React.FC<DashboardProps> = ({ user, users = [], salesGoals, onN
         const dailyTarget = goalType === 'daily' ? rawGoal : rawGoal / 30;
 
         // Mock Actual Sales (In a real app, filter transactions by user ID)
-        const salesMonth = 0; 
-        const salesToday = 0; 
+        const salesMonth = 0;
+        const salesToday = 0;
 
         return {
             id: u.id,
@@ -162,18 +187,18 @@ const Dashboard: React.FC<DashboardProps> = ({ user, users = [], salesGoals, onN
 
     // Get specific performance for current user
     const myPerformance = sellersPerformance.find(s => s.id === user.id) || { salesMonth: 0, salesToday: 0, monthlyTarget: 0, dailyTarget: 0 };
-    
+
     const totalSalesMonth = sellersPerformance.reduce((acc, curr) => acc + curr.salesMonth, 0);
     const globalMonthlyGoal = salesGoals?.storeGoal || sellersPerformance.reduce((acc, curr) => acc + curr.monthlyTarget, 0) || 0;
     const globalMonthlyProgress = globalMonthlyGoal > 0 ? Math.min(100, (totalSalesMonth / globalMonthlyGoal) * 100) : 0;
 
     // Birthdays Logic
     const currentMonthIndex = new Date().getMonth() + 1; // 1-12
-    const birthdayCustomers = MOCK_CUSTOMERS.filter(c => {
+    const birthdayCustomers = customers.filter(c => {
         if (!c.birthDate) return false;
         // Handle YYYY-MM-DD
         const parts = c.birthDate.split('-');
-        if(parts.length !== 3) return false;
+        if (parts.length !== 3) return false;
         const month = parseInt(parts[1]);
         return month === currentMonthIndex;
     }).sort((a, b) => {
@@ -181,6 +206,73 @@ const Dashboard: React.FC<DashboardProps> = ({ user, users = [], salesGoals, onN
         const dayB = parseInt(b.birthDate?.split('-')[2] || '32');
         return dayA - dayB;
     });
+
+    // --- GRÁFICOS COM DADOS REAIS ---
+    // Calcular histórico de vendas dos últimos 6 meses
+    const calculateSalesHistory = () => {
+        const monthNames = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+        const now = new Date();
+        const salesByMonth: { [key: string]: number } = {};
+
+        // Inicializar últimos 6 meses com 0
+        for (let i = 5; i >= 0; i--) {
+            const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
+            const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+            salesByMonth[monthKey] = 0;
+        }
+
+        // Somar vendas por mês
+        transactions.forEach(t => {
+            if (t.status === 'Completed' && t.date) {
+                const monthKey = t.date.substring(0, 7); // YYYY-MM
+                if (salesByMonth.hasOwnProperty(monthKey)) {
+                    salesByMonth[monthKey] += t.total;
+                }
+            }
+        });
+
+        // Converter para formato do gráfico
+        return Object.keys(salesByMonth).map(key => {
+            const [year, month] = key.split('-');
+            return {
+                name: monthNames[parseInt(month) - 1],
+                vendas: Math.round(salesByMonth[key])
+            };
+        });
+    };
+
+    // Calcular top categorias
+    const calculateTopCategories = () => {
+        const categoryCounts: { [key: string]: number } = {};
+        let total = 0;
+
+        // Contar produtos por categoria
+        products.forEach(p => {
+            if (p.category) {
+                categoryCounts[p.category] = (categoryCounts[p.category] || 0) + 1;
+                total++;
+            }
+        });
+
+        // Se não houver produtos, retornar dados vazios
+        if (total === 0) {
+            return [
+                { name: 'Sem Dados', value: 100 }
+            ];
+        }
+
+        // Converter para percentual e ordenar
+        return Object.entries(categoryCounts)
+            .map(([name, count]) => ({
+                name,
+                value: Math.round((count / total) * 100)
+            }))
+            .sort((a, b) => b.value - a.value)
+            .slice(0, 4); // Top 4 categorias
+    };
+
+    const dataSales = calculateSalesHistory();
+    const dataCategories = calculateTopCategories();
 
 
     // --- QUICK SALE HANDLERS ---
@@ -192,7 +284,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, users = [], salesGoals, onN
             }
             return [...prev, { ...product, quantity: 1 }];
         });
-        setPosSearchTerm(''); 
+        setPosSearchTerm('');
     };
 
     const playBeep = () => {
@@ -201,7 +293,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, users = [], salesGoals, onN
     };
 
     const handleScanSuccess = (decodedText: string) => {
-        const product = MOCK_PRODUCTS.find(p => p.sku.toLowerCase() === decodedText.toLowerCase());
+        const product = products.find(p => p.sku.toLowerCase() === decodedText.toLowerCase());
         playBeep();
         if (product) {
             addToCart(product);
@@ -215,7 +307,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, users = [], salesGoals, onN
 
     const handleSkuSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        const product = MOCK_PRODUCTS.find(p => p.sku.toLowerCase() === skuInput.toLowerCase());
+        const product = products.find(p => p.sku.toLowerCase() === skuInput.toLowerCase());
         if (product) {
             addToCart(product);
             setSkuInput('');
@@ -249,8 +341,8 @@ const Dashboard: React.FC<DashboardProps> = ({ user, users = [], salesGoals, onN
         }, 1500);
     };
 
-    const filteredPosProducts = MOCK_PRODUCTS.filter(p => 
-        p.name.toLowerCase().includes(posSearchTerm.toLowerCase()) || 
+    const filteredPosProducts = products.filter(p =>
+        p.name.toLowerCase().includes(posSearchTerm.toLowerCase()) ||
         p.sku.toLowerCase().includes(posSearchTerm.toLowerCase())
     );
 
@@ -263,7 +355,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, users = [], salesGoals, onN
 
     // --- COMPONENTS ---
     const StatCard = ({ title, value, subtext, icon: Icon, trend, color, restricted = false, action, onClick }: any) => (
-        <div 
+        <div
             onClick={onClick}
             className={`bg-white dark:bg-gray-800 p-5 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 hover:shadow-md transition-all relative overflow-hidden flex flex-col justify-between h-full ${onClick ? 'cursor-pointer hover:border-pink-300 hover:scale-[1.02]' : ''}`}
         >
@@ -332,13 +424,13 @@ const Dashboard: React.FC<DashboardProps> = ({ user, users = [], salesGoals, onN
                 <div>
                     <h2 className="text-2xl font-bold text-gray-800 dark:text-white">Dashboard</h2>
                     <p className="text-gray-500 dark:text-gray-400 text-sm">
-                        Olá, <span className="font-semibold text-pink-600 dark:text-pink-400">{user.name}</span>! 
-                        {isSalesperson 
-                            ? ' Acompanhe suas vendas e metas.' 
+                        Olá, <span className="font-semibold text-pink-600 dark:text-pink-400">{user.name}</span>!
+                        {isSalesperson
+                            ? ' Acompanhe suas vendas e metas.'
                             : ' Aqui está o resumo financeiro de hoje.'}
                     </p>
                 </div>
-                <button 
+                <button
                     onClick={() => setIsPosModalOpen(true)}
                     className="bg-[#ffc8cb] hover:bg-[#ffb6b9] text-gray-900 px-6 py-3 rounded-xl shadow-lg shadow-pink-200 dark:shadow-none font-bold flex items-center gap-2 transition-all hover:scale-105 active:scale-95"
                 >
@@ -448,13 +540,13 @@ const Dashboard: React.FC<DashboardProps> = ({ user, users = [], salesGoals, onN
                                 <AreaChart data={dataSales}>
                                     <defs>
                                         <linearGradient id="colorVendas" x1="0" y1="0" x2="0" y2="1">
-                                            <stop offset="5%" stopColor="#ec4899" stopOpacity={0.8}/>
-                                            <stop offset="95%" stopColor="#ec4899" stopOpacity={0}/>
+                                            <stop offset="5%" stopColor="#ec4899" stopOpacity={0.8} />
+                                            <stop offset="95%" stopColor="#ec4899" stopOpacity={0} />
                                         </linearGradient>
                                     </defs>
                                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
-                                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#9ca3af', fontSize: 12}} />
-                                    <YAxis axisLine={false} tickLine={false} tick={{fill: '#9ca3af', fontSize: 12}} />
+                                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#9ca3af', fontSize: 12 }} />
+                                    <YAxis axisLine={false} tickLine={false} tick={{ fill: '#9ca3af', fontSize: 12 }} />
                                     <Tooltip content={<CustomTooltip />} cursor={{ stroke: '#ec4899', strokeWidth: 1, strokeDasharray: '3 3' }} />
                                     <Area type="monotone" dataKey="vendas" stroke="#ec4899" fillOpacity={1} fill="url(#colorVendas)" strokeWidth={2} />
                                 </AreaChart>
@@ -537,11 +629,11 @@ const Dashboard: React.FC<DashboardProps> = ({ user, users = [], salesGoals, onN
                             </div>
                             <span className="text-xs font-bold bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-300 px-2 py-1 rounded">Mês Atual</span>
                         </div>
-                        
+
                         <div className="space-y-3 relative z-10 max-h-[250px] overflow-y-auto pr-1">
                             {birthdayCustomers.length > 0 ? (
                                 birthdayCustomers.map((customer) => {
-                                    const [year, month, day] = customer.birthDate ? customer.birthDate.split('-') : ['','',''];
+                                    const [year, month, day] = customer.birthDate ? customer.birthDate.split('-') : ['', '', ''];
                                     return (
                                         <div key={customer.id} className="flex items-center justify-between bg-gray-50 dark:bg-gray-700/30 p-3 rounded-lg border border-gray-100 dark:border-gray-600 group">
                                             <div className="flex gap-3 items-center">
@@ -575,7 +667,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, users = [], salesGoals, onN
                 <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
                     <div className="absolute inset-0 bg-gray-900/60 backdrop-blur-sm" onClick={() => setIsPosModalOpen(false)}></div>
                     <div className="bg-white dark:bg-gray-800 w-full max-w-4xl h-[85vh] rounded-2xl shadow-2xl relative flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-                        
+
                         {/* Modal Header */}
                         <div className="bg-gray-900 dark:bg-black text-white p-4 flex justify-between items-center shadow-md z-10">
                             <div className="flex items-center gap-3">
@@ -601,18 +693,18 @@ const Dashboard: React.FC<DashboardProps> = ({ user, users = [], salesGoals, onN
                                     <div className="flex gap-2">
                                         <form onSubmit={handleSkuSubmit} className="relative flex-1">
                                             <Barcode className="absolute left-3 top-1/2 -translate-y-1/2 text-pink-500" size={20} />
-                                            <input 
+                                            <input
                                                 ref={skuInputRef}
-                                                type="text" 
-                                                placeholder="Bipar Código / SKU + Enter" 
+                                                type="text"
+                                                placeholder="Bipar Código / SKU + Enter"
                                                 className="w-full pl-10 pr-4 py-3 border-2 border-[#ffc8cb] rounded-xl focus:border-pink-400 focus:ring-0 text-base font-semibold shadow-sm outline-none transition-all bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                                                 value={skuInput}
                                                 onChange={(e) => setSkuInput(e.target.value)}
                                                 autoFocus
                                             />
                                         </form>
-                                        <button 
-                                            onClick={() => setIsScannerOpen(!isScannerOpen)} 
+                                        <button
+                                            onClick={() => setIsScannerOpen(!isScannerOpen)}
                                             className={`p-3 rounded-xl transition-colors border-2 ${isScannerOpen ? 'bg-pink-100 border-pink-500 text-pink-600' : 'bg-gray-100 dark:bg-gray-700 border-gray-200 dark:border-gray-600 hover:bg-gray-200 dark:hover:bg-gray-600 dark:text-gray-200'}`}
                                             title="Ler Código de Barras"
                                         >
@@ -623,8 +715,8 @@ const Dashboard: React.FC<DashboardProps> = ({ user, users = [], salesGoals, onN
                                     {/* Scanner Area */}
                                     {isScannerOpen && (
                                         <div className="animate-in slide-in-from-top-5">
-                                            <BarcodeScanner 
-                                                onScanSuccess={handleScanSuccess} 
+                                            <BarcodeScanner
+                                                onScanSuccess={handleScanSuccess}
                                                 onScanFailure={(err) => console.log(err)}
                                             />
                                             <div className="text-center mt-2">
@@ -632,13 +724,13 @@ const Dashboard: React.FC<DashboardProps> = ({ user, users = [], salesGoals, onN
                                             </div>
                                         </div>
                                     )}
-                                    
+
                                     {/* Name Search */}
                                     <div className="relative">
                                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-                                        <input 
-                                            type="text" 
-                                            placeholder="Buscar produto por nome..." 
+                                        <input
+                                            type="text"
+                                            placeholder="Buscar produto por nome..."
                                             className="w-full pl-10 pr-4 py-2 bg-gray-100 dark:bg-gray-700 dark:text-white border-none rounded-lg focus:ring-2 focus:ring-gray-200 dark:focus:ring-gray-600 text-sm"
                                             value={posSearchTerm}
                                             onChange={(e) => setPosSearchTerm(e.target.value)}
@@ -652,8 +744,8 @@ const Dashboard: React.FC<DashboardProps> = ({ user, users = [], salesGoals, onN
                                         <div className="space-y-2">
                                             <h4 className="text-xs font-bold text-gray-400 uppercase mb-2">Resultados da busca</h4>
                                             {filteredPosProducts.map(product => (
-                                                <div 
-                                                    key={product.id} 
+                                                <div
+                                                    key={product.id}
                                                     onClick={() => addToCart(product)}
                                                     className="bg-white dark:bg-gray-800 p-3 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm hover:border-[#ffc8cb] cursor-pointer flex justify-between items-center group transition-all"
                                                 >
@@ -694,13 +786,13 @@ const Dashboard: React.FC<DashboardProps> = ({ user, users = [], salesGoals, onN
                                     <div className="flex gap-2">
                                         <div className="relative flex-1">
                                             <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
-                                            <select 
+                                            <select
                                                 className="w-full pl-9 pr-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:border-pink-400 outline-none appearance-none bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                                                 value={selectedCustomer?.id || ''}
-                                                onChange={(e) => setSelectedCustomer(MOCK_CUSTOMERS.find(c => c.id === e.target.value) || null)}
+                                                onChange={(e) => setSelectedCustomer(customers.find(c => c.id === e.target.value) || null)}
                                             >
                                                 <option value="">Cliente Balcão (Avulso)</option>
-                                                {MOCK_CUSTOMERS.map(c => (
+                                                {customers.map(c => (
                                                     <option key={c.id} value={c.id}>{c.name}</option>
                                                 ))}
                                             </select>
@@ -719,16 +811,16 @@ const Dashboard: React.FC<DashboardProps> = ({ user, users = [], salesGoals, onN
                                     <div className="flex gap-2">
                                         <form onSubmit={handleSkuSubmit} className="relative flex-1">
                                             <Barcode className="absolute left-3 top-1/2 -translate-y-1/2 text-pink-500" size={20} />
-                                            <input 
-                                                type="text" 
-                                                placeholder="Bipar Código / SKU" 
+                                            <input
+                                                type="text"
+                                                placeholder="Bipar Código / SKU"
                                                 className="w-full pl-10 pr-4 py-3 border-2 border-[#ffc8cb] rounded-xl focus:border-pink-400 focus:ring-0 text-base font-semibold shadow-sm outline-none transition-all bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                                                 value={skuInput}
                                                 onChange={(e) => setSkuInput(e.target.value)}
                                             />
                                         </form>
-                                        <button 
-                                            onClick={() => setIsScannerOpen(!isScannerOpen)} 
+                                        <button
+                                            onClick={() => setIsScannerOpen(!isScannerOpen)}
                                             className={`p-3 rounded-xl transition-colors border-2 ${isScannerOpen ? 'bg-pink-100 border-pink-500 text-pink-600' : 'bg-gray-100 dark:bg-gray-700 border-gray-200 dark:border-gray-600'}`}
                                         >
                                             <Camera size={24} />
@@ -737,8 +829,8 @@ const Dashboard: React.FC<DashboardProps> = ({ user, users = [], salesGoals, onN
                                     {/* Mobile Scanner Area */}
                                     {isScannerOpen && (
                                         <div className="mt-4">
-                                            <BarcodeScanner 
-                                                onScanSuccess={handleScanSuccess} 
+                                            <BarcodeScanner
+                                                onScanSuccess={handleScanSuccess}
                                                 onScanFailure={(err) => console.log(err)}
                                             />
                                         </div>
@@ -783,17 +875,16 @@ const Dashboard: React.FC<DashboardProps> = ({ user, users = [], salesGoals, onN
                                         <span className="text-gray-500 dark:text-gray-400 font-medium">Total a Pagar</span>
                                         <span className="text-3xl font-bold text-gray-900 dark:text-white">R$ {cartTotal.toFixed(2)}</span>
                                     </div>
-                                    
-                                    <button 
+
+                                    <button
                                         onClick={handleFinalizeSale}
                                         disabled={cart.length === 0}
-                                        className={`w-full py-3 rounded-xl font-bold text-lg shadow-lg transition-all flex items-center justify-center gap-2 ${
-                                            saleSuccess 
+                                        className={`w-full py-3 rounded-xl font-bold text-lg shadow-lg transition-all flex items-center justify-center gap-2 ${saleSuccess
                                             ? 'bg-green-500 text-white'
-                                            : cart.length === 0 
-                                                ? 'bg-gray-200 dark:bg-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed' 
+                                            : cart.length === 0
+                                                ? 'bg-gray-200 dark:bg-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed'
                                                 : 'bg-[#ffc8cb] hover:bg-[#ffb6b9] text-gray-900 hover:shadow-pink-200 hover:-translate-y-0.5'
-                                        }`}
+                                            }`}
                                     >
                                         {saleSuccess ? (
                                             <> <CheckCircle /> Venda Realizada! </>

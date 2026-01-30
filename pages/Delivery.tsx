@@ -1,20 +1,22 @@
 
-import React, { useState } from 'react';
-import { 
-    Bike, MapPin, Search, Phone, Package, ArrowRight, 
+import React, { useState, useEffect } from 'react';
+import {
+    Bike, MapPin, Search, Phone, Package, ArrowRight,
     CheckCircle, Truck, Globe, MessageCircle, MoreVertical, Store, Home,
     Plus, X, User, DollarSign, Calendar, FileText, Save, Users, Printer, Map, Trash2, Edit, AlertCircle, TrendingUp, History, Archive
 } from 'lucide-react';
 import { DeliveryOrder, User as UserType } from '../types';
 import { MOCK_CUSTOMERS, MOCK_USERS } from '../constants';
+import { useDeliveries } from '../lib/hooks';
+import { DeliveryService } from '../lib/database';
 
 interface DeliveryProps {
-    deliveries: DeliveryOrder[];
-    setDeliveries: React.Dispatch<React.SetStateAction<DeliveryOrder[]>>;
     user?: UserType; // Pass current user for permission check
 }
 
-const Delivery: React.FC<DeliveryProps> = ({ deliveries, setDeliveries, user }) => {
+const Delivery: React.FC<DeliveryProps> = ({ user }) => {
+    // Load deliveries from Supabase
+    const { deliveries, loading, error, refresh } = useDeliveries();
     // View State (Active vs Archived)
     const [viewMode, setViewMode] = useState<'active' | 'archived'>('active');
     const [historyDate, setHistoryDate] = useState(new Date().toISOString().split('T')[0]);
@@ -34,7 +36,7 @@ const Delivery: React.FC<DeliveryProps> = ({ deliveries, setDeliveries, user }) 
 
     // --- EDIT STATES (Inside Details Modal) ---
     const [isEditing, setIsEditing] = useState(false);
-    const [editForm, setEditForm] = useState<{status: string, notes: string}>({ status: '', notes: '' });
+    const [editForm, setEditForm] = useState<{ status: string, notes: string }>({ status: '', notes: '' });
 
     // --- NEW DELIVERY FORM STATE ---
     const [newDeliveryForm, setNewDeliveryForm] = useState<Partial<DeliveryOrder>>({
@@ -60,15 +62,15 @@ const Delivery: React.FC<DeliveryProps> = ({ deliveries, setDeliveries, user }) 
     // --- LOGIC ---
     const filteredDeliveries = deliveries.filter(d => {
         // 1. Search Filter
-        const matchesSearch = d.customerName.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                              d.id.toLowerCase().includes(searchTerm.toLowerCase());
-        
+        const matchesSearch = d.customerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            d.id.toLowerCase().includes(searchTerm.toLowerCase());
+
         // 2. Method Filter
-        const matchesMethod = filterMethod === 'All' 
-            ? true 
-            : filterMethod === 'Local' 
-                ? d.method === 'Motoboy' 
-                : (d.method === 'Correios' || d.method === 'Jadlog'); 
+        const matchesMethod = filterMethod === 'All'
+            ? true
+            : filterMethod === 'Local'
+                ? d.method === 'Motoboy'
+                : (d.method === 'Correios' || d.method === 'Jadlog');
 
         // 3. User Permission Filter (The core request)
         // If current user is Motoboy, ONLY show deliveries assigned to them.
@@ -97,38 +99,49 @@ const Delivery: React.FC<DeliveryProps> = ({ deliveries, setDeliveries, user }) 
         return matchesSearch && matchesMethod && isAuthorized && matchesView;
     });
 
-    const updateStatus = (id: string, newStatus: DeliveryOrder['status']) => {
-        setDeliveries(prev => prev.map(d => d.id === id ? { ...d, status: newStatus } : d));
-        if (selectedDelivery && selectedDelivery.id === id) {
-            setSelectedDelivery(prev => prev ? { ...prev, status: newStatus } : null);
+    const updateStatus = async (id: string, newStatus: DeliveryOrder['status']) => {
+        try {
+            await DeliveryService.update(id, { status: newStatus });
+            await refresh();
+            if (selectedDelivery && selectedDelivery.id === id) {
+                setSelectedDelivery(prev => prev ? { ...prev, status: newStatus } : null);
+            }
+        } catch (err) {
+            console.error('Erro ao atualizar status:', err);
+            alert('Erro ao atualizar status da entrega');
         }
     };
 
-    const handleCreateDelivery = (e: React.FormEvent) => {
+    const handleCreateDelivery = async (e: React.FormEvent) => {
         e.preventDefault();
-        const newOrder: DeliveryOrder = {
-            id: `DEL-${Date.now().toString().slice(-6)}`,
-            customerName: newDeliveryForm.customerName || 'Cliente sem nome',
-            phone: newDeliveryForm.phone || '',
-            address: newDeliveryForm.address || '',
-            city: newDeliveryForm.city || '',
-            source: newDeliveryForm.source as any,
-            method: newDeliveryForm.method as any,
-            status: 'Pendente',
-            itemsSummary: newDeliveryForm.itemsSummary || 'Itens diversos',
-            totalValue: Number(newDeliveryForm.totalValue),
-            fee: Number(newDeliveryForm.fee),
-            motoboyName: newDeliveryForm.motoboyName, // Save selected motoboy
-            date: new Date().toISOString(),
-            trackingCode: newDeliveryForm.trackingCode
-        };
+        try {
+            const newOrder: Partial<DeliveryOrder> = {
+                id: `DEL-${Date.now().toString().slice(-6)}`,
+                customerName: newDeliveryForm.customerName || 'Cliente sem nome',
+                phone: newDeliveryForm.phone || '',
+                address: newDeliveryForm.address || '',
+                city: newDeliveryForm.city || '',
+                source: newDeliveryForm.source as any,
+                method: newDeliveryForm.method as any,
+                status: 'Pendente',
+                itemsSummary: newDeliveryForm.itemsSummary || 'Itens diversos',
+                totalValue: Number(newDeliveryForm.totalValue),
+                fee: Number(newDeliveryForm.fee),
+                motoboyName: newDeliveryForm.motoboyName,
+                trackingCode: newDeliveryForm.trackingCode
+            };
 
-        setDeliveries(prev => [newOrder, ...prev]);
-        setIsCreateModalOpen(false);
-        setNewDeliveryForm({
-            customerName: '', phone: '', address: '', city: '', 
-            source: 'WhatsApp', method: 'Motoboy', itemsSummary: '', totalValue: 0, fee: 0, motoboyName: ''
-        });
+            await DeliveryService.create(newOrder);
+            await refresh();
+            setIsCreateModalOpen(false);
+            setNewDeliveryForm({
+                customerName: '', phone: '', address: '', city: '',
+                source: 'WhatsApp', method: 'Motoboy', itemsSummary: '', totalValue: 0, fee: 0, motoboyName: ''
+            });
+        } catch (err) {
+            console.error('Erro ao criar entrega:', err);
+            alert('Erro ao criar entrega');
+        }
     };
 
     const handleSelectCustomer = (customerId: string) => {
@@ -144,31 +157,40 @@ const Delivery: React.FC<DeliveryProps> = ({ deliveries, setDeliveries, user }) 
         }
     };
 
-    const handleSaveEdit = () => {
+    const handleSaveEdit = async () => {
         if (selectedDelivery) {
-            const updated = { ...selectedDelivery, status: editForm.status as any, notes: editForm.notes };
-            setDeliveries(prev => prev.map(d => d.id === selectedDelivery.id ? updated : d));
-            setSelectedDelivery(updated);
-            setIsEditing(false);
+            try {
+                const updated = await DeliveryService.update(selectedDelivery.id, {
+                    status: editForm.status as any,
+                    notes: editForm.notes
+                });
+                await refresh();
+                setSelectedDelivery(updated);
+                setIsEditing(false);
+            } catch (err) {
+                console.error('Erro ao salvar edição:', err);
+                alert('Erro ao salvar alterações');
+            }
         }
     };
 
     // --- PAYOUT REPORT LOGIC ---
-    const getPayoutData = () => {
-        const completedDeliveries = deliveries.filter(d => d.status === 'Entregue' && d.method === 'Motoboy');
-        const payoutByMotoboy: Record<string, { count: number, totalFee: number }> = {};
+    const [payoutData, setPayoutData] = useState<Record<string, { count: number, totalFee: number }>>({});
 
-        completedDeliveries.forEach(d => {
-            const boyName = d.motoboyName || 'Não Atribuído';
-            if (!payoutByMotoboy[boyName]) {
-                payoutByMotoboy[boyName] = { count: 0, totalFee: 0 };
-            }
-            payoutByMotoboy[boyName].count += 1;
-            payoutByMotoboy[boyName].totalFee += (d.fee || 0);
-        });
-
-        return payoutByMotoboy;
+    const loadPayoutData = async () => {
+        try {
+            const data = await DeliveryService.getPayoutReport();
+            setPayoutData(data);
+        } catch (err) {
+            console.error('Erro ao carregar repasses:', err);
+        }
     };
+
+    useEffect(() => {
+        if (isPayoutModalOpen) {
+            loadPayoutData();
+        }
+    }, [isPayoutModalOpen]);
 
     // --- WHATSAPP LINK ---
     const openWhatsApp = (phone: string, name: string) => {
@@ -187,7 +209,7 @@ const Delivery: React.FC<DeliveryProps> = ({ deliveries, setDeliveries, user }) 
     };
 
     const getStatusColor = (status: string) => {
-        switch(status) {
+        switch (status) {
             case 'Pendente': return 'bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-800';
             case 'Em Preparo': return 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-900/20 dark:text-blue-300 dark:border-blue-800';
             case 'Em Rota': return 'bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-800';
@@ -210,17 +232,17 @@ const Delivery: React.FC<DeliveryProps> = ({ deliveries, setDeliveries, user }) 
                         {isMotoboy ? `Olá, ${user?.name}. Aqui estão suas entregas.` : 'Gerencie a rota do motoboy e repasses.'}
                     </p>
                 </div>
-                
+
                 <div className="flex flex-wrap gap-2 w-full md:w-auto">
                     {/* View Toggles */}
                     <div className="bg-gray-100 dark:bg-gray-700 p-1 rounded-lg flex">
-                        <button 
+                        <button
                             onClick={() => setViewMode('active')}
                             className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all flex items-center gap-2 ${viewMode === 'active' ? 'bg-white dark:bg-gray-600 shadow text-pink-600 dark:text-pink-400' : 'text-gray-500 dark:text-gray-400'}`}
                         >
                             <Truck size={14} /> Em Andamento
                         </button>
-                        <button 
+                        <button
                             onClick={() => setViewMode('archived')}
                             className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all flex items-center gap-2 ${viewMode === 'archived' ? 'bg-white dark:bg-gray-600 shadow text-indigo-600 dark:text-indigo-400' : 'text-gray-500 dark:text-gray-400'}`}
                         >
@@ -229,7 +251,7 @@ const Delivery: React.FC<DeliveryProps> = ({ deliveries, setDeliveries, user }) 
                     </div>
 
                     {!isSalesperson && !isMotoboy && (
-                        <button 
+                        <button
                             onClick={() => setIsPayoutModalOpen(true)}
                             className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-md transition-all flex items-center justify-center gap-2"
                         >
@@ -238,16 +260,16 @@ const Delivery: React.FC<DeliveryProps> = ({ deliveries, setDeliveries, user }) 
                     )}
 
                     {selectedRouteIds.length > 0 && (
-                        <button 
+                        <button
                             onClick={() => setIsRouteModalOpen(true)}
                             className="flex-1 md:flex-none bg-gray-900 hover:bg-black text-white px-4 py-2 rounded-lg text-sm font-bold shadow-md transition-all animate-in zoom-in-95 flex items-center justify-center gap-2"
                         >
                             <Map size={18} /> Rota ({selectedRouteIds.length})
                         </button>
                     )}
-                    
+
                     {!isMotoboy && (
-                        <button 
+                        <button
                             onClick={() => setIsCreateModalOpen(true)}
                             className={`bg-pink-600 hover:bg-pink-700 text-white px-4 py-2 rounded-lg flex items-center justify-center gap-2 font-medium shadow-sm shadow-pink-200 dark:shadow-none transition-all hover:scale-105 ${selectedRouteIds.length > 0 ? 'hidden md:flex' : 'flex-1 md:flex-none'}`}
                         >
@@ -261,9 +283,9 @@ const Delivery: React.FC<DeliveryProps> = ({ deliveries, setDeliveries, user }) 
             <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 flex flex-col md:flex-row gap-4 justify-between items-center">
                 <div className="relative w-full md:w-96">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-                    <input 
-                        type="text" 
-                        placeholder="Buscar por cliente ou ID..." 
+                    <input
+                        type="text"
+                        placeholder="Buscar por cliente ou ID..."
                         className="w-full pl-10 pr-4 py-2 border border-gray-200 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-pink-200 focus:border-pink-500 outline-none bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white"
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
@@ -275,8 +297,8 @@ const Delivery: React.FC<DeliveryProps> = ({ deliveries, setDeliveries, user }) 
                     {viewMode === 'archived' && (
                         <div className="flex items-center gap-2 bg-indigo-50 dark:bg-indigo-900/20 p-1.5 rounded-lg border border-indigo-100 dark:border-indigo-800">
                             <Calendar size={16} className="text-indigo-600 dark:text-indigo-400 ml-1" />
-                            <input 
-                                type="date" 
+                            <input
+                                type="date"
                                 className="bg-transparent text-sm text-indigo-700 dark:text-indigo-300 outline-none"
                                 value={historyDate}
                                 onChange={(e) => setHistoryDate(e.target.value)}
@@ -286,19 +308,19 @@ const Delivery: React.FC<DeliveryProps> = ({ deliveries, setDeliveries, user }) 
 
                     {/* Method Tabs */}
                     <div className="flex bg-gray-100 dark:bg-gray-700 p-1 rounded-lg overflow-x-auto">
-                        <button 
+                        <button
                             onClick={() => setFilterMethod('All')}
                             className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${filterMethod === 'All' ? 'bg-white dark:bg-gray-600 shadow text-gray-900 dark:text-white' : 'text-gray-500 dark:text-gray-400'}`}
                         >
                             Todas
                         </button>
-                        <button 
+                        <button
                             onClick={() => setFilterMethod('Local')}
                             className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all flex items-center gap-1 ${filterMethod === 'Local' ? 'bg-white dark:bg-gray-600 shadow text-emerald-600 dark:text-emerald-400' : 'text-gray-500 dark:text-gray-400'}`}
                         >
                             <Home size={14} /> Entrega Cliente
                         </button>
-                        <button 
+                        <button
                             onClick={() => setFilterMethod('Dispatch')}
                             className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all flex items-center gap-1 ${filterMethod === 'Dispatch' ? 'bg-white dark:bg-gray-600 shadow text-purple-600 dark:text-purple-400' : 'text-gray-500 dark:text-gray-400'}`}
                         >
@@ -315,8 +337,8 @@ const Delivery: React.FC<DeliveryProps> = ({ deliveries, setDeliveries, user }) 
                     const isSelected = selectedRouteIds.includes(delivery.id);
 
                     return (
-                        <div 
-                            key={delivery.id} 
+                        <div
+                            key={delivery.id}
                             className={`
                                 bg-white dark:bg-gray-800 rounded-xl border shadow-sm overflow-hidden flex flex-col group transition-all cursor-pointer relative
                                 ${isSelected ? 'border-pink-500 ring-1 ring-pink-500' : 'border-gray-200 dark:border-gray-700 hover:border-pink-300'}
@@ -329,8 +351,8 @@ const Delivery: React.FC<DeliveryProps> = ({ deliveries, setDeliveries, user }) 
                         >
                             {/* Route Selection Checkbox */}
                             {isSelectable && viewMode === 'active' && (
-                                <div 
-                                    className="absolute top-4 left-4 z-10" 
+                                <div
+                                    className="absolute top-4 left-4 z-10"
                                     onClick={(e) => {
                                         e.stopPropagation();
                                         toggleRouteSelection(delivery.id);
@@ -386,17 +408,17 @@ const Delivery: React.FC<DeliveryProps> = ({ deliveries, setDeliveries, user }) 
                             {/* Card Footer Actions */}
                             <div className="p-3 bg-gray-50 dark:bg-gray-900/50 border-t border-gray-100 dark:border-gray-700 flex justify-between items-center" onClick={(e) => e.stopPropagation()}>
                                 {/* WhatsApp Button (Direct Action) */}
-                                <button 
+                                <button
                                     onClick={() => openWhatsApp(delivery.phone, delivery.customerName)}
                                     className="flex items-center gap-1.5 bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition-colors shadow-sm"
                                     title="Conversar no WhatsApp"
                                 >
                                     <MessageCircle size={14} /> WhatsApp
                                 </button>
-                                
+
                                 <div className="flex gap-2">
                                     {delivery.status === 'Pendente' && viewMode === 'active' && (
-                                        <button 
+                                        <button
                                             onClick={() => updateStatus(delivery.id, 'Em Rota')}
                                             className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1 shadow-sm transition-colors"
                                         >
@@ -447,7 +469,7 @@ const Delivery: React.FC<DeliveryProps> = ({ deliveries, setDeliveries, user }) 
                         <div className="p-6">
                             <p className="text-sm text-gray-500 mb-4">Resumo de taxas de entrega concluídas.</p>
                             <div className="space-y-4">
-                                {Object.entries(getPayoutData()).map(([motoboy, data]) => (
+                                {Object.entries(payoutData).map(([motoboy, data]: [string, { count: number, totalFee: number }]) => (
                                     <div key={motoboy} className="flex justify-between items-center p-4 bg-gray-50 dark:bg-gray-700/50 rounded-xl border border-gray-200 dark:border-gray-600">
                                         <div>
                                             <p className="font-bold text-gray-800 dark:text-white">{motoboy}</p>
@@ -459,7 +481,7 @@ const Delivery: React.FC<DeliveryProps> = ({ deliveries, setDeliveries, user }) 
                                         </div>
                                     </div>
                                 ))}
-                                {Object.keys(getPayoutData()).length === 0 && (
+                                {Object.keys(payoutData).length === 0 && (
                                     <p className="text-center text-gray-400 italic">Nenhuma entrega concluída para repasse.</p>
                                 )}
                             </div>
@@ -505,8 +527,8 @@ const Delivery: React.FC<DeliveryProps> = ({ deliveries, setDeliveries, user }) 
                                                     className={`
                                                         px-3 py-2 rounded-xl text-xs font-bold border-2 transition-all flex-1 whitespace-nowrap
                                                         ${option.color}
-                                                        ${editForm.status === option.value 
-                                                            ? 'ring-2 ring-offset-1 ring-gray-400 dark:ring-gray-500 scale-105 shadow-md opacity-100' 
+                                                        ${editForm.status === option.value
+                                                            ? 'ring-2 ring-offset-1 ring-gray-400 dark:ring-gray-500 scale-105 shadow-md opacity-100'
                                                             : 'opacity-60 hover:opacity-100 hover:scale-105 border-transparent'}
                                                     `}
                                                 >
@@ -517,14 +539,14 @@ const Delivery: React.FC<DeliveryProps> = ({ deliveries, setDeliveries, user }) 
                                     </div>
                                     <div>
                                         <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Observações do Motoboy</label>
-                                        <textarea 
+                                        <textarea
                                             className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white h-24"
                                             value={editForm.notes}
-                                            onChange={(e) => setEditForm({...editForm, notes: e.target.value})}
+                                            onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })}
                                             placeholder="Ex: Campainha quebrada, deixei com vizinho..."
                                         />
                                     </div>
-                                    <button 
+                                    <button
                                         onClick={handleSaveEdit}
                                         className="w-full py-3 bg-pink-600 text-white font-bold rounded-lg hover:bg-pink-700 transition-colors"
                                     >
@@ -550,13 +572,13 @@ const Delivery: React.FC<DeliveryProps> = ({ deliveries, setDeliveries, user }) 
                                     </div>
 
                                     <div className="flex gap-2 mt-4">
-                                        <button 
+                                        <button
                                             onClick={() => openWhatsApp(selectedDelivery.phone, selectedDelivery.customerName)}
                                             className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white py-2 rounded-lg font-bold text-sm flex items-center justify-center gap-2"
                                         >
                                             <MessageCircle size={16} /> Chamar no WhatsApp
                                         </button>
-                                        <button 
+                                        <button
                                             onClick={() => setIsEditing(true)}
                                             className="flex-1 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-800 dark:text-white py-2 rounded-lg font-bold text-sm flex items-center justify-center gap-2"
                                         >
@@ -572,6 +594,128 @@ const Delivery: React.FC<DeliveryProps> = ({ deliveries, setDeliveries, user }) 
                                     )}
                                 </>
                             )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* --- ROUTE MODAL (PRINT) --- */}
+            {isRouteModalOpen && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+                    <div className="absolute inset-0 bg-gray-900/60 backdrop-blur-sm" onClick={() => setIsRouteModalOpen(false)}></div>
+                    <div className="bg-white dark:bg-gray-800 w-full max-w-3xl rounded-xl shadow-2xl relative flex flex-col h-[90vh] animate-in fade-in zoom-in-95 duration-200">
+                        <div className="p-5 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center bg-gray-900 text-white">
+                            <h3 className="font-bold text-lg flex items-center gap-2">
+                                <Map size={20} /> Rota de Entrega ({selectedRouteIds.length})
+                            </h3>
+                            <button onClick={() => setIsRouteModalOpen(false)} className="text-gray-400 hover:text-white">
+                                <X size={20} />
+                            </button>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto p-6" id="printable-route">
+                            <div className="mb-6 flex justify-between items-start border-b pb-4">
+                                <div>
+                                    <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Manifesto de Entrega</h1>
+                                    <p className="text-sm text-gray-500">Data: {new Date().toLocaleDateString()}</p>
+                                </div>
+                                <div className="text-right">
+                                    <p className="font-bold">Total de Paradas: {selectedRouteIds.length}</p>
+                                </div>
+                            </div>
+
+                            <table className="w-full text-left border-collapse">
+                                <thead>
+                                    <tr className="border-b-2 border-gray-300 dark:border-gray-600">
+                                        <th className="py-2 font-bold text-gray-700 dark:text-gray-200">Seq</th>
+                                        <th className="py-2 font-bold text-gray-700 dark:text-gray-200">Cliente / Contato</th>
+                                        <th className="py-2 font-bold text-gray-700 dark:text-gray-200 w-1/3">Endereço</th>
+                                        <th className="py-2 font-bold text-gray-700 dark:text-gray-200 text-right">Valor</th>
+                                        <th className="py-2 font-bold text-gray-700 dark:text-gray-200 w-1/6 text-center">Assinatura</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                                    {deliveries
+                                        .filter(d => selectedRouteIds.includes(d.id))
+                                        .map((d, index) => (
+                                            <tr key={d.id} className="break-inside-avoid">
+                                                <td className="py-4 align-top font-bold text-gray-500">{index + 1}</td>
+                                                <td className="py-4 align-top">
+                                                    <p className="font-bold text-gray-900 dark:text-white">{d.customerName}</p>
+                                                    <p className="text-sm text-gray-500">{d.phone}</p>
+                                                    <p className="text-xs text-gray-400 mt-1">ID: {d.id}</p>
+                                                </td>
+                                                <td className="py-4 align-top">
+                                                    <p className="text-sm text-gray-800 dark:text-gray-200">{d.address}</p>
+                                                    <p className="text-xs text-gray-500">{d.city}</p>
+                                                    {d.notes && (
+                                                        <p className="mt-1 text-xs bg-yellow-100 text-yellow-800 p-1 rounded inline-block">Obs: {d.notes}</p>
+                                                    )}
+                                                </td>
+                                                <td className="py-4 align-top text-right font-bold text-gray-900 dark:text-white">
+                                                    R$ {d.totalValue.toFixed(2)}
+                                                </td>
+                                                <td className="py-4 align-top border-b border-gray-100">
+                                                    <div className="h-8 border-b border-gray-300 dark:border-gray-600"></div>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                </tbody>
+                            </table>
+
+                            <div className="mt-8 pt-4 border-t border-gray-300 flex justify-between text-sm text-gray-500">
+                                <p>Entregador: __________________________________</p>
+                                <p>Saída: ____:____</p>
+                                <p>Retorno: ____:____</p>
+                            </div>
+                        </div>
+
+                        <div className="p-4 border-t border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/30 flex justify-end gap-3">
+                            <button
+                                onClick={() => {
+                                    const printContent = document.getElementById('printable-route');
+                                    const windowUrl = 'about:blank';
+                                    const uniqueName = new Date().getTime();
+                                    const windowName = 'Print' + uniqueName;
+                                    const printWindow = window.open(windowUrl, windowName, 'left=50000,top=50000,width=0,height=0');
+
+                                    if (printWindow && printContent) {
+                                        printWindow.document.write(`
+                                            <html>
+                                                <head>
+                                                    <title>Rota de Entrega</title>
+                                                    <style>
+                                                        body { font-family: sans-serif; padding: 20px; }
+                                                        table { width: 100%; border-collapse: collapse; }
+                                                        th, td { padding: 8px; text-align: left; }
+                                                        tr { break-inside: avoid; }
+                                                        .text-right { text-align: right; }
+                                                        .text-center { text-align: center; }
+                                                        .border-b { border-bottom: 1px solid #ccc; }
+                                                        .font-bold { font-weight: bold; }
+                                                        .text-sm { font-size: 14px; }
+                                                        .text-xs { font-size: 12px; }
+                                                        .mt-1 { margin-top: 4px; }
+                                                    </style>
+                                                </head>
+                                                <body>
+                                                    ${printContent.innerHTML}
+                                                </body>
+                                            </html>
+                                        `);
+                                        printWindow.document.close();
+                                        printWindow.focus();
+                                        printWindow.print();
+                                        printWindow.close();
+                                    } else {
+                                        // Fallback simpler print
+                                        window.print();
+                                    }
+                                }}
+                                className="bg-gray-900 hover:bg-black text-white px-6 py-2 rounded-lg font-bold flex items-center gap-2 shadow-lg"
+                            >
+                                <Printer size={18} /> Imprimir Rota
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -596,7 +740,7 @@ const Delivery: React.FC<DeliveryProps> = ({ deliveries, setDeliveries, user }) 
                                 <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-2 flex items-center gap-1">
                                     <Users size={12} /> Selecionar Cliente
                                 </label>
-                                <select 
+                                <select
                                     className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                                     onChange={(e) => handleSelectCustomer(e.target.value)}
                                     defaultValue=""
@@ -611,43 +755,43 @@ const Delivery: React.FC<DeliveryProps> = ({ deliveries, setDeliveries, user }) 
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Nome Cliente</label>
-                                    <input 
-                                        required type="text" 
+                                    <input
+                                        required type="text"
                                         className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                                         value={newDeliveryForm.customerName}
-                                        onChange={e => setNewDeliveryForm({...newDeliveryForm, customerName: e.target.value})}
+                                        onChange={e => setNewDeliveryForm({ ...newDeliveryForm, customerName: e.target.value })}
                                     />
                                 </div>
                                 <div>
                                     <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Telefone</label>
-                                    <input 
-                                        type="text" 
+                                    <input
+                                        type="text"
                                         className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                                         value={newDeliveryForm.phone}
-                                        onChange={e => setNewDeliveryForm({...newDeliveryForm, phone: e.target.value})}
+                                        onChange={e => setNewDeliveryForm({ ...newDeliveryForm, phone: e.target.value })}
                                     />
                                 </div>
                             </div>
-                            
+
                             <div>
                                 <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Endereço</label>
-                                <input 
-                                    required type="text" 
+                                <input
+                                    required type="text"
                                     className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                                     value={newDeliveryForm.address}
-                                    onChange={e => setNewDeliveryForm({...newDeliveryForm, address: e.target.value})}
+                                    onChange={e => setNewDeliveryForm({ ...newDeliveryForm, address: e.target.value })}
                                 />
                             </div>
 
                             {/* Motoboy Selection */}
                             <div>
                                 <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1 flex items-center gap-1">
-                                    <Bike size={12} className="text-indigo-500"/> Entregador Responsável
+                                    <Bike size={12} className="text-indigo-500" /> Entregador Responsável
                                 </label>
-                                <select 
+                                <select
                                     className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                                     value={newDeliveryForm.motoboyName}
-                                    onChange={(e) => setNewDeliveryForm({...newDeliveryForm, motoboyName: e.target.value})}
+                                    onChange={(e) => setNewDeliveryForm({ ...newDeliveryForm, motoboyName: e.target.value })}
                                 >
                                     <option value="">Aberto (Qualquer um)</option>
                                     {availableMotoboys.map(boy => (
@@ -659,26 +803,26 @@ const Delivery: React.FC<DeliveryProps> = ({ deliveries, setDeliveries, user }) 
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Valor Pedido (R$)</label>
-                                    <input 
-                                        type="number" 
+                                    <input
+                                        type="number"
                                         className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                                         value={newDeliveryForm.totalValue || ''}
-                                        onChange={e => setNewDeliveryForm({...newDeliveryForm, totalValue: parseFloat(e.target.value)})}
+                                        onChange={e => setNewDeliveryForm({ ...newDeliveryForm, totalValue: parseFloat(e.target.value) })}
                                     />
                                 </div>
                                 <div>
                                     <label className="block text-xs font-bold text-emerald-600 dark:text-emerald-400 mb-1">Taxa Entrega (R$)</label>
-                                    <input 
-                                        type="number" 
+                                    <input
+                                        type="number"
                                         className="w-full px-3 py-2 border border-emerald-200 dark:border-emerald-800 rounded-lg bg-emerald-50 dark:bg-emerald-900/10 text-gray-900 dark:text-white font-bold"
                                         value={newDeliveryForm.fee || ''}
-                                        onChange={e => setNewDeliveryForm({...newDeliveryForm, fee: parseFloat(e.target.value)})}
+                                        onChange={e => setNewDeliveryForm({ ...newDeliveryForm, fee: parseFloat(e.target.value) })}
                                         placeholder="Para repasse"
                                     />
                                 </div>
                             </div>
 
-                            <button 
+                            <button
                                 onClick={handleCreateDelivery}
                                 className="w-full py-3 bg-pink-600 hover:bg-pink-700 text-white font-bold rounded-lg shadow-md mt-4"
                             >

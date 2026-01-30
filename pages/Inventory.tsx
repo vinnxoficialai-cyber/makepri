@@ -5,6 +5,8 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import { MOCK_PRODUCTS } from '../constants';
 import { Product, ProductCategory, User } from '../types';
 import BarcodeScanner from '../components/BarcodeScanner';
+import { useProducts, useTransactions } from '../lib/hooks';
+import { useImageUpload } from '../lib/images';
 
 interface InventoryProps {
     user?: User;
@@ -25,8 +27,40 @@ const Inventory: React.FC<InventoryProps> = ({ user, autoFilterStalled, resetAut
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedCategory, setSelectedCategory] = useState<string>('Todos');
     const [showStalledOnly, setShowStalledOnly] = useState(false);
-    const [products, setProducts] = useState<Product[]>(MOCK_PRODUCTS);
-    
+
+    // Supabase hooks
+    const {
+        products: supabaseProducts,
+        loading: productsLoading,
+        addProduct: addProductToDb,
+        updateProduct: updateProductInDb,
+        deleteProduct: deleteProductFromDb
+    } = useProducts();
+    const { uploadImage, uploading: imageUploading } = useImageUpload();
+    const { transactions } = useTransactions();
+
+    // Calcular data da última venda por produto
+    const productLastSaleMap = React.useMemo(() => {
+        const map = new Map<string, string>(); // productId -> date string ISO
+
+        transactions.forEach(t => {
+            if (t.status === 'Completed' && t.items) {
+                t.items.forEach(item => {
+                    const currentLast = map.get(item.id);
+                    // Se não tem data ou a data da transação é mais recente
+                    if (!currentLast || new Date(t.date) > new Date(currentLast)) {
+                        map.set(item.id, t.date);
+                    }
+                });
+            }
+        });
+        return map;
+    }, [transactions]);
+
+
+    // Usar dados do Supabase ou fallback para MOCK
+    const products = supabaseProducts.length > 0 ? supabaseProducts : MOCK_PRODUCTS;
+
     // Check role
     const isSalesperson = user?.role === 'Vendedor';
 
@@ -35,14 +69,14 @@ const Inventory: React.FC<InventoryProps> = ({ user, autoFilterStalled, resetAut
         if (autoFilterStalled) {
             setShowStalledOnly(true);
             // Reset the trigger so it doesn't get stuck if user navigates away and back
-            if(resetAutoFilter) resetAutoFilter();
+            if (resetAutoFilter) resetAutoFilter();
         }
     }, [autoFilterStalled, resetAutoFilter]);
 
     // Modal States
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isAnalysisModalOpen, setIsAnalysisModalOpen] = useState(false);
-    
+
     // Scanner State for Product Form
     const [isScannerOpen, setIsScannerOpen] = useState(false);
 
@@ -72,12 +106,12 @@ const Inventory: React.FC<InventoryProps> = ({ user, autoFilterStalled, resetAut
     const categories = ['Todos', ...Object.values(ProductCategory)];
 
     // --- HELPER: Calculate Days Since Last Update ---
-    const getDaysSinceUpdate = (dateString?: string) => {
+    const getDaysSinceDate = (dateString?: string) => {
         if (!dateString) return 0;
-        const today = new Date('2024-05-20'); 
-        const updated = new Date(dateString);
-        const diffTime = Math.abs(today.getTime() - updated.getTime());
-        return Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+        const today = new Date(); // Use real today
+        const targetDate = new Date(dateString);
+        const diffTime = Math.abs(today.getTime() - targetDate.getTime());
+        return Math.floor(diffTime / (1000 * 60 * 60 * 24));
     };
 
     // --- CALCULATIONS FOR DASHBOARD ---
@@ -87,7 +121,11 @@ const Inventory: React.FC<InventoryProps> = ({ user, autoFilterStalled, resetAut
     const potentialProfit = totalValueSale - totalValueCost;
 
     // Stalled Inventory Calculations
-    const stalledProducts = products.filter(p => getDaysSinceUpdate(p.updatedAt) > 30);
+    // Stalled Inventory Calculations
+    const stalledProducts = products.filter(p => {
+        const lastMove = productLastSaleMap.get(p.id) || p.updatedAt;
+        return getDaysSinceDate(lastMove) > 30;
+    });
     const stalledCount = stalledProducts.length;
     const stalledValue = stalledProducts.reduce((acc, p) => acc + (p.priceCost * p.stock), 0);
 
@@ -99,10 +137,12 @@ const Inventory: React.FC<InventoryProps> = ({ user, autoFilterStalled, resetAut
     }));
 
     const filteredProducts = products.filter(p => {
-        const matchesSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                              p.sku.toLowerCase().includes(searchTerm.toLowerCase());
+        const matchesSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            p.sku.toLowerCase().includes(searchTerm.toLowerCase());
         const matchesCategory = selectedCategory === 'Todos' || p.category === selectedCategory;
-        const matchesStalled = showStalledOnly ? getDaysSinceUpdate(p.updatedAt) > 30 : true;
+        // Use last sale date or updated date for logic
+        const lastMoveDate = productLastSaleMap.get(p.id) || p.updatedAt;
+        const matchesStalled = showStalledOnly ? getDaysSinceDate(lastMoveDate) > 30 : true;
 
         return matchesSearch && matchesCategory && matchesStalled;
     });
@@ -113,13 +153,13 @@ const Inventory: React.FC<InventoryProps> = ({ user, autoFilterStalled, resetAut
         // Here we simulate based on product ID to be consistent but "random"
         const seed = product.id.charCodeAt(0) + product.stock;
         const simulatedAvgDailySales = (seed % 50) / 10; // Result between 0.0 and 5.0 items/day
-        
+
         // Avoid division by zero
         const salesVelocity = Math.max(0.1, simulatedAvgDailySales);
-        
+
         // Days current stock will last
         const daysRemaining = Math.floor(product.stock / salesVelocity);
-        
+
         // Suggested Min Stock: Coverage for 15 days (Safe Buffer)
         const suggestedMinStock = Math.ceil(salesVelocity * 15);
 
@@ -140,15 +180,18 @@ const Inventory: React.FC<InventoryProps> = ({ user, autoFilterStalled, resetAut
         return products.map(analyzeProduct).sort((a, b) => a.daysRemaining - b.daysRemaining);
     };
 
-    const applySuggestion = (productId: string, newMin: number) => {
-        setProducts(prev => prev.map(p => p.id === productId ? { ...p, minStock: newMin } : p));
+    const applySuggestion = async (productId: string, newMin: number) => {
+        const product = products.find(p => p.id === productId);
+        if (product) {
+            await updateProductInDb(productId, { minStock: newMin });
+        }
     };
 
     // --- CALCULATOR LOGIC ---
     const handleCalculatePrice = () => {
         const cost = newProduct.priceCost || 0;
         const commission = newProduct.commissionRate || 0;
-        
+
         // Total percentages to deduct from Sale Price
         // Formula: Price = Cost / (1 - (TotalRates / 100))
         const totalRates = calcData.margin + calcData.taxCard + calcData.taxPlatform + calcData.taxOther + commission;
@@ -180,46 +223,53 @@ const Inventory: React.FC<InventoryProps> = ({ user, autoFilterStalled, resetAut
         setNewProduct({ ...newProduct, priceSale: parseFloat(calcResult.suggestedPrice.toFixed(2)) });
         setIsCalcModalOpen(false);
     };
-
-
     // --- CRUD HANDLERS ---
-    const handleSaveProduct = (e: React.FormEvent) => {
+    const handleSaveProduct = async (e: React.FormEvent) => {
         e.preventDefault();
-        
         const isEditing = !!newProduct.id;
-        const now = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
 
-        if (isEditing) {
-            setProducts(products.map(p => p.id === newProduct.id ? { ...p, ...newProduct, updatedAt: now } as Product : p));
-        } else {
-             const productToAdd = {
-                ...newProduct,
-                id: Math.random().toString(36).substr(2, 9),
-                sku: newProduct.sku || `SKU-${Math.floor(Math.random() * 1000)}`,
-                name: newProduct.name || 'Novo Produto',
-                priceCost: Number(newProduct.priceCost) || 0,
-                priceSale: Number(newProduct.priceSale) || 0,
-                stock: Number(newProduct.stock) || 0,
-                minStock: Number(newProduct.minStock) || 0,
-                commissionRate: Number(newProduct.commissionRate) || 0,
-                createdAt: now,
-                updatedAt: now
-            } as Product;
-            setProducts([...products, productToAdd]);
+        try {
+            if (isEditing) {
+                await updateProductInDb(newProduct.id!, newProduct as Partial<Product>);
+                alert('✅ Produto atualizado!');
+            } else {
+                const productToAdd = {
+                    sku: newProduct.sku || `SKU-${Math.floor(Math.random() * 10000)}`,
+                    name: newProduct.name || 'Novo Produto',
+                    category: newProduct.category || ProductCategory.CLOTHING,
+                    priceCost: Number(newProduct.priceCost) || 0,
+                    priceSale: Number(newProduct.priceSale) || 0,
+                    stock: Number(newProduct.stock) || 0,
+                    minStock: Number(newProduct.minStock) || 0,
+                    unit: newProduct.unit || 'un',
+                    commissionRate: Number(newProduct.commissionRate) || 0,
+                    imageUrl: newProduct.imageUrl || '',
+                    supplier: newProduct.supplier,
+                    collection: newProduct.collection
+                };
+                await addProductToDb(productToAdd as Omit<Product, 'id' | 'createdAt' | 'updatedAt'>);
+                alert('✅ Produto criado!');
+            }
+            setIsModalOpen(false);
+            setNewProduct({ category: ProductCategory.CLOTHING, unit: 'un', stock: 0, minStock: 10, commissionRate: 0, imageUrl: '' });
+        } catch (error: any) {
+            alert('❌ Erro: ' + error.message);
         }
-       
-        setIsModalOpen(false);
-        setNewProduct({ category: ProductCategory.CLOTHING, unit: 'un', stock: 0, minStock: 10, commissionRate: 0, imageUrl: '' });
     };
-
-    const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
-        if (file) {
-            const reader = new FileReader();
-            reader.onloadend = () => {
-                setNewProduct({ ...newProduct, imageUrl: reader.result as string });
-            };
-            reader.readAsDataURL(file);
+        if (!file) return;
+
+        try {
+            // Fazer upload para Supabase Storage
+            const imageUrl = await uploadImage(file, 'products');
+
+            if (imageUrl) {
+                setNewProduct({ ...newProduct, imageUrl });
+            }
+        } catch (error: any) {
+            console.error('Erro ao fazer upload:', error);
+            alert('❌ Erro ao fazer upload: ' + error.message);
         }
     };
 
@@ -228,9 +278,14 @@ const Inventory: React.FC<InventoryProps> = ({ user, autoFilterStalled, resetAut
         setIsModalOpen(true);
     };
 
-    const handleDeleteProduct = (productId: string, productName: string) => {
+    const handleDeleteProduct = async (productId: string, productName: string) => {
         if (window.confirm(`Tem certeza que deseja excluir o produto "${productName}" do estoque?`)) {
-            setProducts(prev => prev.filter(p => p.id !== productId));
+            try {
+                await deleteProductFromDb(productId);
+            } catch (error: any) {
+                console.error('Erro ao deletar produto:', error);
+                alert('❌ Erro ao deletar produto: ' + error.message);
+            }
         }
     };
 
@@ -265,13 +320,13 @@ const Inventory: React.FC<InventoryProps> = ({ user, autoFilterStalled, resetAut
                     <p className="text-gray-500 dark:text-gray-400">Gerencie produtos, fornecedores e valores.</p>
                 </div>
                 <div className="flex gap-3">
-                     <button 
+                    <button
                         onClick={() => setIsAnalysisModalOpen(true)}
                         className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 font-medium transition-colors shadow-sm shadow-indigo-200 dark:shadow-none"
                     >
                         <Sparkles size={18} /> Inteligência
                     </button>
-                    <button 
+                    <button
                         onClick={() => {
                             setNewProduct({ category: ProductCategory.CLOTHING, unit: 'un', stock: 0, minStock: 10, commissionRate: 0, imageUrl: '' });
                             setIsModalOpen(true);
@@ -285,41 +340,41 @@ const Inventory: React.FC<InventoryProps> = ({ user, autoFilterStalled, resetAut
 
             {/* Inventory Dashboard (KPIs + Chart) */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                
+
                 {/* FINANCIAL SUMMARY - HIDDEN FOR SALESPERSON */}
                 {!isSalesperson && (
                     <div className="space-y-4">
                         <div className="bg-white dark:bg-gray-800 p-5 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm transition-colors">
-                             <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">Valor Total em Estoque (Venda)</p>
-                             <h3 className="text-2xl font-bold text-gray-800 dark:text-white">R$ {totalValueSale.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</h3>
-                             <div className="mt-2 text-xs text-gray-400 dark:text-gray-500 flex justify-between">
-                                <span>Custo: R$ {totalValueCost.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</span>
-                                <span className="text-emerald-600 dark:text-emerald-400 font-bold">Lucro Est: R$ {potentialProfit.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</span>
-                             </div>
+                            <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">Valor Total em Estoque (Venda)</p>
+                            <h3 className="text-2xl font-bold text-gray-800 dark:text-white">R$ {totalValueSale.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</h3>
+                            <div className="mt-2 text-xs text-gray-400 dark:text-gray-500 flex justify-between">
+                                <span>Custo: R$ {totalValueCost.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                                <span className="text-emerald-600 dark:text-emerald-400 font-bold">Lucro Est: R$ {potentialProfit.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                            </div>
                         </div>
 
                         <div className="grid grid-cols-2 gap-4">
                             <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm flex flex-col justify-between transition-colors">
-                                 <div>
+                                <div>
                                     <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Total de Itens</p>
                                     <h3 className="text-xl font-bold text-gray-800 dark:text-white">{totalItems}</h3>
-                                 </div>
-                                 <div className="mt-2 p-2 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-lg w-fit">
+                                </div>
+                                <div className="mt-2 p-2 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-lg w-fit">
                                     <Tag size={16} />
-                                 </div>
+                                </div>
                             </div>
-                            
+
                             <div className="bg-amber-50 dark:bg-amber-900/20 p-4 rounded-xl border border-amber-100 dark:border-amber-800 shadow-sm flex flex-col justify-between relative overflow-hidden transition-colors">
-                                 <div>
+                                <div>
                                     <div className="flex items-center gap-1 text-amber-700 dark:text-amber-500 mb-1">
                                         <AlertTriangle size={12} />
                                         <p className="text-xs font-bold">Sem Giro (&gt;30d)</p>
                                     </div>
                                     <h3 className="text-xl font-bold text-amber-900 dark:text-amber-300">{stalledCount} <span className="text-xs font-normal">itens</span></h3>
-                                 </div>
-                                 <p className="mt-1 text-xs text-amber-700 dark:text-amber-500 font-medium">
+                                </div>
+                                <p className="mt-1 text-xs text-amber-700 dark:text-amber-500 font-medium">
                                     R$ {stalledValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })} parados
-                                 </p>
+                                </p>
                             </div>
                         </div>
                     </div>
@@ -334,9 +389,9 @@ const Inventory: React.FC<InventoryProps> = ({ user, autoFilterStalled, resetAut
                             <BarChart data={chartData} layout="vertical" margin={{ top: 0, right: 30, left: 20, bottom: 0 }}>
                                 <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f3f4f6" />
                                 <XAxis type="number" hide />
-                                <YAxis dataKey="name" type="category" tick={{fontSize: 12, fill: '#6b7280'}} width={80} />
-                                <Tooltip 
-                                    cursor={{fill: 'transparent'}}
+                                <YAxis dataKey="name" type="category" tick={{ fontSize: 12, fill: '#6b7280' }} width={80} />
+                                <Tooltip
+                                    cursor={{ fill: 'transparent' }}
                                     contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)', backgroundColor: '#fff' }}
                                 />
                                 <Bar dataKey="stock" fill="#ffc8cb" radius={[0, 4, 4, 0]} barSize={20} />
@@ -352,23 +407,22 @@ const Inventory: React.FC<InventoryProps> = ({ user, autoFilterStalled, resetAut
                 <div className="p-4 border-b border-gray-100 dark:border-gray-700 flex flex-col lg:flex-row gap-4 justify-between items-center bg-gray-50/30 dark:bg-gray-700/30 lg:bg-gray-50/30 rounded-xl lg:rounded-none mb-4 lg:mb-0">
                     <div className="relative w-full lg:w-96">
                         <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
-                        <input 
-                            type="text" 
-                            placeholder="Buscar por código, nome..." 
+                        <input
+                            type="text"
+                            placeholder="Buscar por código, nome..."
                             className="w-full pl-10 pr-4 py-2 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#ffc8cb]/50 focus:border-[#ffc8cb] text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
                         />
                     </div>
-                    
+
                     <div className="flex gap-2 w-full lg:w-auto overflow-x-auto pb-1 scrollbar-hide items-center">
                         <button
                             onClick={() => setShowStalledOnly(!showStalledOnly)}
-                            className={`px-3 py-1.5 rounded-lg text-sm font-bold flex items-center gap-2 transition-colors border ${
-                                showStalledOnly 
-                                ? 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800' 
+                            className={`px-3 py-1.5 rounded-lg text-sm font-bold flex items-center gap-2 transition-colors border ${showStalledOnly
+                                ? 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800'
                                 : 'bg-white dark:bg-gray-700 text-gray-500 dark:text-gray-300 border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600'
-                            }`}
+                                }`}
                         >
                             <AlertTriangle size={14} /> Itens Parados
                         </button>
@@ -377,11 +431,10 @@ const Inventory: React.FC<InventoryProps> = ({ user, autoFilterStalled, resetAut
                             <button
                                 key={cat}
                                 onClick={() => setSelectedCategory(cat)}
-                                className={`px-4 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-colors border ${
-                                    selectedCategory === cat 
-                                    ? 'bg-[#ffc8cb]/20 border-[#ffc8cb] text-pink-700 dark:text-pink-400' 
+                                className={`px-4 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-colors border ${selectedCategory === cat
+                                    ? 'bg-[#ffc8cb]/20 border-[#ffc8cb] text-pink-700 dark:text-pink-400'
                                     : 'bg-white dark:bg-gray-700 border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-600'
-                                }`}
+                                    }`}
                             >
                                 {cat}
                             </button>
@@ -394,17 +447,19 @@ const Inventory: React.FC<InventoryProps> = ({ user, autoFilterStalled, resetAut
                 <div className="lg:hidden space-y-3 pb-24 px-1">
                     {filteredProducts.map((product) => {
                         const isLowStock = product.stock <= product.minStock;
-                        const daysSinceUpdate = getDaysSinceUpdate(product.updatedAt);
-                        const isStalled = daysSinceUpdate > 30;
+                        const lastSaleDate = productLastSaleMap.get(product.id);
+                        // Se teve venda, usa data da venda. Se não, usa data de criação/update.
+                        const referenceDate = lastSaleDate || product.updatedAt;
+                        const daysSinceMove = getDaysSinceDate(referenceDate);
+                        const isStalled = daysSinceMove > 30;
 
                         return (
-                            <div 
-                                key={product.id} 
-                                className={`bg-white dark:bg-gray-800 p-4 rounded-2xl shadow-sm border flex items-center gap-4 relative overflow-hidden transition-all active:scale-[0.99] ${
-                                    isStalled && showStalledOnly 
-                                    ? 'border-amber-200 dark:border-amber-800 bg-amber-50/10' 
+                            <div
+                                key={product.id}
+                                className={`bg-white dark:bg-gray-800 p-4 rounded-2xl shadow-sm border flex items-center gap-4 relative overflow-hidden transition-all active:scale-[0.99] ${isStalled && showStalledOnly
+                                    ? 'border-amber-200 dark:border-amber-800 bg-amber-50/10'
                                     : 'border-gray-100 dark:border-gray-700'
-                                }`}
+                                    }`}
                             >
                                 {/* Left: Image */}
                                 <div className="w-16 h-16 rounded-xl bg-gray-100 dark:bg-gray-700 overflow-hidden flex-shrink-0 relative border border-gray-100 dark:border-gray-600">
@@ -428,7 +483,7 @@ const Inventory: React.FC<InventoryProps> = ({ user, autoFilterStalled, resetAut
                                             R$ {product.priceSale.toFixed(2)}
                                         </span>
                                     </div>
-                                    
+
                                     <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 mb-1">
                                         <div className="flex items-center gap-1 bg-gray-50 dark:bg-gray-700 px-1.5 py-0.5 rounded text-[10px] font-mono border border-gray-100 dark:border-gray-600">
                                             <Barcode size={10} /> {product.sku}
@@ -481,10 +536,13 @@ const Inventory: React.FC<InventoryProps> = ({ user, autoFilterStalled, resetAut
                             {filteredProducts.map((product) => {
                                 const isLowStock = product.stock <= product.minStock;
                                 const margin = calculateMargin(product.priceCost, product.priceSale);
-                                const daysSinceUpdate = getDaysSinceUpdate(product.updatedAt);
-                                const isStalled = daysSinceUpdate > 30;
+                                // Lógica Real de Giro
+                                const lastSaleDate = productLastSaleMap.get(product.id);
+                                const referenceDate = lastSaleDate || product.updatedAt;
+                                const daysSinceMove = getDaysSinceDate(referenceDate);
+                                const isStalled = daysSinceMove > 30;
                                 const commissionVal = product.priceSale * ((product.commissionRate || 0) / 100);
-                                
+
                                 return (
                                     <tr key={product.id} className={`hover:bg-gray-50/50 dark:hover:bg-gray-700/30 transition-colors group ${isStalled && showStalledOnly ? 'bg-amber-50/30 dark:bg-amber-900/10' : ''}`}>
                                         <td className="p-4 font-mono text-gray-500 dark:text-gray-400 text-xs">{product.sku}</td>
@@ -508,11 +566,12 @@ const Inventory: React.FC<InventoryProps> = ({ user, autoFilterStalled, resetAut
                                         </td>
                                         <td className="p-4">
                                             <div className={`text-xs font-medium flex items-center gap-1 mb-1 ${isStalled ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
-                                                <Clock size={12} /> {daysSinceUpdate} dias s/ mov.
+                                                <Clock size={12} />
+                                                {lastSaleDate ? `${daysSinceMove}d do último giro` : `${daysSinceMove}d cadastrado`}
                                             </div>
                                             <div className="text-[10px] text-gray-400 dark:text-gray-500 flex flex-col">
                                                 <span className="flex items-center gap-1"><Truck size={10} /> {product.supplier || 'N/A'}</span>
-                                                <span>Alt: {product.updatedAt ? new Date(product.updatedAt).toLocaleDateString('pt-BR') : '-'}</span>
+                                                {lastSaleDate && <span>Venda: {new Date(lastSaleDate).toLocaleDateString('pt-BR')}</span>}
                                             </div>
                                         </td>
                                         <td className="p-4">
@@ -550,14 +609,14 @@ const Inventory: React.FC<InventoryProps> = ({ user, autoFilterStalled, resetAut
                                         </td>
                                         <td className="p-4 text-right">
                                             <div className="flex items-center justify-end gap-2">
-                                                <button 
+                                                <button
                                                     onClick={() => handleEditClick(product)}
                                                     className="text-gray-400 hover:text-pink-600 dark:hover:text-pink-400 p-1 rounded-md hover:bg-pink-50 dark:hover:bg-pink-900/20 transition-colors"
                                                     title="Editar"
                                                 >
                                                     <MoreVertical size={18} />
                                                 </button>
-                                                <button 
+                                                <button
                                                     onClick={() => handleDeleteProduct(product.id, product.name)}
                                                     className="text-gray-400 hover:text-red-600 dark:hover:text-red-400 p-1 rounded-md hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
                                                     title="Excluir"
@@ -593,7 +652,7 @@ const Inventory: React.FC<InventoryProps> = ({ user, autoFilterStalled, resetAut
                                 <X size={24} />
                             </button>
                         </div>
-                        
+
                         <div className="flex-1 overflow-y-auto p-6">
                             <div className="mb-6 bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg border border-blue-100 dark:border-blue-800">
                                 <h4 className="font-bold text-blue-800 dark:text-blue-300 mb-1 flex items-center gap-2">
@@ -635,11 +694,10 @@ const Inventory: React.FC<InventoryProps> = ({ user, autoFilterStalled, resetAut
                                                     {product.stock}
                                                 </td>
                                                 <td className="p-4 text-center">
-                                                    <div className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold ${
-                                                        status === 'critical' 
-                                                        ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' 
+                                                    <div className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold ${status === 'critical'
+                                                        ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
                                                         : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
-                                                    }`}>
+                                                        }`}>
                                                         <Timer size={12} /> {daysRemaining} dias
                                                     </div>
                                                 </td>
@@ -651,7 +709,7 @@ const Inventory: React.FC<InventoryProps> = ({ user, autoFilterStalled, resetAut
                                                 </td>
                                                 <td className="p-4 text-right">
                                                     {product.minStock !== suggestedMinStock && (
-                                                        <button 
+                                                        <button
                                                             onClick={() => applySuggestion(product.id, suggestedMinStock)}
                                                             className="text-xs bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded transition-colors flex items-center gap-1 ml-auto shadow-sm"
                                                             title="Atualizar estoque mínimo do produto"
@@ -665,7 +723,7 @@ const Inventory: React.FC<InventoryProps> = ({ user, autoFilterStalled, resetAut
                                     })}
                                 </tbody>
                             </table>
-                            
+
                             {getAnalysisData().filter(a => a.status !== 'healthy' || Math.abs(a.product.minStock - a.suggestedMinStock) >= 2).length === 0 && (
                                 <div className="text-center py-10 text-gray-500 dark:text-gray-400">
                                     <CheckCircle2 size={48} className="mx-auto mb-2 text-emerald-500 opacity-50" />
@@ -688,9 +746,9 @@ const Inventory: React.FC<InventoryProps> = ({ user, autoFilterStalled, resetAut
                                 <X size={20} />
                             </button>
                         </div>
-                        
+
                         <form onSubmit={handleSaveProduct} className="flex-1 overflow-y-auto p-6 space-y-6">
-                            
+
                             {/* Image Upload */}
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Imagem do Produto</label>
@@ -700,7 +758,7 @@ const Inventory: React.FC<InventoryProps> = ({ user, autoFilterStalled, resetAut
                                             <>
                                                 <img src={newProduct.imageUrl} alt="Preview" className="w-full h-full object-cover" />
                                                 <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                                    <button type="button" onClick={() => setNewProduct({...newProduct, imageUrl: ''})} className="text-white hover:text-red-400 p-1 bg-black/20 rounded-full">
+                                                    <button type="button" onClick={() => setNewProduct({ ...newProduct, imageUrl: '' })} className="text-white hover:text-red-400 p-1 bg-black/20 rounded-full">
                                                         <Trash2 size={20} />
                                                     </button>
                                                 </div>
@@ -711,8 +769,8 @@ const Inventory: React.FC<InventoryProps> = ({ user, autoFilterStalled, resetAut
                                                 <span className="text-[10px] mt-1 font-medium">Add Foto</span>
                                             </div>
                                         )}
-                                        <input 
-                                            type="file" 
+                                        <input
+                                            type="file"
                                             className="absolute inset-0 opacity-0 cursor-pointer"
                                             accept="image/jpeg, image/jpg, image/png"
                                             onChange={handleImageUpload}
@@ -720,13 +778,13 @@ const Inventory: React.FC<InventoryProps> = ({ user, autoFilterStalled, resetAut
                                         />
                                     </div>
                                     <div className="text-xs text-gray-500 dark:text-gray-400 space-y-1">
-                                        <p className="flex items-center gap-1"><CheckCircle2 size={12} className="text-emerald-500"/> Suporta JPEG e PNG</p>
+                                        <p className="flex items-center gap-1"><CheckCircle2 size={12} className="text-emerald-500" /> Suporta JPEG e PNG</p>
                                         <p>Tamanho máximo: 5MB</p>
                                         <div className="flex gap-2 mt-2">
                                             <button type="button" className="flex items-center gap-1 bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded hover:bg-gray-200 dark:hover:bg-gray-600 relative overflow-hidden">
                                                 <Upload size={12} /> Upload
-                                                <input 
-                                                    type="file" 
+                                                <input
+                                                    type="file"
                                                     className="absolute inset-0 opacity-0 cursor-pointer"
                                                     accept="image/jpeg, image/jpg, image/png"
                                                     onChange={handleImageUpload}
@@ -742,14 +800,13 @@ const Inventory: React.FC<InventoryProps> = ({ user, autoFilterStalled, resetAut
                                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Categoria do Produto</label>
                                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                                     {Object.values(ProductCategory).map(cat => (
-                                        <div 
+                                        <div
                                             key={cat}
-                                            onClick={() => setNewProduct({...newProduct, category: cat})}
-                                            className={`cursor-pointer border rounded-lg p-3 text-center text-sm transition-all ${
-                                                newProduct.category === cat 
-                                                ? 'border-[#ffc8cb] bg-[#ffc8cb]/20 text-pink-800 dark:text-pink-300 ring-1 ring-[#ffc8cb]' 
+                                            onClick={() => setNewProduct({ ...newProduct, category: cat })}
+                                            className={`cursor-pointer border rounded-lg p-3 text-center text-sm transition-all ${newProduct.category === cat
+                                                ? 'border-[#ffc8cb] bg-[#ffc8cb]/20 text-pink-800 dark:text-pink-300 ring-1 ring-[#ffc8cb]'
                                                 : 'border-gray-200 dark:border-gray-600 dark:text-gray-300 hover:border-gray-300 dark:hover:border-gray-500'
-                                            }`}
+                                                }`}
                                         >
                                             {cat}
                                         </div>
@@ -761,26 +818,26 @@ const Inventory: React.FC<InventoryProps> = ({ user, autoFilterStalled, resetAut
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div className="md:col-span-2">
                                     <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Nome do Produto</label>
-                                    <input 
+                                    <input
                                         required
-                                        type="text" 
+                                        type="text"
                                         className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-[#ffc8cb]/50 focus:border-[#ffc8cb] outline-none transition-all bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                                         placeholder="Ex: Camiseta Básica Algodão"
                                         value={newProduct.name || ''}
-                                        onChange={e => setNewProduct({...newProduct, name: e.target.value})}
+                                        onChange={e => setNewProduct({ ...newProduct, name: e.target.value })}
                                     />
                                 </div>
                                 <div>
                                     <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Código (SKU)</label>
                                     <div className="flex gap-2">
-                                        <input 
-                                            type="text" 
+                                        <input
+                                            type="text"
                                             className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-[#ffc8cb]/50 focus:border-[#ffc8cb] outline-none transition-all bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                                             placeholder="Automático se vazio"
                                             value={newProduct.sku || ''}
-                                            onChange={e => setNewProduct({...newProduct, sku: e.target.value})}
+                                            onChange={e => setNewProduct({ ...newProduct, sku: e.target.value })}
                                         />
-                                        <button 
+                                        <button
                                             type="button"
                                             onClick={() => setIsScannerOpen(!isScannerOpen)}
                                             className={`p-2 rounded-lg border transition-colors ${isScannerOpen ? 'bg-pink-100 border-pink-300 text-pink-600' : 'bg-gray-100 border-gray-300 text-gray-600 hover:bg-gray-200'}`}
@@ -791,13 +848,13 @@ const Inventory: React.FC<InventoryProps> = ({ user, autoFilterStalled, resetAut
                                     </div>
                                     {isScannerOpen && (
                                         <div className="mt-2 relative">
-                                            <BarcodeScanner 
-                                                onScanSuccess={handleScanSuccess} 
-                                                onScanFailure={(err) => {}}
+                                            <BarcodeScanner
+                                                onScanSuccess={handleScanSuccess}
+                                                onScanFailure={(err) => { }}
                                             />
-                                            <button 
-                                                type="button" 
-                                                onClick={() => setIsScannerOpen(false)} 
+                                            <button
+                                                type="button"
+                                                onClick={() => setIsScannerOpen(false)}
                                                 className="absolute top-2 right-2 bg-white/80 p-1 rounded-full text-red-500 hover:text-red-700 font-bold text-xs"
                                             >
                                                 <X size={16} />
@@ -807,12 +864,12 @@ const Inventory: React.FC<InventoryProps> = ({ user, autoFilterStalled, resetAut
                                 </div>
                                 <div>
                                     <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Marca</label>
-                                    <input 
-                                        type="text" 
+                                    <input
+                                        type="text"
                                         className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-[#ffc8cb]/50 focus:border-[#ffc8cb] outline-none transition-all bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                                         placeholder="Ex: Nike, Natura..."
                                         value={newProduct.brand || ''}
-                                        onChange={e => setNewProduct({...newProduct, brand: e.target.value})}
+                                        onChange={e => setNewProduct({ ...newProduct, brand: e.target.value })}
                                     />
                                 </div>
                             </div>
@@ -823,35 +880,35 @@ const Inventory: React.FC<InventoryProps> = ({ user, autoFilterStalled, resetAut
                                     <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Fornecedor</label>
                                     <div className="relative">
                                         <Truck size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                                        <input 
-                                            type="text" 
+                                        <input
+                                            type="text"
                                             className="w-full pl-8 pr-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-[#ffc8cb]/50 focus:border-[#ffc8cb] outline-none transition-all bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                                             placeholder="Nome do Fornecedor"
                                             value={newProduct.supplier || ''}
-                                            onChange={e => setNewProduct({...newProduct, supplier: e.target.value})}
+                                            onChange={e => setNewProduct({ ...newProduct, supplier: e.target.value })}
                                         />
                                     </div>
                                 </div>
                                 <div>
                                     <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Coleção</label>
-                                    <input 
-                                        type="text" 
+                                    <input
+                                        type="text"
                                         className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-[#ffc8cb]/50 focus:border-[#ffc8cb] outline-none transition-all bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                                         placeholder="Ex: Verão 2024"
                                         value={newProduct.collection || ''}
-                                        onChange={e => setNewProduct({...newProduct, collection: e.target.value})}
+                                        onChange={e => setNewProduct({ ...newProduct, collection: e.target.value })}
                                     />
                                 </div>
                             </div>
 
-                             {/* Description */}
-                             <div>
+                            {/* Description */}
+                            <div>
                                 <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Descrição Detalhada</label>
-                                <textarea 
+                                <textarea
                                     className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-[#ffc8cb]/50 focus:border-[#ffc8cb] outline-none transition-all h-20 resize-none text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                                     placeholder="Detalhes sobre o produto, material, etc."
                                     value={newProduct.description || ''}
-                                    onChange={e => setNewProduct({...newProduct, description: e.target.value})}
+                                    onChange={e => setNewProduct({ ...newProduct, description: e.target.value })}
                                 />
                             </div>
 
@@ -862,32 +919,32 @@ const Inventory: React.FC<InventoryProps> = ({ user, autoFilterStalled, resetAut
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                         <div>
                                             <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Tamanho</label>
-                                            <input 
+                                            <input
                                                 type="text"
                                                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-[#ffc8cb]/50 focus:border-[#ffc8cb] outline-none bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                                                 placeholder="Ex: M, 38, Único"
                                                 value={newProduct.size || ''}
-                                                onChange={e => setNewProduct({...newProduct, size: e.target.value})}
+                                                onChange={e => setNewProduct({ ...newProduct, size: e.target.value })}
                                             />
                                         </div>
                                         <div>
                                             <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Cor</label>
-                                            <input 
-                                                type="text" 
+                                            <input
+                                                type="text"
                                                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-[#ffc8cb]/50 focus:border-[#ffc8cb] outline-none bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                                                 placeholder="Ex: Azul Marinho"
                                                 value={newProduct.color || ''}
-                                                onChange={e => setNewProduct({...newProduct, color: e.target.value})}
+                                                onChange={e => setNewProduct({ ...newProduct, color: e.target.value })}
                                             />
                                         </div>
                                         <div className="md:col-span-2">
                                             <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Segmento / Tipo</label>
-                                            <input 
+                                            <input
                                                 type="text"
                                                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-[#ffc8cb]/50 focus:border-[#ffc8cb] outline-none bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                                                 placeholder="Ex: Maquiagem, Vestido, etc."
                                                 value={newProduct.segment || ''}
-                                                onChange={e => setNewProduct({...newProduct, segment: e.target.value})}
+                                                onChange={e => setNewProduct({ ...newProduct, segment: e.target.value })}
                                             />
                                         </div>
                                     </div>
@@ -902,19 +959,19 @@ const Inventory: React.FC<InventoryProps> = ({ user, autoFilterStalled, resetAut
                                         <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Preço Custo</label>
                                         <div className="relative">
                                             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs">R$</span>
-                                            <input 
-                                                type="number" 
+                                            <input
+                                                type="number"
                                                 className="w-full pl-8 pr-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-[#ffc8cb]/50 focus:border-[#ffc8cb] outline-none transition-all bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                                                 placeholder="0.00"
                                                 value={newProduct.priceCost || ''}
-                                                onChange={e => setNewProduct({...newProduct, priceCost: parseFloat(e.target.value)})}
+                                                onChange={e => setNewProduct({ ...newProduct, priceCost: parseFloat(e.target.value) })}
                                             />
                                         </div>
                                     </div>
                                     <div>
                                         <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1 flex justify-between">
                                             Preço Venda
-                                            <button 
+                                            <button
                                                 type="button"
                                                 onClick={() => setIsCalcModalOpen(true)}
                                                 className="text-[#ffc8cb] hover:text-pink-400 transition-colors"
@@ -925,12 +982,12 @@ const Inventory: React.FC<InventoryProps> = ({ user, autoFilterStalled, resetAut
                                         </label>
                                         <div className="relative">
                                             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs">R$</span>
-                                            <input 
-                                                type="number" 
+                                            <input
+                                                type="number"
                                                 className="w-full pl-8 pr-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-[#ffc8cb]/50 focus:border-[#ffc8cb] outline-none transition-all bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                                                 placeholder="0.00"
                                                 value={newProduct.priceSale || ''}
-                                                onChange={e => setNewProduct({...newProduct, priceSale: parseFloat(e.target.value)})}
+                                                onChange={e => setNewProduct({ ...newProduct, priceSale: parseFloat(e.target.value) })}
                                             />
                                         </div>
                                     </div>
@@ -939,12 +996,12 @@ const Inventory: React.FC<InventoryProps> = ({ user, autoFilterStalled, resetAut
                                             % Comissão <span className="text-gray-400">(Vend)</span>
                                         </label>
                                         <div className="relative">
-                                            <input 
-                                                type="number" 
+                                            <input
+                                                type="number"
                                                 className="w-full pl-3 pr-8 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-[#ffc8cb]/50 focus:border-[#ffc8cb] outline-none transition-all bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                                                 placeholder="0"
                                                 value={newProduct.commissionRate || ''}
-                                                onChange={e => setNewProduct({...newProduct, commissionRate: parseFloat(e.target.value)})}
+                                                onChange={e => setNewProduct({ ...newProduct, commissionRate: parseFloat(e.target.value) })}
                                             />
                                             <Percent size={12} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
                                         </div>
@@ -957,34 +1014,34 @@ const Inventory: React.FC<InventoryProps> = ({ user, autoFilterStalled, resetAut
                                     </div>
                                     <div className="md:col-span-2">
                                         <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Qtd. Estoque</label>
-                                        <input 
-                                            type="number" 
+                                        <input
+                                            type="number"
                                             className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-[#ffc8cb]/50 focus:border-[#ffc8cb] outline-none transition-all bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                                             value={newProduct.stock || ''}
-                                            onChange={e => setNewProduct({...newProduct, stock: parseInt(e.target.value)})}
+                                            onChange={e => setNewProduct({ ...newProduct, stock: parseInt(e.target.value) })}
                                         />
                                     </div>
                                     <div className="md:col-span-2">
                                         <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Estoque Mín.</label>
-                                        <input 
-                                            type="number" 
+                                        <input
+                                            type="number"
                                             className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-[#ffc8cb]/50 focus:border-[#ffc8cb] outline-none transition-all bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                                             value={newProduct.minStock || ''}
-                                            onChange={e => setNewProduct({...newProduct, minStock: parseInt(e.target.value)})}
+                                            onChange={e => setNewProduct({ ...newProduct, minStock: parseInt(e.target.value) })}
                                         />
                                     </div>
                                 </div>
                             </div>
                         </form>
-                        
+
                         <div className="p-4 border-t border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/30 flex justify-end gap-3">
-                            <button 
+                            <button
                                 onClick={() => setIsModalOpen(false)}
                                 className="px-4 py-2 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg text-sm font-medium transition-colors"
                             >
                                 Cancelar
                             </button>
-                            <button 
+                            <button
                                 onClick={handleSaveProduct}
                                 className="px-6 py-2 bg-[#ffc8cb] hover:bg-[#ffb6b9] text-gray-900 rounded-lg text-sm font-medium shadow-md shadow-pink-200 transition-all flex items-center gap-2"
                             >
@@ -1013,7 +1070,7 @@ const Inventory: React.FC<InventoryProps> = ({ user, autoFilterStalled, resetAut
                             <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-900/30 rounded-lg">
                                 <p className="text-xs text-blue-700 dark:text-blue-300">
                                     Custo Base do Produto: <strong>R$ {newProduct.priceCost ? newProduct.priceCost.toFixed(2) : '0.00'}</strong>
-                                    <br/>
+                                    <br />
                                     Comissão Vendedor: <strong>{newProduct.commissionRate || 0}%</strong>
                                 </p>
                             </div>
@@ -1022,11 +1079,11 @@ const Inventory: React.FC<InventoryProps> = ({ user, autoFilterStalled, resetAut
                                 <div className="col-span-2">
                                     <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Margem de Lucro Desejada (%)</label>
                                     <div className="relative">
-                                        <input 
-                                            type="number" 
+                                        <input
+                                            type="number"
                                             className="w-full pl-3 pr-8 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-200 dark:focus:ring-indigo-900 outline-none bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                                             value={calcData.margin}
-                                            onChange={e => setCalcData({...calcData, margin: parseFloat(e.target.value)})}
+                                            onChange={e => setCalcData({ ...calcData, margin: parseFloat(e.target.value) })}
                                         />
                                         <Percent size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
                                     </div>
@@ -1034,20 +1091,20 @@ const Inventory: React.FC<InventoryProps> = ({ user, autoFilterStalled, resetAut
 
                                 <div>
                                     <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Taxa Cartão/Pix (%)</label>
-                                    <input 
-                                        type="number" 
+                                    <input
+                                        type="number"
                                         className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg outline-none bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm"
                                         value={calcData.taxCard}
-                                        onChange={e => setCalcData({...calcData, taxCard: parseFloat(e.target.value)})}
+                                        onChange={e => setCalcData({ ...calcData, taxCard: parseFloat(e.target.value) })}
                                     />
                                 </div>
                                 <div>
                                     <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Taxa Plataforma (%)</label>
-                                    <input 
-                                        type="number" 
+                                    <input
+                                        type="number"
                                         className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg outline-none bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm"
                                         value={calcData.taxPlatform}
-                                        onChange={e => setCalcData({...calcData, taxPlatform: parseFloat(e.target.value)})}
+                                        onChange={e => setCalcData({ ...calcData, taxPlatform: parseFloat(e.target.value) })}
                                     />
                                 </div>
                             </div>
@@ -1065,13 +1122,13 @@ const Inventory: React.FC<InventoryProps> = ({ user, autoFilterStalled, resetAut
                         </div>
 
                         <div className="p-4 border-t border-gray-100 dark:border-gray-700 flex gap-3 bg-gray-50 dark:bg-gray-700/30">
-                            <button 
+                            <button
                                 onClick={() => setIsCalcModalOpen(false)}
                                 className="flex-1 py-2 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg text-sm font-medium transition-colors"
                             >
                                 Cancelar
                             </button>
-                            <button 
+                            <button
                                 onClick={applyCalculatedPrice}
                                 className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-bold shadow-md transition-all flex items-center justify-center gap-2"
                             >

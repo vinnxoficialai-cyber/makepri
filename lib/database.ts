@@ -1,0 +1,658 @@
+import { supabase } from './supabase';
+export { CashService } from './cash-service';
+import type {
+    Product,
+    Customer,
+    User,
+    Transaction,
+    DeliveryOrder,
+    Task,
+    FinancialRecord,
+    CompanySettings
+} from '../types';
+
+// =====================================================
+// HELPERS DE CONVERSÃO (TypeScript ↔ SQL)
+// =====================================================
+
+// Converte snake_case para camelCase
+export function toCamelCase(obj: any): any {
+    if (Array.isArray(obj)) {
+        return obj.map(item => toCamelCase(item));
+    }
+
+    if (obj !== null && typeof obj === 'object') {
+        return Object.keys(obj).reduce((acc, key) => {
+            const camelKey = key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
+            acc[camelKey] = toCamelCase(obj[key]);
+            return acc;
+        }, {} as any);
+    }
+
+    return obj;
+}
+
+// Converte camelCase para snake_case
+export function toSnakeCase(obj: any): any {
+    if (Array.isArray(obj)) {
+        return obj.map(item => toSnakeCase(item));
+    }
+
+    if (obj !== null && typeof obj === 'object') {
+        return Object.keys(obj).reduce((acc, key) => {
+            const snakeKey = key.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
+            acc[snakeKey] = toSnakeCase(obj[key]);
+            return acc;
+        }, {} as any);
+    }
+
+    return obj;
+}
+
+// =====================================================
+// SERVIÇO DE PRODUTOS
+// =====================================================
+
+export const ProductService = {
+    // Buscar todos os produtos
+    async getAll(): Promise<Product[]> {
+        const { data, error } = await supabase
+            .from('products')
+            .select('*')
+            .order('created_at', { ascending: false });
+
+        if (error) throw error;
+        return toCamelCase(data) as Product[];
+    },
+
+    // Buscar produto por ID
+    async getById(id: string): Promise<Product | null> {
+        const { data, error } = await supabase
+            .from('products')
+            .select('*')
+            .eq('id', id)
+            .single();
+
+        if (error) throw error;
+        return toCamelCase(data) as Product;
+    },
+
+    // Buscar produto por SKU
+    async getBySku(sku: string): Promise<Product | null> {
+        const { data, error } = await supabase
+            .from('products')
+            .select('*')
+            .eq('sku', sku)
+            .single();
+
+        if (error) {
+            if (error.code === 'PGRST116') return null; // Não encontrado
+            throw error;
+        }
+        return toCamelCase(data) as Product;
+    },
+
+    // Criar produto
+    async create(product: Omit<Product, 'id' | 'createdAt' | 'updatedAt'>): Promise<Product> {
+        const productData = toSnakeCase(product);
+
+        const { data, error } = await supabase
+            .from('products')
+            .insert(productData)
+            .select()
+            .single();
+
+        if (error) throw error;
+        return toCamelCase(data) as Product;
+    },
+
+    // Atualizar produto
+    async update(id: string, product: Partial<Product>): Promise<Product> {
+        const productData = toSnakeCase(product);
+
+        const { data, error } = await supabase
+            .from('products')
+            .update(productData)
+            .eq('id', id)
+            .select()
+            .single();
+
+        if (error) throw error;
+        return toCamelCase(data) as Product;
+    },
+
+    // Deletar produto
+    async delete(id: string): Promise<void> {
+        const { error } = await supabase
+            .from('products')
+            .delete()
+            .eq('id', id);
+
+        if (error) throw error;
+    },
+
+    // Atualizar estoque
+    async updateStock(id: string, quantity: number): Promise<Product> {
+        const { data: product } = await supabase
+            .from('products')
+            .select('stock')
+            .eq('id', id)
+            .single();
+
+        const newStock = (product?.stock || 0) + quantity;
+
+        return this.update(id, { stock: newStock });
+    },
+
+    // Buscar produtos com estoque baixo
+    async getLowStock(): Promise<Product[]> {
+        const { data, error } = await supabase
+            .from('products')
+            .select('*')
+            .filter('stock', 'lte', 'min_stock')
+            .order('stock', { ascending: true });
+
+        if (error) throw error;
+        return toCamelCase(data) as Product[];
+    }
+};
+
+// =====================================================
+// SERVIÇO DE CLIENTES
+// =====================================================
+
+export const CustomerService = {
+    // Buscar todos os clientes
+    async getAll(): Promise<Customer[]> {
+        const { data, error } = await supabase
+            .from('customers')
+            .select('*')
+            .order('created_at', { ascending: false });
+
+        if (error) throw error;
+        return toCamelCase(data) as Customer[];
+    },
+
+    // Buscar cliente por ID
+    async getById(id: string): Promise<Customer | null> {
+        const { data, error } = await supabase
+            .from('customers')
+            .select('*')
+            .eq('id', id)
+            .single();
+
+        if (error) throw error;
+        return toCamelCase(data) as Customer;
+    },
+
+    // Buscar por telefone
+    async getByPhone(phone: string): Promise<Customer | null> {
+        const { data, error } = await supabase
+            .from('customers')
+            .select('*')
+            .eq('phone', phone)
+            .single();
+
+        if (error) {
+            if (error.code === 'PGRST116') return null;
+            throw error;
+        }
+        return toCamelCase(data) as Customer;
+    },
+
+    // Criar cliente
+    async create(customer: Omit<Customer, 'id' | 'createdAt' | 'updatedAt'>): Promise<Customer> {
+        const customerData = toSnakeCase(customer);
+
+        const { data, error } = await supabase
+            .from('customers')
+            .insert(customerData)
+            .select()
+            .single();
+
+        if (error) throw error;
+        return toCamelCase(data) as Customer;
+    },
+
+    // Atualizar cliente
+    async update(id: string, customer: Partial<Customer>): Promise<Customer> {
+        const customerData = toSnakeCase(customer);
+
+        const { data, error } = await supabase
+            .from('customers')
+            .update(customerData)
+            .eq('id', id)
+            .select()
+            .single();
+
+        if (error) throw error;
+        return toCamelCase(data) as Customer;
+    },
+
+    // Deletar cliente
+    async delete(id: string): Promise<void> {
+        const { error } = await supabase
+            .from('customers')
+            .delete()
+            .eq('id', id);
+
+        if (error) throw error;
+    },
+
+    // Atualizar total gasto
+    async updateTotalSpent(id: string, amount: number): Promise<Customer> {
+        const { data: customer } = await supabase
+            .from('customers')
+            .select('total_spent')
+            .eq('id', id)
+            .single();
+
+        const newTotal = (customer?.total_spent || 0) + amount;
+
+        return this.update(id, {
+            totalSpent: newTotal,
+            lastPurchase: new Date().toISOString()
+        });
+    }
+};
+
+// =====================================================
+// SERVIÇO DE USUÁRIOS
+// =====================================================
+
+export const UserService = {
+    // Buscar todos os usuários
+    async getAll(): Promise<User[]> {
+        const { data, error } = await supabase
+            .from('users')
+            .select('*')
+            .order('created_at', { ascending: false });
+
+        if (error) throw error;
+        return toCamelCase(data) as User[];
+    },
+
+    // Buscar usuário por ID
+    async getById(id: string): Promise<User | null> {
+        const { data, error } = await supabase
+            .from('users')
+            .select('*')
+            .eq('id', id)
+            .single();
+
+        if (error) throw error;
+        return toCamelCase(data) as User;
+    },
+
+    // Buscar por email
+    async getByEmail(email: string): Promise<User | null> {
+        const { data, error } = await supabase
+            .from('users')
+            .select('*')
+            .eq('email', email)
+            .single();
+
+        if (error) {
+            if (error.code === 'PGRST116') return null;
+            throw error;
+        }
+        return toCamelCase(data) as User;
+    },
+
+    // Criar usuário
+    async create(user: Omit<User, 'id' | 'createdAt' | 'updatedAt'>): Promise<User> {
+        const userData = toSnakeCase(user);
+
+        const { data, error } = await supabase
+            .from('users')
+            .insert(userData)
+            .select()
+            .single();
+
+        if (error) throw error;
+        return toCamelCase(data) as User;
+    },
+
+    // Atualizar usuário
+    async update(id: string, user: Partial<User>): Promise<User> {
+        const userData = toSnakeCase(user);
+
+        const { data, error } = await supabase
+            .from('users')
+            .update(userData)
+            .eq('id', id)
+            .select()
+            .single();
+
+        if (error) throw error;
+        return toCamelCase(data) as User;
+    },
+
+    // Deletar usuário
+    async delete(id: string): Promise<void> {
+        const { error } = await supabase
+            .from('users')
+            .delete()
+            .eq('id', id);
+
+        if (error) throw error;
+    },
+
+    // Buscar usuários ativos
+    async getActive(): Promise<User[]> {
+        const { data, error } = await supabase
+            .from('users')
+            .select('*')
+            .eq('active', true)
+            .order('name');
+
+        if (error) throw error;
+        return toCamelCase(data) as User[];
+    }
+};
+
+// =====================================================
+// SERVIÇO DE TRANSAÇÕES
+// =====================================================
+
+export const TransactionService = {
+    // Buscar todas as transações
+    async getAll(): Promise<Transaction[]> {
+        const { data, error } = await supabase
+            .from('transactions')
+            .select('*')
+            .order('date', { ascending: false });
+
+        if (error) throw error;
+        return toCamelCase(data) as Transaction[];
+    },
+
+    // Buscar transação por ID
+    async getById(id: string): Promise<Transaction | null> {
+        const { data, error } = await supabase
+            .from('transactions')
+            .select(`
+        *,
+        transaction_items (*)
+      `)
+            .eq('id', id)
+            .single();
+
+        if (error) throw error;
+        return toCamelCase(data) as Transaction;
+    },
+
+    // Criar transação com itens
+    async create(transaction: Omit<Transaction, 'id' | 'createdAt' | 'updatedAt'>): Promise<Transaction> {
+        // Remove customerSnapshot (não existe no schema do Supabase)
+        const { customerSnapshot, ...transactionWithoutSnapshot } = transaction as any;
+
+        const transactionData = toSnakeCase(transactionWithoutSnapshot);
+        const { items, ...transactionWithoutItems } = transactionData;
+
+        // Criar transação
+        const { data: newTransaction, error: transactionError } = await supabase
+            .from('transactions')
+            .insert(transactionWithoutItems)
+            .select()
+            .single();
+
+        if (transactionError) throw transactionError;
+
+        // Criar itens da transação
+        if (items && items.length > 0) {
+            const transactionItems = items.map((item: any) => ({
+                transaction_id: newTransaction.id,
+                product_id: item.id,
+                product_name: item.name,
+                product_sku: item.sku,
+                product_category: item.category,
+                quantity: item.quantity,
+                unit_price: item.priceSale || item.price_sale,
+                total_price: (item.priceSale || item.price_sale) * item.quantity
+            }));
+
+            const { error: itemsError } = await supabase
+                .from('transaction_items')
+                .insert(transactionItems);
+
+            if (itemsError) throw itemsError;
+        }
+
+        return toCamelCase(newTransaction) as Transaction;
+    },
+
+    // Buscar transações por período
+    async getByDateRange(startDate: string, endDate: string): Promise<Transaction[]> {
+        const { data, error } = await supabase
+            .from('transactions')
+            .select('*')
+            .gte('date', startDate)
+            .lte('date', endDate)
+            .order('date', { ascending: false });
+
+        if (error) throw error;
+        return toCamelCase(data) as Transaction[];
+    },
+
+    // Buscar transações por Cliente
+    async getByCustomerId(customerId: string): Promise<Transaction[]> {
+        const { data, error } = await supabase
+            .from('transactions')
+            .select('*')
+            .eq('customer_id', customerId)
+            .order('date', { ascending: false });
+
+        if (error) throw error;
+        return toCamelCase(data) as Transaction[];
+    },
+
+    // Buscar vendas do dia
+    async getToday(): Promise<Transaction[]> {
+        const today = new Date().toISOString().split('T')[0];
+        return this.getByDateRange(today, today);
+    }
+};
+
+// =====================================================
+// SERVIÇO DE CONFIGURAÇÕES
+// =====================================================
+
+export const SettingsService = {
+    // Buscar configurações
+    async get(): Promise<CompanySettings | null> {
+        const { data, error } = await supabase
+            .from('company_settings')
+            .select('*')
+            .limit(1)
+            .single();
+
+        if (error) {
+            if (error.code === 'PGRST116') return null;
+            throw error;
+        }
+        return toCamelCase(data) as CompanySettings;
+    },
+
+    // Atualizar configurações
+    async update(settings: Partial<CompanySettings>): Promise<CompanySettings> {
+        const settingsData = toSnakeCase(settings);
+
+        // Buscar ID das configurações existentes
+        const { data: existing } = await supabase
+            .from('company_settings')
+            .select('id')
+            .limit(1)
+            .single();
+
+        if (existing) {
+            // Atualizar
+            const { data, error } = await supabase
+                .from('company_settings')
+                .update(settingsData)
+                .eq('id', existing.id)
+                .select()
+                .single();
+
+            if (error) throw error;
+            return toCamelCase(data) as CompanySettings;
+        } else {
+            // Criar
+            const { data, error } = await supabase
+                .from('company_settings')
+                .insert(settingsData)
+                .select()
+                .single();
+
+            if (error) throw error;
+            return toCamelCase(data) as CompanySettings;
+        }
+    }
+};
+
+// =====================================================
+// SERVIÇO DE BUNDLES (KITS)
+// =====================================================
+
+export const BundleService = {
+    // Criar bundle com componentes
+    async createBundle(
+        product: Omit<Product, 'id' | 'createdAt' | 'updatedAt'>,
+        components: { productId: string; quantity: number }[]
+    ): Promise<Product> {
+        // 1. Criar o produto pai (kit)
+        const productData = toSnakeCase(product);
+        const { data: newProduct, error: productError } = await supabase
+            .from('products')
+            .insert(productData)
+            .select()
+            .single();
+
+        if (productError) throw productError;
+
+        // 2. Inserir componentes
+        if (components && components.length > 0) {
+            const bundleComponents = components.map(comp => ({
+                bundle_id: newProduct.id,
+                component_id: comp.productId,
+                quantity: comp.quantity
+            }));
+
+            const { error: componentsError } = await supabase
+                .from('bundle_components')
+                .insert(bundleComponents);
+
+            if (componentsError) throw componentsError;
+        }
+
+        return toCamelCase(newProduct) as Product;
+    },
+
+    // Buscar componentes de um bundle
+    async getBundleComponents(bundleId: string): Promise<{ productId: string; quantity: number }[]> {
+        const { data, error } = await supabase
+            .from('bundle_components')
+            .select('component_id, quantity')
+            .eq('bundle_id', bundleId);
+
+        if (error) throw error;
+
+        return data.map(item => ({
+            productId: item.component_id,
+            quantity: item.quantity
+        }));
+    },
+
+    // Deletar bundle (cascata deleta componentes automaticamente)
+    async deleteBundle(bundleId: string): Promise<void> {
+        const { error } = await supabase
+            .from('products')
+            .delete()
+            .eq('id', bundleId);
+
+        if (error) throw error;
+    },
+
+    // Atualizar bundle e seus componentes
+    async updateBundle(
+        bundleId: string,
+        product: Partial<Product>,
+        components?: { productId: string; quantity: number }[]
+    ): Promise<Product> {
+        // 1. Atualizar produto
+        const productData = toSnakeCase(product);
+        const { data: updated, error: updateError } = await supabase
+            .from('products')
+            .update(productData)
+            .eq('id', bundleId)
+            .select()
+            .single();
+
+        if (updateError) throw updateError;
+
+        // 2. Se componentes foram fornecidos, atualizar
+        if (components) {
+            // Deletar componentes antigos
+            await supabase
+                .from('bundle_components')
+                .delete()
+                .eq('bundle_id', bundleId);
+
+            // Inserir novos componentes
+            if (components.length > 0) {
+                const bundleComponents = components.map(comp => ({
+                    bundle_id: bundleId,
+                    component_id: comp.productId,
+                    quantity: comp.quantity
+                }));
+
+                const { error: componentsError } = await supabase
+                    .from('bundle_components')
+                    .insert(bundleComponents);
+
+                if (componentsError) throw componentsError;
+            }
+        }
+
+        return toCamelCase(updated) as Product;
+    }
+};
+
+
+// =====================================================
+// DELIVERY SERVICE
+// =====================================================
+
+export const DeliveryService = {
+    async getAll(): Promise<DeliveryOrder[]> {
+        const { data, error } = await supabase.from('deliveries').select('*').order('created_at', { ascending: false });
+        if (error) throw error;
+        return (data || []).map(d => ({ id: d.order_id, customerName: d.customer_name, phone: d.phone || '', address: d.address, city: d.city || '', source: d.source as any, method: d.method as any, status: d.status as any, itemsSummary: d.items_summary || '', totalValue: Number(d.total_value) || 0, fee: Number(d.fee) || 0, motoboyName: d.motoboy_name, trackingCode: d.tracking_code, notes: d.notes, date: d.created_at }));
+    },
+    async create(delivery: Partial<DeliveryOrder>): Promise<DeliveryOrder> {
+        const deliveryData = { order_id: delivery.id || `DEL-${Date.now().toString().slice(-6)}`, customer_name: delivery.customerName || '', phone: delivery.phone, address: delivery.address || '', city: delivery.city, source: delivery.source, method: delivery.method, status: delivery.status || 'Pendente', items_summary: delivery.itemsSummary, total_value: delivery.totalValue, fee: delivery.fee, motoboy_name: delivery.motoboyName, tracking_code: delivery.trackingCode, notes: delivery.notes };
+        const { data, error } = await supabase.from('deliveries').insert([deliveryData]).select().single();
+        if (error) throw error;
+        return { id: data.order_id, customerName: data.customer_name, phone: data.phone || '', address: data.address, city: data.city || '', source: data.source as any, method: data.method as any, status: data.status as any, itemsSummary: data.items_summary || '', totalValue: Number(data.total_value) || 0, fee: Number(data.fee) || 0, motoboyName: data.motoboy_name, trackingCode: data.tracking_code, notes: data.notes, date: data.created_at };
+    },
+    async update(orderId: string, updates: Partial<DeliveryOrder>): Promise<DeliveryOrder> {
+        const updateData: any = { updated_at: new Date().toISOString() };
+        if (updates.status !== undefined) updateData.status = updates.status;
+        if (updates.notes !== undefined) updateData.notes = updates.notes;
+        if (updates.motoboyName !== undefined) updateData.motoboy_name = updates.motoboyName;
+        const { data, error } = await supabase.from('deliveries').update(updateData).eq('order_id', orderId).select().single();
+        if (error) throw error;
+        return { id: data.order_id, customerName: data.customer_name, phone: data.phone || '', address: data.address, city: data.city || '', source: data.source as any, method: data.method as any, status: data.status as any, itemsSummary: data.items_summary || '', totalValue: Number(data.total_value) || 0, fee: Number(data.fee) || 0, motoboyName: data.motoboy_name, trackingCode: data.tracking_code, notes: data.notes, date: data.created_at };
+    },
+    async delete(orderId: string): Promise<void> {
+        const { error } = await supabase.from('deliveries').delete().eq('order_id', orderId);
+        if (error) throw error;
+    },
+    async getPayoutReport(): Promise<Record<string, { count: number, totalFee: number }>> {
+        const { data, error } = await supabase.from('deliveries').select('motoboy_name, fee').eq('status', 'Entregue').eq('method', 'Motoboy');
+        if (error) throw error;
+        const payoutByMotoboy: Record<string, { count: number, totalFee: number }> = {};
+        (data || []).forEach(d => { const name = d.motoboy_name || 'Não Atribuído'; if (!payoutByMotoboy[name]) payoutByMotoboy[name] = { count: 0, totalFee: 0 }; payoutByMotoboy[name].count += 1; payoutByMotoboy[name].totalFee += Number(d.fee) || 0; });
+        return payoutByMotoboy;
+    }
+};

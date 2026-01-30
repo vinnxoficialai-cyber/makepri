@@ -1,7 +1,8 @@
 
 import React, { useState } from 'react';
 import { HeartHandshake, Mail, Lock, ArrowRight, AlertCircle, ShoppingBag } from 'lucide-react';
-import { MOCK_USERS } from '../constants';
+import { supabase } from '../lib/supabase';
+import { UserService } from '../lib/database';
 import { User } from '../types';
 
 interface LoginProps {
@@ -19,18 +20,57 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
     setError('');
     setIsLoading(true);
 
-    // Simulation of API Call / Supabase
-    setTimeout(() => {
-        // Simple mock authentication logic
-        const user = MOCK_USERS.find(u => u.email.toLowerCase() === email.toLowerCase());
-        
-        if (user) {
-            onLogin(user);
-        } else {
-            setError('Acesso negado. Verifique seu e-mail e senha.');
-            setIsLoading(false);
+    try {
+      // 1. Authenticate with Supabase Auth (Check Password)
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+        email,
+        password
+      });
+
+      if (authError) throw authError;
+
+      if (authData.user && authData.user.email) {
+        // 2. Fetch User Profile from public.users
+        let userProfile = await UserService.getByEmail(authData.user.email);
+
+        // 3. If profile doesn't exist, create it automatically (First Login)
+        if (!userProfile) {
+          console.log('Perfil não encontrado, criando novo perfil para:', authData.user.email);
+          try {
+            const newUser = {
+              name: authData.user.user_metadata?.name || authData.user.email.split('@')[0],
+              email: authData.user.email,
+              role: 'Vendedor' as any, // Default role
+              permissions: [], // No permissions initially - Admin must configure
+              active: true,
+              avatarUrl: ''
+            };
+            userProfile = await UserService.create(newUser);
+          } catch (createErr: any) {
+            console.error('Erro ao criar perfil automático:', createErr);
+            throw new Error('Erro ao criar perfil de usuário. Contate o suporte.');
+          }
         }
-    }, 1500);
+
+        if (!userProfile.active) {
+          throw new Error('Acesso desativado. Contate seu gerente.');
+        }
+
+        // 4. Success!
+        onLogin(userProfile);
+      } else {
+        throw new Error('Erro ao obter dados da autenticação.');
+      }
+
+    } catch (err: any) {
+      console.error('Login error:', err);
+      if (err.message === 'Invalid login credentials') {
+        setError('E-mail ou senha incorretos.');
+      } else {
+        setError(err.message || 'Erro ao conectar ao servidor.');
+      }
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -62,7 +102,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
             </p>
             <span className="h-[1px] w-4 bg-slate-800"></span>
           </div>
-          
+
           <p className="mt-4 text-slate-400 text-sm font-medium max-w-[280px] mx-auto">
             Sistema integrado de gestão para varejo, estoque e vendas.
           </p>
@@ -82,9 +122,9 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
               <label className="text-[10px] font-black uppercase text-slate-500 tracking-[0.2em] ml-2">E-mail de Acesso</label>
               <div className="relative group">
                 <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-pink-500 transition-colors" size={18} />
-                <input 
+                <input
                   required
-                  type="email" 
+                  type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="admin@primake.com"
@@ -97,9 +137,9 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
               <label className="text-[10px] font-black uppercase text-slate-500 tracking-[0.2em] ml-2">Senha</label>
               <div className="relative group">
                 <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-pink-500 transition-colors" size={18} />
-                <input 
+                <input
                   required
-                  type="password" 
+                  type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
@@ -109,7 +149,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
             </div>
 
             <div className="space-y-4">
-              <button 
+              <button
                 type="submit"
                 disabled={isLoading}
                 className="w-full bg-pink-600 hover:bg-pink-500 text-white py-4 rounded-2xl font-black uppercase tracking-widest text-xs shadow-xl shadow-pink-500/20 transition-all active:scale-[0.98] flex items-center justify-center gap-2 group"
@@ -124,8 +164,8 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
                 )}
               </button>
 
-              <button 
-                type="button" 
+              <button
+                type="button"
                 className="w-full text-center text-[10px] font-bold text-slate-500 hover:text-pink-500 uppercase tracking-widest transition-colors"
               >
                 Esqueceu a senha?
@@ -135,9 +175,9 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
         </div>
 
         <div className="mt-8 text-center space-y-2">
-           <p className="text-[10px] text-slate-600 font-medium">
-             © 2025 Vinnx AI Solutions. Todos os direitos reservados.
-           </p>
+          <p className="text-[10px] text-slate-600 font-medium">
+            © 2025 Vinnx AI Solutions. Todos os direitos reservados.
+          </p>
         </div>
       </div>
     </div>

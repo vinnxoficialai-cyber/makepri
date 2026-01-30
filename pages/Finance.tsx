@@ -1,21 +1,46 @@
 
-import React, { useState } from 'react';
-import { 
-    ArrowDownCircle, ArrowUpCircle, Wallet, Calendar, MinusCircle, 
-    Lock, X, Save, AlertTriangle, CreditCard, QrCode, Banknote, 
+import React, { useState, useMemo } from 'react';
+import {
+    ArrowDownCircle, ArrowUpCircle, Wallet, Calendar, MinusCircle,
+    Lock, X, Save, AlertTriangle, CreditCard, QrCode, Banknote,
     TrendingUp, TrendingDown
 } from 'lucide-react';
 import { MOCK_FINANCIALS } from '../constants';
 import { FinancialRecord } from '../types';
+import { useTransactions } from '../lib/hooks';
 
 const Finance: React.FC = () => {
-    // State to manage records locally so we can add new ones
-    const [records, setRecords] = useState<FinancialRecord[]>(MOCK_FINANCIALS);
-    
+    // Real Transactions from Supabase
+    const { transactions } = useTransactions();
+
+    // State to manage MANUAL records (Sangrias) locally
+    // In a full implementation, these should be saved to a 'financial_records' or 'expenses' table
+    const [manualRecords, setManualRecords] = useState<FinancialRecord[]>([]);
+
+    // Merge Transactions (Income) + Manual Records (Expenses/Sangrias)
+    const records = useMemo(() => {
+        const salesRecords: FinancialRecord[] = transactions
+            .filter(t => t.status === 'Completed')
+            .map(t => ({
+                id: t.id,
+                description: `Venda #${t.id.slice(0, 6)} - ${t.customerName}`,
+                amount: t.total,
+                type: 'Income',
+                date: t.date,
+                category: 'Vendas',
+                status: 'Paid'
+            }));
+
+        // Sort by date desc
+        return [...manualRecords, ...salesRecords].sort((a, b) =>
+            new Date(b.date).getTime() - new Date(a.date).getTime()
+        );
+    }, [transactions, manualRecords]);
+
     // Modals State
     const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
     const [isSangriaModalOpen, setIsSangriaModalOpen] = useState(false);
-    
+
     // Form States
     const [adminPassword, setAdminPassword] = useState('');
     const [sangriaForm, setSangriaForm] = useState({
@@ -31,29 +56,21 @@ const Finance: React.FC = () => {
     const totalExpense = records.filter(f => f.type === 'Expense').reduce((acc, curr) => acc + curr.amount, 0);
     const balance = totalIncome - totalExpense;
 
-    // 2. Breakdown Calculation (Parsing descriptions/categories for demo purposes)
+    // 2. Breakdown Calculation (Parsing descriptions/categories/payment methods)
     const calculateBreakdown = () => {
         let incomePix = 0;
         let incomeCredit = 0;
         let incomeDebit = 0;
 
-        records.filter(f => f.type === 'Income').forEach(record => {
-            const desc = record.description.toLowerCase();
-            
-            if (desc.includes('pix')) {
-                incomePix += record.amount;
-            } else if (desc.includes('crédito') || desc.includes('credito')) {
-                incomeCredit += record.amount;
-            } else if (desc.includes('débito') || desc.includes('debito')) {
-                incomeDebit += record.amount;
-            } else if (desc.includes('cartão') || desc.includes('cartao')) {
-                // If generic "Cartão", assume 60% Credit / 40% Debit for simulation if not specified
-                incomeCredit += record.amount * 0.6;
-                incomeDebit += record.amount * 0.4;
-            } else {
-                // Fallback (e.g. Cash or unspecified)
-                // For this specific view request, we might leave it or add to a "Money" bucket
-            }
+        // Need to check transactions payment method correctly
+        const sales = transactions.filter(t => t.status === 'Completed');
+
+        sales.forEach(sale => {
+            const method = sale.paymentMethod?.toLowerCase() || '';
+            if (method.includes('pix')) incomePix += sale.total;
+            else if (method.includes('credit') || method.includes('crédito')) incomeCredit += sale.total;
+            else if (method.includes('debit') || method.includes('débito')) incomeDebit += sale.total;
+            // else money/other
         });
 
         return { incomePix, incomeCredit, incomeDebit };
@@ -84,7 +101,7 @@ const Finance: React.FC = () => {
     const handleSangriaSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         const amountVal = parseFloat(sangriaForm.amount);
-        
+
         if (!amountVal || amountVal <= 0) {
             alert('Valor inválido.');
             return;
@@ -97,7 +114,7 @@ const Finance: React.FC = () => {
         const newRecord: FinancialRecord = {
             id: `fin-sangria-${Date.now()}`,
             // Append method to description for visibility
-            description: `${sangriaForm.description} (Via ${sangriaForm.method})`, 
+            description: `${sangriaForm.description} (Via ${sangriaForm.method})`,
             amount: amountVal,
             type: 'Expense', // Sangria counts as Expense/Withdrawal
             date: new Date().toISOString(), // Today
@@ -105,19 +122,19 @@ const Finance: React.FC = () => {
             status: 'Paid'
         };
 
-        setRecords([newRecord, ...records]);
+        setManualRecords([newRecord, ...manualRecords]);
         setIsSangriaModalOpen(false);
         alert('Sangria registrada com sucesso!');
     };
 
     return (
         <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div>
                     <h2 className="text-2xl font-bold text-gray-800 dark:text-white">Financeiro</h2>
                     <p className="text-gray-500 dark:text-gray-400">Fluxo de caixa, detalhamento de entradas e saídas.</p>
                 </div>
-                <button 
+                <button
                     onClick={handleOpenSangriaFlow}
                     className="bg-rose-100 hover:bg-rose-200 text-rose-700 border border-rose-200 dark:bg-rose-900/30 dark:text-rose-300 dark:border-rose-800 dark:hover:bg-rose-900/50 px-4 py-2 rounded-lg flex items-center gap-2 font-bold transition-colors shadow-sm"
                 >
@@ -163,7 +180,7 @@ const Finance: React.FC = () => {
                             <Wallet size={24} />
                         </div>
                     </div>
-                     <p className="text-xs text-gray-400 mt-4 font-medium">Resultado da operação</p>
+                    <p className="text-xs text-gray-400 mt-4 font-medium">Resultado da operação</p>
                 </div>
             </div>
 
@@ -240,9 +257,8 @@ const Finance: React.FC = () => {
                                     {item.type === 'Income' ? '+' : '-'} R$ {item.amount.toFixed(2)}
                                 </td>
                                 <td className="p-4">
-                                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                                        item.status === 'Paid' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400' : 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400'
-                                    }`}>
+                                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${item.status === 'Paid' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400' : 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400'
+                                        }`}>
                                         {item.status === 'Paid' ? 'Pago' : 'Pendente'}
                                     </span>
                                 </td>
@@ -276,8 +292,8 @@ const Finance: React.FC = () => {
                             </p>
                             <div>
                                 <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Senha Admin</label>
-                                <input 
-                                    type="password" 
+                                <input
+                                    type="password"
                                     className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-rose-500 outline-none bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                                     value={adminPassword}
                                     onChange={(e) => setAdminPassword(e.target.value)}
@@ -317,15 +333,15 @@ const Finance: React.FC = () => {
                             <div>
                                 <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Forma de Retirada</label>
                                 <div className="grid grid-cols-2 gap-3">
-                                    <div 
-                                        onClick={() => setSangriaForm({...sangriaForm, method: 'Dinheiro'})}
+                                    <div
+                                        onClick={() => setSangriaForm({ ...sangriaForm, method: 'Dinheiro' })}
                                         className={`cursor-pointer border rounded-lg p-3 flex flex-col items-center gap-1 transition-all ${sangriaForm.method === 'Dinheiro' ? 'bg-rose-100 border-rose-500 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300' : 'bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600'}`}
                                     >
                                         <Banknote size={20} />
                                         <span className="text-xs font-bold">Dinheiro</span>
                                     </div>
-                                    <div 
-                                        onClick={() => setSangriaForm({...sangriaForm, method: 'Pix'})}
+                                    <div
+                                        onClick={() => setSangriaForm({ ...sangriaForm, method: 'Pix' })}
                                         className={`cursor-pointer border rounded-lg p-3 flex flex-col items-center gap-1 transition-all ${sangriaForm.method === 'Pix' ? 'bg-teal-100 border-teal-500 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300' : 'bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600'}`}
                                     >
                                         <QrCode size={20} />
@@ -336,24 +352,24 @@ const Finance: React.FC = () => {
 
                             <div>
                                 <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Valor da Retirada (R$)</label>
-                                <input 
-                                    type="number" 
+                                <input
+                                    type="number"
                                     step="0.01"
                                     className="w-full px-3 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-rose-500 outline-none bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-lg font-bold"
                                     value={sangriaForm.amount}
-                                    onChange={(e) => setSangriaForm({...sangriaForm, amount: e.target.value})}
+                                    onChange={(e) => setSangriaForm({ ...sangriaForm, amount: e.target.value })}
                                     placeholder="0.00"
                                     autoFocus
                                 />
                             </div>
-                            
+
                             <div>
                                 <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Motivo / Descrição</label>
-                                <input 
-                                    type="text" 
+                                <input
+                                    type="text"
                                     className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-rose-500 outline-none bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                                     value={sangriaForm.description}
-                                    onChange={(e) => setSangriaForm({...sangriaForm, description: e.target.value})}
+                                    onChange={(e) => setSangriaForm({ ...sangriaForm, description: e.target.value })}
                                     placeholder="Ex: Depósito Bancário, Pagamento Fornecedor..."
                                 />
                             </div>

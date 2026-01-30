@@ -1,13 +1,38 @@
-
 import React, { useState, useEffect } from 'react';
 import { Layers, Plus, Search, Package, ArrowRight, Save, X, Trash2, AlertCircle } from 'lucide-react';
-import { MOCK_PRODUCTS } from '../constants';
+import { useProducts } from '../lib/hooks';
+import { BundleService } from '../lib/database';
 import { Product, ProductCategory, BundleComponent } from '../types';
 
 const Bundles: React.FC = () => {
-    const [products, setProducts] = useState<Product[]>(MOCK_PRODUCTS);
+    const { products: allProducts, loading, refresh } = useProducts();
     const [searchTerm, setSearchTerm] = useState('');
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const [bundleComponents, setBundleComponents] = useState<Record<string, BundleComponent[]>>({});
+
+    // Load bundle components for all bundles
+    useEffect(() => {
+        const loadBundleComponents = async () => {
+            const bundles = allProducts.filter(p => p.type === 'bundle');
+            const componentsMap: Record<string, BundleComponent[]> = {};
+
+            for (const bundle of bundles) {
+                try {
+                    const components = await BundleService.getBundleComponents(bundle.id);
+                    componentsMap[bundle.id] = components;
+                } catch (error) {
+                    console.error(`Error loading components for bundle ${bundle.id}:`, error);
+                    componentsMap[bundle.id] = [];
+                }
+            }
+
+            setBundleComponents(componentsMap);
+        };
+
+        if (allProducts.length > 0) {
+            loadBundleComponents();
+        }
+    }, [allProducts]);
 
     // Form State for New Bundle
     const [bundleForm, setBundleForm] = useState<Partial<Product>>({
@@ -20,12 +45,12 @@ const Bundles: React.FC = () => {
     });
 
     // Helper: Get product details by ID
-    const getProductById = (id: string) => products.find(p => p.id === id);
+    const getProductById = (id: string) => allProducts.find(p => p.id === id);
 
     // Helper: Calculate Max Bundle Stock based on components
     const calculateBundleStock = (components: BundleComponent[] | undefined) => {
         if (!components || components.length === 0) return 0;
-        
+
         const possibleStocks = components.map(comp => {
             const product = getProductById(comp.productId);
             if (!product) return 0;
@@ -55,37 +80,39 @@ const Bundles: React.FC = () => {
 
     // --- HANDLERS ---
 
-    const handleSaveBundle = (e: React.FormEvent) => {
+    const handleSaveBundle = async (e: React.FormEvent) => {
         e.preventDefault();
-        
+
         if (!bundleForm.bundleComponents || bundleForm.bundleComponents.length < 2) {
             alert("Adicione pelo menos 2 produtos ao kit.");
             return;
         }
 
-        const newBundle: Product = {
-            id: `kit-${Date.now()}`,
-            name: bundleForm.name || 'Novo Kit',
-            sku: bundleForm.sku || `KIT-${Math.floor(Math.random()*1000)}`,
-            category: ProductCategory.BUNDLE,
-            type: 'bundle',
-            priceSale: Number(bundleForm.priceSale),
-            priceCost: calculateBundleCost(bundleForm.bundleComponents),
-            stock: calculateBundleStock(bundleForm.bundleComponents),
-            minStock: 5,
-            unit: 'kit',
-            bundleComponents: bundleForm.bundleComponents,
-            imageUrl: 'https://picsum.photos/205', // Mock image
-            description: 'Kit promocional',
-            createdAt: new Date().toISOString().split('T')[0],
-            updatedAt: new Date().toISOString().split('T')[0]
-        };
+        try {
+            const productData = {
+                name: bundleForm.name || 'Novo Kit',
+                sku: bundleForm.sku || `KIT-${Math.floor(Math.random() * 1000)}`,
+                category: ProductCategory.BUNDLE,
+                type: 'bundle' as const,
+                priceSale: Number(bundleForm.priceSale),
+                priceCost: calculateBundleCost(bundleForm.bundleComponents),
+                stock: calculateBundleStock(bundleForm.bundleComponents),
+                minStock: 5,
+                unit: 'kit',
+                imageUrl: 'https://picsum.photos/205',
+                description: 'Kit promocional'
+            };
 
-        setProducts([...products, newBundle]);
-        setIsModalOpen(false);
-        setBundleForm({
-            name: '', sku: '', priceSale: 0, bundleComponents: [], type: 'bundle', category: ProductCategory.BUNDLE
-        });
+            await BundleService.createBundle(productData, bundleForm.bundleComponents);
+            await refresh(); // Reload products
+            setIsModalOpen(false);
+            setBundleForm({
+                name: '', sku: '', priceSale: 0, bundleComponents: [], type: 'bundle', category: ProductCategory.BUNDLE
+            });
+        } catch (error) {
+            console.error('Error creating bundle:', error);
+            alert('Erro ao criar kit. Verifique o console.');
+        }
     };
 
     const addComponentToBundle = (product: Product) => {
@@ -95,7 +122,7 @@ const Bundles: React.FC = () => {
         if (existing) {
             setBundleForm({
                 ...bundleForm,
-                bundleComponents: currentComponents.map(c => 
+                bundleComponents: currentComponents.map(c =>
                     c.productId === product.id ? { ...c, quantity: c.quantity + 1 } : c
                 )
             });
@@ -118,22 +145,28 @@ const Bundles: React.FC = () => {
         if (qty < 1) return;
         setBundleForm({
             ...bundleForm,
-            bundleComponents: bundleForm.bundleComponents?.map(c => 
+            bundleComponents: bundleForm.bundleComponents?.map(c =>
                 c.productId === productId ? { ...c, quantity: qty } : c
             )
         });
     };
 
-    const handleDeleteBundle = (bundleId: string, bundleName: string) => {
+    const handleDeleteBundle = async (bundleId: string, bundleName: string) => {
         if (window.confirm(`Tem certeza que deseja excluir o kit "${bundleName}"?`)) {
-            setProducts(prev => prev.filter(p => p.id !== bundleId));
+            try {
+                await BundleService.deleteBundle(bundleId);
+                await refresh(); // Reload products
+            } catch (error) {
+                console.error('Error deleting bundle:', error);
+                alert('Erro ao excluir kit.');
+            }
         }
     };
 
     // Filter Logic
-    const existingBundles = products.filter(p => p.type === 'bundle');
-    const availableProducts = products.filter(p => 
-        p.type !== 'bundle' && 
+    const existingBundles = allProducts.filter(p => p.type === 'bundle');
+    const availableProducts = allProducts.filter(p =>
+        p.type !== 'bundle' &&
         (p.name.toLowerCase().includes(searchTerm.toLowerCase()) || p.sku.toLowerCase().includes(searchTerm.toLowerCase()))
     );
 
@@ -147,7 +180,7 @@ const Bundles: React.FC = () => {
                     </h2>
                     <p className="text-gray-500 dark:text-gray-400">Crie ofertas especiais agrupando produtos.</p>
                 </div>
-                <button 
+                <button
                     onClick={() => setIsModalOpen(true)}
                     className="bg-lime-600 hover:bg-lime-700 text-white px-5 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 shadow-lg shadow-lime-200 dark:shadow-none transition-all hover:scale-105"
                 >
@@ -158,16 +191,17 @@ const Bundles: React.FC = () => {
             {/* Bundles List */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {existingBundles.map(bundle => {
-                    const realValue = calculateBundleRealValue(bundle.bundleComponents);
-                    const costValue = calculateBundleCost(bundle.bundleComponents);
-                    const stock = calculateBundleStock(bundle.bundleComponents); // Recalculate live
+                    const components = bundleComponents[bundle.id] || [];
+                    const realValue = calculateBundleRealValue(components);
+                    const costValue = calculateBundleCost(components);
+                    const stock = calculateBundleStock(components); // Recalculate live
                     const savings = realValue - bundle.priceSale;
-                    const savingsPct = (savings / realValue) * 100;
+                    const savingsPct = realValue > 0 ? (savings / realValue) * 100 : 0;
 
                     return (
                         <div key={bundle.id} className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden flex flex-col group hover:border-lime-300 transition-all relative">
                             {/* Delete Button */}
-                            <button 
+                            <button
                                 onClick={(e) => {
                                     e.stopPropagation();
                                     handleDeleteBundle(bundle.id, bundle.name);
@@ -188,7 +222,7 @@ const Bundles: React.FC = () => {
                                     {stock} disponíveis
                                 </div>
                             </div>
-                            
+
                             <div className="p-5 flex-1 flex flex-col">
                                 <div className="flex justify-between items-start mb-2">
                                     <h3 className="font-bold text-lg text-gray-800 dark:text-white leading-tight">{bundle.name}</h3>
@@ -198,7 +232,7 @@ const Bundles: React.FC = () => {
                                 <div className="space-y-2 mb-4 flex-1">
                                     <p className="text-xs font-bold text-gray-500 uppercase">Contém:</p>
                                     <ul className="text-sm text-gray-600 dark:text-gray-300 space-y-1">
-                                        {bundle.bundleComponents?.map((comp, idx) => {
+                                        {components.map((comp, idx) => {
                                             const p = getProductById(comp.productId);
                                             return (
                                                 <li key={idx} className="flex justify-between">
@@ -226,7 +260,7 @@ const Bundles: React.FC = () => {
                         </div>
                     );
                 })}
-                
+
                 {existingBundles.length === 0 && (
                     <div className="col-span-full py-12 text-center text-gray-400 border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-xl">
                         <Layers size={48} className="mx-auto mb-2 opacity-20" />
@@ -241,7 +275,7 @@ const Bundles: React.FC = () => {
                 <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
                     <div className="absolute inset-0 bg-gray-900/60 backdrop-blur-sm" onClick={() => setIsModalOpen(false)}></div>
                     <div className="bg-white dark:bg-gray-800 w-full max-w-5xl h-[90vh] rounded-xl shadow-2xl relative flex flex-col md:flex-row overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-                        
+
                         {/* LEFT: FORM & PREVIEW */}
                         <div className="w-full md:w-1/2 p-6 flex flex-col border-r border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 overflow-y-auto">
                             <div className="flex justify-between items-center mb-6">
@@ -256,42 +290,42 @@ const Bundles: React.FC = () => {
                             <form id="bundle-form" onSubmit={handleSaveBundle} className="space-y-4 flex-1">
                                 <div>
                                     <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Nome do Kit</label>
-                                    <input 
+                                    <input
                                         required
-                                        type="text" 
+                                        type="text"
                                         className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-lime-200 focus:border-lime-500 outline-none bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
                                         placeholder="Ex: Kit Verão Completo"
                                         value={bundleForm.name}
-                                        onChange={e => setBundleForm({...bundleForm, name: e.target.value})}
+                                        onChange={e => setBundleForm({ ...bundleForm, name: e.target.value })}
                                     />
                                 </div>
                                 <div className="grid grid-cols-2 gap-4">
                                     <div>
                                         <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">SKU (Cód)</label>
-                                        <input 
-                                            type="text" 
+                                        <input
+                                            type="text"
                                             className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-lime-200 focus:border-lime-500 outline-none bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
                                             placeholder="KIT-001"
                                             value={bundleForm.sku}
-                                            onChange={e => setBundleForm({...bundleForm, sku: e.target.value})}
+                                            onChange={e => setBundleForm({ ...bundleForm, sku: e.target.value })}
                                         />
                                     </div>
                                     <div>
                                         <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Preço Venda (Promo)</label>
-                                        <input 
+                                        <input
                                             required
-                                            type="number" 
+                                            type="number"
                                             className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-lime-200 focus:border-lime-500 outline-none bg-white dark:bg-gray-800 text-gray-900 dark:text-white font-bold text-lime-700"
                                             placeholder="0.00"
                                             value={bundleForm.priceSale || ''}
-                                            onChange={e => setBundleForm({...bundleForm, priceSale: parseFloat(e.target.value)})}
+                                            onChange={e => setBundleForm({ ...bundleForm, priceSale: parseFloat(e.target.value) })}
                                         />
                                     </div>
                                 </div>
 
                                 <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700 mt-4">
                                     <h4 className="text-sm font-bold text-gray-800 dark:text-white mb-3">Itens do Kit ({bundleForm.bundleComponents?.length})</h4>
-                                    
+
                                     {bundleForm.bundleComponents?.length === 0 ? (
                                         <p className="text-xs text-gray-400 text-center py-4">Selecione produtos ao lado para adicionar.</p>
                                     ) : (
@@ -305,15 +339,15 @@ const Bundles: React.FC = () => {
                                                             {product.name}
                                                         </div>
                                                         <div className="flex items-center gap-2">
-                                                            <input 
-                                                                type="number" 
+                                                            <input
+                                                                type="number"
                                                                 min="1"
                                                                 className="w-12 px-1 py-0.5 border rounded text-center text-xs bg-white dark:bg-gray-600 dark:border-gray-500 dark:text-white"
                                                                 value={comp.quantity}
                                                                 onChange={(e) => updateComponentQty(comp.productId, parseInt(e.target.value))}
                                                             />
-                                                            <button 
-                                                                type="button" 
+                                                            <button
+                                                                type="button"
                                                                 onClick={() => removeComponent(comp.productId)}
                                                                 className="text-gray-400 hover:text-red-500"
                                                             >
@@ -340,8 +374,8 @@ const Bundles: React.FC = () => {
                                     <div className="flex justify-between text-sm font-bold mt-2 pt-2 border-t border-lime-200 dark:border-lime-800">
                                         <span className="text-lime-800 dark:text-lime-300">Margem Estimada:</span>
                                         <span className="text-lime-700 dark:text-lime-400">
-                                            {bundleForm.priceSale ? 
-                                                `R$ ${(bundleForm.priceSale - calculateBundleCost(bundleForm.bundleComponents)).toFixed(2)}` : 
+                                            {bundleForm.priceSale ?
+                                                `R$ ${(bundleForm.priceSale - calculateBundleCost(bundleForm.bundleComponents)).toFixed(2)}` :
                                                 '--'
                                             }
                                         </span>
@@ -367,9 +401,9 @@ const Bundles: React.FC = () => {
 
                             <div className="relative mb-4">
                                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-                                <input 
-                                    type="text" 
-                                    placeholder="Buscar produto para adicionar..." 
+                                <input
+                                    type="text"
+                                    placeholder="Buscar produto para adicionar..."
                                     className="w-full pl-10 pr-4 py-2 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-lime-200 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white"
                                     value={searchTerm}
                                     onChange={(e) => setSearchTerm(e.target.value)}
@@ -380,14 +414,13 @@ const Bundles: React.FC = () => {
                                 {availableProducts.map(product => {
                                     const isAdded = bundleForm.bundleComponents?.some(c => c.productId === product.id);
                                     return (
-                                        <div 
-                                            key={product.id} 
+                                        <div
+                                            key={product.id}
                                             onClick={() => addComponentToBundle(product)}
-                                            className={`p-3 rounded-lg border cursor-pointer flex justify-between items-center transition-all ${
-                                                isAdded 
-                                                ? 'bg-lime-50 border-lime-200 dark:bg-lime-900/10 dark:border-lime-800' 
+                                            className={`p-3 rounded-lg border cursor-pointer flex justify-between items-center transition-all ${isAdded
+                                                ? 'bg-lime-50 border-lime-200 dark:bg-lime-900/10 dark:border-lime-800'
                                                 : 'bg-white border-gray-100 hover:border-lime-300 dark:bg-gray-700 dark:border-gray-600 dark:hover:border-lime-500'
-                                            }`}
+                                                }`}
                                         >
                                             <div className="flex items-center gap-3 overflow-hidden">
                                                 <div className="w-10 h-10 bg-gray-100 dark:bg-gray-600 rounded flex-shrink-0">
@@ -410,7 +443,7 @@ const Bundles: React.FC = () => {
                             </div>
 
                             <div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-700 md:hidden">
-                                <button 
+                                <button
                                     form="bundle-form"
                                     type="submit"
                                     className="w-full bg-lime-600 text-white font-bold py-3 rounded-xl shadow-md"
@@ -419,7 +452,7 @@ const Bundles: React.FC = () => {
                                 </button>
                             </div>
                             <div className="hidden md:block mt-4 pt-4 border-t border-gray-100 dark:border-gray-700">
-                                <button 
+                                <button
                                     form="bundle-form"
                                     type="submit"
                                     className="w-full bg-lime-600 hover:bg-lime-700 text-white font-bold py-3 rounded-xl shadow-md transition-colors flex items-center justify-center gap-2"

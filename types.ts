@@ -31,10 +31,10 @@ export interface Product {
     segment?: string;
     collection?: string;
     description?: string;
-    supplier?: string; 
-    createdAt?: string; 
-    updatedAt?: string; 
-    commissionRate?: number; 
+    supplier?: string;
+    createdAt?: string;
+    updatedAt?: string;
+    commissionRate?: number;
     // Bundle specific
     type?: 'single' | 'bundle'; // 'single' is default
     bundleComponents?: BundleComponent[];
@@ -64,24 +64,24 @@ export interface Customer {
     name: string;
     email: string;
     phone: string;
-    cpf?: string; 
+    cpf?: string;
     address?: string;
-    city?: string; 
-    state?: string; 
+    city?: string;
+    state?: string;
     birthDate?: string;
     totalSpent: number;
     lastPurchase: string;
     status: 'Active' | 'Inactive';
-    notes?: string; 
+    notes?: string;
 }
 
 export interface Task {
     id: string;
     title: string;
     description: string;
-    assignedTo: string; 
-    createdBy: string; 
-    dueDate: string; 
+    assignedTo: string;
+    createdBy: string;
+    dueDate: string;
     priority: 'low' | 'medium' | 'high';
     status: 'pending' | 'completed';
 }
@@ -137,7 +137,32 @@ export interface FinancialRecord {
     category: string;
     status: 'Paid' | 'Pending';
 }
+// Cash Register Types
+export interface CashRegister {
+    id: string;
+    openedAt: string;
+    closedAt?: string;
+    openedBy: string;
+    closedBy?: string;
+    openingBalance: number;
+    closingBalance?: number;
+    expectedBalance?: number;
+    difference?: number;
+    status: 'open' | 'closed';
+    notes?: string;
+}
 
+export interface CashMovement {
+    id: string;
+    cashRegisterId: string;
+    type: 'opening' | 'sale' | 'withdrawal' | 'supply';
+    description: string;
+    amount: number;
+    paymentMethod: 'cash' | 'credit' | 'debit' | 'pix';
+    transactionId?: string;
+    createdBy?: string;
+    createdAt: string;
+}
 export type ModuleType = 'dashboard' | 'inventory' | 'pos' | 'crm' | 'finance' | 'reports' | 'cash' | 'settings' | 'ecommerce' | 'tasks' | 'bundles' | 'ai' | 'goals' | 'delivery' | 'team';
 export type UserRole = 'Administrador' | 'Gerente' | 'Vendedor' | 'Estoquista' | 'Caixa' | 'Motoboy';
 

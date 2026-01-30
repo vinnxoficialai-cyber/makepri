@@ -13,14 +13,16 @@ import Ecommerce from './pages/Ecommerce';
 import Team from './pages/Team'; // New Unified Page
 import Bundles from './pages/Bundles';
 import PrimakeAI from './pages/PrimakeAI';
-import Delivery from './pages/Delivery'; 
+import Delivery from './pages/Delivery';
 import Login from './pages/Login';
-import { 
-    AlertTriangle, Users, BarChart2, ShoppingCart, Package, Home, 
+import {
+    AlertTriangle, Users, BarChart2, ShoppingCart, Package, Home,
     LayoutGrid, Bell, Sun, Moon, DollarSign, Globe, Coins, X, ClipboardList, Layers, Bot, Target, Bike, Briefcase, Sparkles, User as UserIcon, LogOut
 } from 'lucide-react';
 import { MOCK_USERS, MOCK_DELIVERIES } from './constants';
 import { User, ModuleType, CompanySettings, SalesGoal, DeliveryOrder } from './types';
+import { testarIntegracaoCompleta } from './test-supabase';
+import { useSettings, useUsers } from './lib/hooks';
 
 // --- MOBILE BOTTOM NAVIGATION COMPONENT ---
 interface MobileBottomNavProps {
@@ -31,21 +33,20 @@ interface MobileBottomNavProps {
 }
 
 const MobileBottomNav: React.FC<MobileBottomNavProps> = ({ activeTab, onNavigate, onToggleMenu, isMenuOpen }) => {
-    
+
     // Helper to determine styling for active vs inactive tabs
-    const getTabClass = (tabName: string) => 
-        `flex flex-col items-center justify-center text-[9px] font-medium transition-colors w-14 ${
-            activeTab === tabName && !isMenuOpen
-            ? 'text-pink-600 dark:text-pink-400' 
+    const getTabClass = (tabName: string) =>
+        `flex flex-col items-center justify-center text-[9px] font-medium transition-colors w-14 ${activeTab === tabName && !isMenuOpen
+            ? 'text-pink-600 dark:text-pink-400'
             : 'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300'
         }`;
 
     return (
         <nav className="fixed bottom-0 left-0 right-0 bg-white dark:bg-[#0b1220] border-t border-gray-200 dark:border-gray-800 h-16 flex items-center justify-around z-50 pb-safe shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] lg:hidden transition-colors">
-            
+
             {/* 1. DASHBOARD (HOME) */}
-            <button 
-                onClick={() => onNavigate('dashboard')} 
+            <button
+                onClick={() => onNavigate('dashboard')}
                 className={getTabClass('dashboard')}
             >
                 <Home size={20} className="mb-0.5" />
@@ -53,8 +54,8 @@ const MobileBottomNav: React.FC<MobileBottomNavProps> = ({ activeTab, onNavigate
             </button>
 
             {/* 2. INVENTORY (MOVED HERE) */}
-            <button 
-                onClick={() => onNavigate('inventory')} 
+            <button
+                onClick={() => onNavigate('inventory')}
                 className={getTabClass('inventory')}
             >
                 <Package size={20} className="mb-0.5" />
@@ -63,8 +64,8 @@ const MobileBottomNav: React.FC<MobileBottomNavProps> = ({ activeTab, onNavigate
 
             {/* 3. POS (Center FAB) - Resized */}
             <div className="relative -top-5">
-                <button 
-                    onClick={() => onNavigate('pos')} 
+                <button
+                    onClick={() => onNavigate('pos')}
                     className="bg-[#ffc8cb] dark:bg-pink-600 text-gray-900 dark:text-white rounded-full w-14 h-14 flex items-center justify-center shadow-lg hover:scale-105 active:scale-95 transition-all border-4 border-gray-50 dark:border-[#0b1220]"
                 >
                     <ShoppingCart size={24} />
@@ -72,8 +73,8 @@ const MobileBottomNav: React.FC<MobileBottomNavProps> = ({ activeTab, onNavigate
             </div>
 
             {/* 4. CRM */}
-            <button 
-                onClick={() => onNavigate('crm')} 
+            <button
+                onClick={() => onNavigate('crm')}
                 className={getTabClass('crm')}
             >
                 <Users size={20} className="mb-0.5" />
@@ -81,13 +82,12 @@ const MobileBottomNav: React.FC<MobileBottomNavProps> = ({ activeTab, onNavigate
             </button>
 
             {/* 5. MENU (GRID) */}
-            <button 
-                onClick={onToggleMenu} 
-                className={`flex flex-col items-center justify-center text-[9px] font-medium transition-colors w-14 ${
-                    isMenuOpen 
-                    ? 'text-pink-600 dark:text-pink-400' 
+            <button
+                onClick={onToggleMenu}
+                className={`flex flex-col items-center justify-center text-[9px] font-medium transition-colors w-14 ${isMenuOpen
+                    ? 'text-pink-600 dark:text-pink-400'
                     : 'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300'
-                }`}
+                    }`}
             >
                 {isMenuOpen ? <X size={20} className="mb-0.5" /> : <LayoutGrid size={20} className="mb-0.5" />}
                 Menu
@@ -99,21 +99,41 @@ const MobileBottomNav: React.FC<MobileBottomNavProps> = ({ activeTab, onNavigate
 
 // Main App Component
 const App: React.FC = () => {
-    // Auth State
-    const [isAuthenticated, setIsAuthenticated] = useState(false);
+    // Auth State - Carregar do localStorage se existir
+    const [isAuthenticated, setIsAuthenticated] = useState(() => {
+        return localStorage.getItem('isAuthenticated') === 'true';
+    });
 
-    // Global User State
-    const [users, setUsers] = useState<User[]>(MOCK_USERS);
+    // Global User State - Carregar do Supabase
+    const { users: supabaseUsers, loading: usersLoading } = useUsers();
+    const [users, setUsers] = useState<User[]>(supabaseUsers);
+
+    // Atualizar users quando supabaseUsers mudar
+    useEffect(() => {
+        if (supabaseUsers.length > 0) {
+            setUsers(supabaseUsers);
+        }
+    }, [supabaseUsers]);
+
     // Initialize with the first admin user, but will be overwritten on login
-    const [currentUser, setCurrentUser] = useState<User>(MOCK_USERS[0]);
+    const [currentUser, setCurrentUser] = useState<User>(() => {
+        const saved = localStorage.getItem('currentUser');
+        return saved ? JSON.parse(saved) : MOCK_USERS[0];
+    });
     // REAL authenticated user (to handle simulation revert)
-    const [realUser, setRealUser] = useState<User | null>(null);
-    
+    const [realUser, setRealUser] = useState<User | null>(() => {
+        const saved = localStorage.getItem('realUser');
+        return saved ? JSON.parse(saved) : null;
+    });
+
+    // Carregar configurações do Supabase
+    const { settings: supabaseSettings } = useSettings();
+
     // Global Company Settings - ZERADO
     const [companySettings, setCompanySettings] = useState<CompanySettings>({
         name: 'Minha Empresa',
         logoUrl: '', // Sem logo inicial
-        logoWidth: 160, 
+        logoWidth: 160,
         cnpj: '',
         email: '',
         phone: '',
@@ -126,19 +146,27 @@ const App: React.FC = () => {
     // Global Sales Goals State - ZERADO
     const [salesGoals, setSalesGoals] = useState<SalesGoal>({
         storeGoal: 0,
-        userGoals: {}, 
-        goalTypes: {} 
+        userGoals: {},
+        goalTypes: {}
     });
 
     // Global Deliveries State (Moved from Delivery.tsx to allow POS integration)
     const [globalDeliveries, setGlobalDeliveries] = useState<DeliveryOrder[]>(MOCK_DELIVERIES);
 
+    // Atualizar configurações quando carregadas do Supabase
+    useEffect(() => {
+        if (supabaseSettings) {
+            console.log('📸 Logo carregado do Supabase:', supabaseSettings.logoUrl);
+            setCompanySettings(supabaseSettings);
+        }
+    }, [supabaseSettings]);
+
     const [activeTab, setActiveTab] = useState('dashboard');
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-    
+
     // Sidebar State
     const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
-    
+
     // State to handle direct navigation to "Stalled Products" in Inventory
     const [autoFilterStalled, setAutoFilterStalled] = useState(false);
 
@@ -160,15 +188,22 @@ const App: React.FC = () => {
         }
     }, [isDarkMode]);
 
+    // Testar conexão com Supabase ao carregar o app
+    useEffect(() => {
+        if (isAuthenticated) {
+            testarIntegracaoCompleta();
+        }
+    }, [isAuthenticated]);
+
     const toggleTheme = () => setIsDarkMode(prev => !prev);
 
     // If current user permissions change or user switches, ensure they are on a valid page
     useEffect(() => {
         if (isAuthenticated && !currentUser.permissions.includes(activeTab as ModuleType)) {
-             // If user loses access to current tab, redirect to first allowed tab (usually dashboard)
-             if (currentUser.permissions.length > 0) {
-                 setActiveTab(currentUser.permissions[0]);
-             }
+            // If user loses access to current tab, redirect to first allowed tab (usually dashboard)
+            if (currentUser.permissions.length > 0) {
+                setActiveTab(currentUser.permissions[0]);
+            }
         }
     }, [currentUser, activeTab, isAuthenticated]);
 
@@ -187,12 +222,21 @@ const App: React.FC = () => {
         setRealUser(user);
         setIsAuthenticated(true);
         setActiveTab(user.permissions[0] || 'dashboard'); // Reset to first allowed tab
+
+        // Salvar no localStorage para persistir após F5
+        localStorage.setItem('currentUser', JSON.stringify(user));
+        localStorage.setItem('realUser', JSON.stringify(user));
+        localStorage.setItem('isAuthenticated', 'true');
     };
 
     const handleLogout = () => {
         setIsAuthenticated(false);
         setRealUser(null);
-        // Optional: clear any session storage if implemented
+
+        // Limpar localStorage
+        localStorage.removeItem('currentUser');
+        localStorage.removeItem('realUser');
+        localStorage.removeItem('isAuthenticated');
     };
 
     const handleExitSimulation = () => {
@@ -209,36 +253,36 @@ const App: React.FC = () => {
     const renderContent = () => {
         // Security check: If user tries to render a component they don't have permission for
         if (!currentUser.permissions.includes(activeTab as ModuleType)) {
-             return (
+            return (
                 <div className="flex flex-col items-center justify-center h-full text-red-500 dark:text-red-400">
                     <AlertTriangle size={48} className="mb-4" />
                     <h2 className="text-xl font-bold">Acesso Negado</h2>
                     <p className="text-gray-500 dark:text-gray-400">Você não tem permissão para acessar este módulo.</p>
                 </div>
-             );
+            );
         }
 
         switch (activeTab) {
             case 'dashboard':
                 return (
-                    <Dashboard 
-                        user={currentUser} 
+                    <Dashboard
+                        user={currentUser}
                         users={users} // Pass all users for leaderboard
                         salesGoals={salesGoals} // Pass sales goals
-                        onNavigate={handleNavigate} 
+                        onNavigate={handleNavigate}
                         onViewStalled={handleNavigateToStalled}
                     />
                 );
             case 'inventory':
                 return (
-                    <Inventory 
+                    <Inventory
                         user={currentUser}
-                        autoFilterStalled={autoFilterStalled} 
+                        autoFilterStalled={autoFilterStalled}
                         resetAutoFilter={() => setAutoFilterStalled(false)}
                     />
                 );
             case 'pos':
-                return <POS onAddDelivery={(newDelivery) => setGlobalDeliveries(prev => [newDelivery, ...prev])} />;
+                return <POS onAddDelivery={(newDelivery) => setGlobalDeliveries(prev => [newDelivery, ...prev])} user={currentUser} />;
             case 'finance':
                 return <Finance />;
             case 'crm':
@@ -246,13 +290,13 @@ const App: React.FC = () => {
             case 'cash':
                 return <Cash />;
             case 'ecommerce':
-                return <Ecommerce user={currentUser} />;
+                return <Ecommerce user={currentUser} onNavigate={handleNavigate} />;
             case 'settings':
                 return (
-                    <Settings 
-                        users={users} 
-                        setUsers={setUsers} 
-                        currentUser={currentUser} 
+                    <Settings
+                        users={users}
+                        setUsers={setUsers}
+                        currentUser={currentUser}
                         setCurrentUser={setCurrentUser}
                         companySettings={companySettings}
                         setCompanySettings={setCompanySettings}
@@ -268,7 +312,7 @@ const App: React.FC = () => {
                 return <PrimakeAI />;
             case 'team': // Unified Team Page
                 return (
-                    <Team 
+                    <Team
                         users={users}
                         setUsers={setUsers}
                         currentUser={currentUser}
@@ -308,12 +352,12 @@ const App: React.FC = () => {
 
     return (
         <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex font-sans transition-colors duration-200">
-            
+
             {/* Desktop Sidebar (Hidden on Mobile) */}
             <div className="hidden lg:flex fixed inset-y-0 left-0 z-50">
-                <Sidebar 
-                    activeTab={activeTab} 
-                    setActiveTab={handleNavigate} 
+                <Sidebar
+                    activeTab={activeTab}
+                    setActiveTab={handleNavigate}
                     user={currentUser}
                     companySettings={companySettings}
                     isDarkMode={isDarkMode}
@@ -326,27 +370,27 @@ const App: React.FC = () => {
 
             {/* Main Content Area */}
             <main className={`flex-1 flex flex-col min-w-0 overflow-hidden h-screen transition-all duration-300 ${isSidebarCollapsed ? 'lg:ml-20' : 'lg:ml-64'}`}>
-                
+
                 {/* --- NEW MOBILE HEADER --- */}
                 <header className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 lg:hidden px-4 py-3 flex items-center justify-between shadow-sm z-30 transition-colors">
                     <div className="font-bold text-xl text-pink-600 dark:text-pink-400 tracking-tight">
                         PriMAKE
                     </div>
-                    
+
                     <div className="flex items-center gap-4">
-                        <button 
+                        <button
                             onClick={toggleTheme}
                             className="text-gray-500 dark:text-gray-400 hover:text-pink-500 dark:hover:text-pink-400 transition-colors"
                         >
                             {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
                         </button>
-                        
+
                         <button className="text-gray-500 dark:text-gray-400 hover:text-pink-500 dark:hover:text-pink-400 transition-colors relative">
                             <Bell size={20} />
                             <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white dark:border-gray-800"></span>
                         </button>
 
-                        <button 
+                        <button
                             onClick={() => handleNavigate('settings')}
                             className="w-9 h-9 rounded-full bg-pink-100 dark:bg-pink-900/30 border border-pink-200 dark:border-pink-800 overflow-hidden ring-2 ring-transparent hover:ring-pink-300 dark:hover:ring-pink-700 transition-all flex items-center justify-center"
                         >
@@ -385,7 +429,7 @@ const App: React.FC = () => {
                                         );
                                     })}
                                 </div>
-                                <button 
+                                <button
                                     onClick={handleLogout}
                                     className="mt-8 w-full py-4 bg-gray-200 dark:bg-gray-800 text-gray-700 dark:text-gray-300 font-bold rounded-xl flex items-center justify-center gap-2"
                                 >
@@ -406,10 +450,10 @@ const App: React.FC = () => {
                 <div className="fixed bottom-20 lg:bottom-8 left-1/2 transform -translate-x-1/2 z-[60] bg-gray-900 text-white pl-4 pr-1 py-1 rounded-full shadow-2xl flex items-center gap-3 border border-gray-700 animate-in slide-in-from-bottom-10">
                     <div className="flex items-center gap-2 text-sm">
                         <Users size={16} className="text-pink-400" />
-                        <span className="hidden sm:inline">Acessando como:</span> 
+                        <span className="hidden sm:inline">Acessando como:</span>
                         <strong className="text-pink-300">{currentUser.name}</strong>
                     </div>
-                    <button 
+                    <button
                         onClick={handleExitSimulation}
                         className="bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded-full text-xs font-bold transition-colors flex items-center gap-1"
                     >
@@ -437,24 +481,24 @@ const App: React.FC = () => {
             {isAIModalOpen && (
                 <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center sm:p-4 pointer-events-none">
                     {/* Backdrop */}
-                    <div 
-                        className="absolute inset-0 bg-gray-900/30 backdrop-blur-sm pointer-events-auto" 
+                    <div
+                        className="absolute inset-0 bg-gray-900/30 backdrop-blur-sm pointer-events-auto"
                         onClick={() => setIsAIModalOpen(false)}
                     ></div>
-                    
+
                     {/* Modal Content */}
                     <div className="bg-white dark:bg-gray-800 w-full sm:max-w-[450px] h-[80vh] sm:h-[600px] rounded-t-2xl sm:rounded-2xl shadow-2xl relative flex flex-col overflow-hidden animate-in slide-in-from-bottom-10 sm:zoom-in-95 duration-300 pointer-events-auto border border-gray-100 dark:border-gray-700">
-                        <PrimakeAI 
-                            context={activeTab} 
-                            isModal={true} 
-                            onClose={() => setIsAIModalOpen(false)} 
+                        <PrimakeAI
+                            context={activeTab}
+                            isModal={true}
+                            onClose={() => setIsAIModalOpen(false)}
                         />
                     </div>
                 </div>
             )}
 
             {/* --- MOBILE BOTTOM NAVIGATION --- */}
-            <MobileBottomNav 
+            <MobileBottomNav
                 activeTab={activeTab}
                 onNavigate={handleNavigate}
                 onToggleMenu={() => setMobileMenuOpen(!mobileMenuOpen)}
@@ -465,3 +509,4 @@ const App: React.FC = () => {
 };
 
 export default App;
+
