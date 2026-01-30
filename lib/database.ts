@@ -154,6 +154,42 @@ export const ProductService = {
 
         if (error) throw error;
         return toCamelCase(data) as Product[];
+    },
+
+    // --- VARIAÇÕES ---
+
+    // Buscar variações de um produto
+    async getVariations(productId: string): Promise<any[]> {
+        const { data, error } = await supabase
+            .from('product_variations')
+            .select('*')
+            .eq('product_id', productId);
+
+        if (error) throw error;
+        return toCamelCase(data);
+    },
+
+    // Adicionar variação
+    async addVariation(variation: any): Promise<any> {
+        const variationData = toSnakeCase(variation);
+        const { data, error } = await supabase
+            .from('product_variations')
+            .insert(variationData)
+            .select()
+            .single();
+
+        if (error) throw error;
+        return toCamelCase(data);
+    },
+
+    // Deletar variação
+    async deleteVariation(id: string): Promise<void> {
+        const { error } = await supabase
+            .from('product_variations')
+            .delete()
+            .eq('id', id);
+
+        if (error) throw error;
     }
 };
 
@@ -404,6 +440,8 @@ export const TransactionService = {
             const transactionItems = items.map((item: any) => ({
                 transaction_id: newTransaction.id,
                 product_id: item.id,
+                variation_id: item.variationId,
+                variation_name: item.variationName,
                 product_name: item.name,
                 product_sku: item.sku,
                 product_category: item.category,
@@ -662,8 +700,7 @@ export const DeliveryService = {
             fee: delivery.fee,
             motoboy_name: delivery.motoboyName,
             tracking_code: delivery.trackingCode,
-            notes: delivery.notes,
-            payout_status: 'Pending'
+            notes: delivery.notes
         };
 
         const { data, error } = await supabase.from('deliveries').insert([deliveryData]).select().single();

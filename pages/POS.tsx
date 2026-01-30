@@ -1,8 +1,8 @@
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Search, ShoppingCart, Trash2, Plus, Minus, CreditCard, Banknote, QrCode, User as UserIcon, MapPin, Phone, Barcode, Printer, CheckCircle, X, ChevronRight, Wallet, DollarSign, Save, FileText, Calendar, Home, Camera, Store, Bike, Truck, Search as SearchIcon, Package, Percent, ArrowRight, ArrowLeft, Mail, AlertCircle, History, LayoutGrid, Clock as ClockIcon } from 'lucide-react';
 import { MOCK_PRODUCTS, MOCK_CUSTOMERS, MOCK_TRANSACTIONS } from '../constants';
-import { Product, CartItem, Customer, DeliveryOrder, Transaction, ProductCategory } from '../types';
+import { Product, CartItem, Customer, DeliveryOrder, Transaction, ProductCategory, ProductVariation } from '../types';
 import BarcodeScanner from '../components/BarcodeScanner';
 import { useProducts, useTransactions, useCustomers, useUsers } from '../lib/hooks';
 import { DeliveryService, ProductService, CashService } from '../lib/database';
@@ -58,8 +58,31 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
     // --- PAYMENT & MODAL STATES ---
     const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
     const [paymentStep, setPaymentStep] = useState<1 | 2>(1);
+    const [selectedMotoboy, setSelectedMotoboy] = useState('');
+    const [deliveryFee, setDeliveryFee] = useState('');
     const [isReceiptOpen, setIsReceiptOpen] = useState(false);
-    const [completedSale, setCompletedSale] = useState<any>(null); // Store sale data for receipt after clearing cart
+    const [completedSale, setCompletedSale] = useState<any>(null);
+
+    // New States for Improved POS
+    const [deliveryAddress, setDeliveryAddress] = useState('');
+    const [customerSearch, setCustomerSearch] = useState('');
+
+    // Load Data
+    const [isVariationModalOpen, setIsVariationModalOpen] = useState(false);
+    const [currentVariations, setCurrentVariations] = useState<ProductVariation[]>([]);
+    const [selectedProductForVariation, setSelectedProductForVariation] = useState<Product | null>(null);
+
+
+    // Sort and Filter Customers
+    // Sort and Filter Customers
+    const filteredCustomers = useMemo(() => {
+        return customers
+            .filter(c => c.status === 'Active')
+            .filter(c => c.name.toLowerCase().includes(customerSearch.toLowerCase()) || (c.phone && c.phone.includes(customerSearch)))
+            .sort((a, b) => a.name.localeCompare(b.name));
+    }, [customers, customerSearch]);
+
+
 
     // --- SCANNER STATE ---
     const [isScannerOpen, setIsScannerOpen] = useState(false);
@@ -74,11 +97,11 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
 
     // --- SALE TYPE & DISCOUNTS ---
     const [saleType, setSaleType] = useState<'store' | 'delivery'>('store');
-    const [deliveryFee, setDeliveryFee] = useState<string>('');
+
     const [discountPercent, setDiscountPercent] = useState<string>('');
 
     // Motoboy State
-    const [selectedMotoboy, setSelectedMotoboy] = useState<string>('');
+
 
     // --- HISTORY MOBILE MODAL ---
     const [isMobileHistoryOpen, setIsMobileHistoryOpen] = useState(false);
@@ -93,14 +116,63 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
         return matchesSearch && matchesCategory;
     });
 
-    const addToCart = (product: Product) => {
-        setCart(prev => {
-            const existing = prev.find(item => item.id === product.id);
-            if (existing) {
-                return prev.map(item => item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item);
+    const addToCart = async (product: Product) => {
+        try {
+            // 1. Check for variations
+            const variations = await ProductService.getVariations(product.id);
+
+            if (variations && variations.length > 0) {
+                // Open Variation Modal
+                setCurrentVariations(variations);
+                setSelectedProductForVariation(product);
+                setIsVariationModalOpen(true);
+                return;
             }
-            return [...prev, { ...product, quantity: 1 }];
+
+            // 2. No variations, add directly
+            addItemToCart(product);
+        } catch (error) {
+            console.error("Error checking variations:", error);
+            addItemToCart(product); // Fallback
+        }
+    };
+
+    const addItemToCart = (product: Product, variation?: ProductVariation) => {
+        setCart(prev => {
+            const itemId = variation ? `${product.id}-${variation.id}` : product.id;
+            const existing = prev.find(item => (variation ? item.variationId === variation.id : item.id === product.id) && !item.variationId === !variation);
+
+            if (existing) {
+                return prev.map(item => {
+                    if (variation) {
+                        return item.variationId === variation.id ? { ...item, quantity: item.quantity + 1 } : item;
+                    }
+                    return item.id === product.id && !item.variationId ? { ...item, quantity: item.quantity + 1 } : item;
+                });
+            }
+
+            return [...prev, {
+                ...product,
+                quantity: 1,
+                variationId: variation?.id,
+                variationName: variation ? `${variation.type}: ${variation.name}` : undefined,
+                priceSale: variation?.priceOverride || product.priceSale // Use override if exists
+            }];
         });
+    };
+
+    const handleSelectVariation = (variation: ProductVariation) => {
+        if (selectedProductForVariation) {
+            // Check stock logic if needed (e.g. if variation.stock <= 0 alert)
+            if (variation.stock <= 0) {
+                alert(`Variação ${variation.name} sem estoque!`);
+                return;
+            }
+            addItemToCart(selectedProductForVariation, variation);
+            setIsVariationModalOpen(false);
+            setSelectedProductForVariation(null);
+            setCurrentVariations([]);
+        }
     };
 
     const playBeep = () => {
@@ -224,6 +296,18 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
             return;
         }
 
+        // Validation for Delivery (Redundant check)
+        if (saleType === 'delivery') {
+            if (!selectedCustomer) {
+                alert("Erro: Cliente não selecionado para entrega.");
+                return;
+            }
+            if (!selectedMotoboy) {
+                alert("Erro: Motoboy não selecionado.");
+                return;
+            }
+        }
+
         // 0. VERIFICAR SE O CAIXA ESTÁ ABERTO (ANTES DE TUDO)
         try {
             const currentCash = await CashService.getCurrentRegister();
@@ -235,7 +319,6 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
             }
         } catch (error) {
             console.error("Erro ao verificar caixa:", error);
-            // Opcional: Bloquear ou permitir com aviso? Melhor bloquear se não tiver certeza.
             alert('Erro ao verificar status do caixa. Tente novamente.');
             return;
         }
@@ -243,28 +326,7 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
         const calculatedChange = cashReceived ? Math.max(0, parseFloat(cashReceived) - finalTotal) : 0;
 
         try {
-            // 1. Create Delivery Order if needed (Before clearing state)
-            if (saleType === 'delivery' && onAddDelivery) {
-                const itemsSummary = cart.map(i => `${i.quantity}x ${i.name}`).join(', ');
-                const newDelivery: DeliveryOrder = {
-                    id: `DEL-${Date.now().toString().slice(-6)}`,
-                    customerName: selectedCustomer ? selectedCustomer.name : 'Cliente Anônimo',
-                    phone: selectedCustomer?.phone || 'N/A',
-                    address: selectedCustomer?.address || 'Retirar na loja (Endereço pendente)',
-                    city: selectedCustomer?.city || 'Local',
-                    source: 'Loja Física',
-                    method: 'Motoboy',
-                    status: 'Pendente',
-                    totalValue: finalTotal,
-                    fee: parseFloat(deliveryFee) || 0, // Pass fee for report
-                    motoboyName: selectedMotoboy, // Pass motoboy name for report
-                    date: new Date().toISOString(),
-                    itemsSummary: itemsSummary.length > 50 ? itemsSummary.substring(0, 50) + '...' : itemsSummary,
-                };
-                onAddDelivery(newDelivery);
-            }
-
-            // 2. Capture Sale Data for Receipt
+            // 1. Capture Sale Data for Receipt
             const currentSaleData = {
                 items: [...cart],
                 customer: selectedCustomer,
@@ -281,7 +343,7 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
             };
             setCompletedSale(currentSaleData);
 
-            // 3. Add to Sales History (Extended with full details)
+            // 2. Add to Sales History (Extended with full details)
             const newTransaction: Transaction = {
                 id: `TRX-${Date.now().toString().slice(-6)}`,
                 date: new Date().toISOString(),
@@ -335,7 +397,7 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
                     await DeliveryService.create({
                         customerName: selectedCustomer.name,
                         phone: selectedCustomer.phone,
-                        address: selectedCustomer.address || '',
+                        address: deliveryAddress || selectedCustomer.address || '',
                         city: selectedCustomer.city || '',
                         source: 'Loja Física',
                         method: 'Motoboy',
@@ -349,7 +411,7 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
                     console.log('✅ Entrega criada com sucesso!');
                 } catch (deliveryError: any) {
                     console.error('⚠️ Erro ao criar entrega:', deliveryError);
-                    // Não bloqueia a venda se falhar a entrega
+                    alert('❌ ERRO AO CRIAR ENTREGA: ' + deliveryError.message);
                 }
             }
 
@@ -713,30 +775,50 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
                             <History size={12} /> Histórico
                         </button>
                     </label>
-                    <div className="flex gap-2">
-                        <div className="relative flex-1">
-                            <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
-                            <select
-                                className="w-full pl-9 pr-3 py-2 border border-[#ffc8cb] dark:border-pink-800 rounded-lg text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#ffc8cb]/50"
-                                value={selectedCustomer?.id || ''}
-                                onChange={(e) => {
-                                    const customer = customers.find(c => c.id === e.target.value);
-                                    setSelectedCustomer(customer || null);
-                                }}
-                            >
-                                <option value="">Cliente Balcão (Não identificado)</option>
-                                {customers.filter(c => c.status === 'Active').map(c => (
-                                    <option key={c.id} value={c.id}>{c.name} {c.phone ? `- ${c.phone}` : ''}</option>
-                                ))}
-                            </select>
+                    <div className="flex flex-col gap-2">
+                        {/* Search Input for Customer (Sidebar) */}
+                        <div className="relative">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
+                            <input
+                                type="text"
+                                placeholder="Buscar cliente..."
+                                className="w-full pl-8 pr-3 py-1.5 text-xs border border-[#ffc8cb] dark:border-pink-800 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-[#ffc8cb]"
+                                value={customerSearch}
+                                onChange={(e) => setCustomerSearch(e.target.value)}
+                            />
                         </div>
-                        <button
-                            onClick={() => setIsAddCustomerModalOpen(true)}
-                            className="px-3 bg-pink-100 dark:bg-pink-900 text-pink-600 dark:text-pink-300 rounded-lg hover:bg-pink-200 dark:hover:bg-pink-800 transition-colors"
-                            title="Adicionar Cliente Rápido"
-                        >
-                            <Plus size={18} />
-                        </button>
+
+                        <div className="flex gap-2">
+                            <div className="relative flex-1">
+                                <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                                <select
+                                    className="w-full pl-9 pr-3 py-2 border border-[#ffc8cb] dark:border-pink-800 rounded-lg text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#ffc8cb]/50"
+                                    value={selectedCustomer?.id || ''}
+                                    onChange={(e) => {
+                                        const customer = customers.find(c => c.id === e.target.value);
+                                        setSelectedCustomer(customer || null);
+                                        // Auto-fill address for state consistency
+                                        if (customer) {
+                                            setDeliveryAddress(customer.address || '');
+                                        } else {
+                                            setDeliveryAddress('');
+                                        }
+                                    }}
+                                >
+                                    <option value="">Cliente Balcão (Não identificado)</option>
+                                    {filteredCustomers.map(c => (
+                                        <option key={c.id} value={c.id}>{c.name} {c.phone ? `- ${c.phone}` : ''}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            <button
+                                onClick={() => setIsAddCustomerModalOpen(true)}
+                                className="px-3 bg-pink-100 dark:bg-pink-900 text-pink-600 dark:text-pink-300 rounded-lg hover:bg-pink-200 dark:hover:bg-pink-800 transition-colors"
+                                title="Adicionar Cliente Rápido"
+                            >
+                                <Plus size={18} />
+                            </button>
+                        </div>
                     </div>
                     {selectedCustomer && (
                         <div className="mt-3 text-xs text-pink-700 dark:text-pink-300 space-y-1 bg-white/50 dark:bg-black/20 p-2 rounded border border-pink-100 dark:border-pink-900/30">
@@ -893,21 +975,40 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
                                         {/* Delivery Details (Only if Delivery selected) */}
                                         {saleType === 'delivery' && (
                                             <div className="space-y-4 animate-in fade-in slide-in-from-top-2">
-                                                {/* Customer Selector */}
+                                                {/* Customer Selector with Search */}
                                                 <div>
                                                     <label className="block text-sm font-bold text-gray-500 uppercase mb-2 flex items-center gap-1">
                                                         <UserIcon size={16} /> Cliente
                                                     </label>
+
+                                                    {/* Search Input for Customer */}
+                                                    <div className="relative mb-2">
+                                                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                                                        <input
+                                                            type="text"
+                                                            placeholder="Filtrar clientes (Nome ou Telefone)..."
+                                                            className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-900/50 focus:outline-none focus:ring-2 focus:ring-pink-500/30"
+                                                            value={customerSearch}
+                                                            onChange={(e) => setCustomerSearch(e.target.value)}
+                                                        />
+                                                    </div>
+
                                                     <select
-                                                        className="w-full p-3 rounded-xl border border-gray-300 dark:border-gray-600 focus:border-pink-500 outline-none bg-white dark:bg-gray-800 text-gray-800 dark:text-white font-medium"
+                                                        className="w-full p-3 rounded-xl border border-gray-300 dark:border-gray-600 focus:border-pink-500 outline-none bg-white dark:bg-gray-800 text-gray-800 dark:text-white font-medium shadow-sm transition-all"
                                                         value={selectedCustomer?.id || ''}
                                                         onChange={(e) => {
                                                             const customer = customers.find(c => c.id === e.target.value);
                                                             setSelectedCustomer(customer || null);
+                                                            // Auto-fill address
+                                                            if (customer) {
+                                                                setDeliveryAddress(customer.address || '');
+                                                            } else {
+                                                                setDeliveryAddress('');
+                                                            }
                                                         }}
                                                     >
                                                         <option value="">Selecione o cliente...</option>
-                                                        {customers.filter(c => c.status === 'Active').map((customer) => (
+                                                        {filteredCustomers.map((customer) => (
                                                             <option key={customer.id} value={customer.id}>
                                                                 {customer.name} {customer.phone ? `- ${customer.phone}` : ''}
                                                             </option>
@@ -920,6 +1021,22 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
                                                         <Plus size={14} /> Cadastrar Novo Cliente
                                                     </button>
                                                 </div>
+
+                                                {/* Delivery Address (Editable) */}
+                                                {selectedCustomer && (
+                                                    <div className="animate-in fade-in slide-in-from-top-2">
+                                                        <label className="block text-sm font-bold text-gray-500 uppercase mb-2 flex items-center gap-1">
+                                                            <MapPin size={16} /> Endereço de Entrega
+                                                        </label>
+                                                        <textarea
+                                                            className="w-full p-3 rounded-xl border border-gray-300 dark:border-gray-600 focus:border-pink-500 outline-none bg-white dark:bg-gray-800 text-gray-800 dark:text-white font-medium resize-none shadow-sm transition-all"
+                                                            rows={2}
+                                                            placeholder="Endereço completo para entrega..."
+                                                            value={deliveryAddress}
+                                                            onChange={(e) => setDeliveryAddress(e.target.value)}
+                                                        />
+                                                    </div>
+                                                )}
 
                                                 {/* Motoboy Selector */}
                                                 <div>
@@ -1464,6 +1581,51 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
                             </button>
                         </div>
                         {renderHistoryList()}
+                    </div>
+                </div>
+            )}
+            {/* VARIATION SELECTION MODAL */}
+            {isVariationModalOpen && selectedProductForVariation && (
+                <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+                    <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setIsVariationModalOpen(false)}></div>
+                    <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-md relative animate-in fade-in zoom-in-95 duration-200 overflow-hidden">
+                        <div className="p-4 border-b border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/50 flex justify-between items-center">
+                            <h3 className="font-bold text-lg text-gray-800 dark:text-white">Selecione a Opção</h3>
+                            <button onClick={() => setIsVariationModalOpen(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
+                                <X size={20} />
+                            </button>
+                        </div>
+                        <div className="p-6">
+                            <div className="mb-4 flex items-center gap-3">
+                                {selectedProductForVariation.imageUrl && (
+                                    <img src={selectedProductForVariation.imageUrl} alt={selectedProductForVariation.name} className="w-12 h-12 rounded-lg object-cover border border-gray-200" />
+                                )}
+                                <div>
+                                    <p className="font-medium text-gray-900 dark:text-white">{selectedProductForVariation.name}</p>
+                                    <p className="text-sm text-gray-500">Escolha uma das variações abaixo:</p>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3 max-h-[60vh] overflow-y-auto">
+                                {currentVariations.map(variation => (
+                                    <button
+                                        key={variation.id}
+                                        onClick={() => handleSelectVariation(variation)}
+                                        className={`flex flex-col items-center justify-center p-3 rounded-lg border-2 transition-all ${variation.stock > 0
+                                                ? 'border-gray-200 dark:border-gray-600 hover:border-[#ffc8cb] hover:bg-[#ffc8cb]/10 cursor-pointer'
+                                                : 'border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 opacity-60 cursor-not-allowed'
+                                            }`}
+                                        disabled={variation.stock <= 0}
+                                    >
+                                        <span className="font-bold text-gray-800 dark:text-white">{variation.name}</span>
+                                        <span className="text-xs text-gray-500 uppercase">{variation.type}</span>
+                                        <div className="mt-2 text-xs font-medium px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">
+                                            Estoque: {variation.stock}
+                                        </div>
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
                     </div>
                 </div>
             )}

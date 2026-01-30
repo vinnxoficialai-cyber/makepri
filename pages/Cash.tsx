@@ -22,6 +22,7 @@ const Cash: React.FC = () => {
     const [showCloseModal, setShowCloseModal] = useState(false);
     const [showOpenModal, setShowOpenModal] = useState(false);
     const [showSangriaModal, setShowSangriaModal] = useState(false);
+    const [showSuprimentoModal, setShowSuprimentoModal] = useState(false);
 
     // Filter State
     const [historyFilters, setHistoryFilters] = useState({
@@ -38,6 +39,12 @@ const Cash: React.FC = () => {
     const [sangriaForm, setSangriaForm] = useState({
         amount: '',
         type: 'sangria', // 'sangria' | 'retirada'
+        description: ''
+    });
+
+    // Suprimento Form State
+    const [suprimentoForm, setSuprimentoForm] = useState({
+        amount: '',
         description: ''
     });
 
@@ -129,6 +136,29 @@ const Cash: React.FC = () => {
 
         setShowSangriaModal(false);
         setSangriaForm({ amount: '', type: 'sangria', description: '' });
+    };
+
+    const handleSaveSuprimento = () => {
+        const amount = parseFloat(suprimentoForm.amount);
+        if (!amount || amount <= 0) {
+            alert("Informe um valor válido.");
+            return;
+        }
+        if (!suprimentoForm.description.trim()) {
+            alert("Informe uma descrição para o suprimento.");
+            return;
+        }
+
+        addMovement({
+            type: 'supply',
+            description: suprimentoForm.description,
+            amount: amount,
+            paymentMethod: 'cash'
+        });
+
+        setShowSuprimentoModal(false);
+        setSuprimentoForm({ amount: '', description: '' });
+        alert('✅ Suprimento registrado com sucesso!');
     };
 
     // Filter Logic
@@ -269,7 +299,10 @@ const Cash: React.FC = () => {
 
             {/* Actions */}
             <div className={`grid grid-cols-2 md:grid-cols-4 gap-4 ${!isRegisterOpen ? 'opacity-50 pointer-events-none' : ''}`}>
-                <button className="p-4 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl hover:border-indigo-500 dark:hover:border-indigo-500 hover:shadow-md transition-all flex flex-col items-center gap-2 group">
+                <button
+                    onClick={() => setShowSuprimentoModal(true)}
+                    className="p-4 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl hover:border-indigo-500 dark:hover:border-indigo-500 hover:shadow-md transition-all flex flex-col items-center gap-2 group"
+                >
                     <div className="p-3 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 rounded-full group-hover:bg-emerald-100 dark:group-hover:bg-emerald-900/40 transition-colors">
                         <ArrowUpCircle size={24} />
                     </div>
@@ -633,6 +666,68 @@ const Cash: React.FC = () => {
                                 className="flex-1 bg-rose-600 hover:bg-rose-700 text-white py-3 rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
                             >
                                 <Save size={18} /> Confirmar Sangria
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* --- MODAL: SUPRIMENTO --- */}
+            {showSuprimentoModal && (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+                    <div className="absolute inset-0 bg-gray-900/60 backdrop-blur-sm" onClick={() => setShowSuprimentoModal(false)}></div>
+                    <div className="bg-white dark:bg-gray-800 w-full max-w-md rounded-xl shadow-2xl relative animate-in fade-in zoom-in-95 duration-200">
+                        <div className="p-5 border-b border-gray-100 dark:border-gray-700">
+                            <h3 className="font-bold text-xl text-gray-800 dark:text-white flex items-center gap-2">
+                                <ArrowUpCircle className="text-emerald-500" /> Suprimento de Caixa
+                            </h3>
+                            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                                Registre a entrada de dinheiro extra no caixa (troco, aporte, etc).
+                            </p>
+                        </div>
+
+                        <div className="p-6 space-y-4">
+                            <div className="bg-emerald-50 dark:bg-emerald-900/20 p-4 rounded-lg">
+                                <p className="text-xs text-emerald-600 dark:text-emerald-400 mb-1">Saldo Atual (Dinheiro)</p>
+                                <p className="text-2xl font-bold text-emerald-700 dark:text-emerald-300">R$ {totals.currentDrawerBalance.toFixed(2)}</p>
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Valor (R$)</label>
+                                <input
+                                    type="number"
+                                    className="w-full p-4 text-2xl font-bold border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-4 focus:ring-emerald-100 dark:focus:ring-emerald-900 focus:border-emerald-500 outline-none bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white"
+                                    placeholder="0,00"
+                                    value={suprimentoForm.amount}
+                                    onChange={(e) => setSuprimentoForm({ ...suprimentoForm, amount: e.target.value })}
+                                    autoFocus
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Descrição</label>
+                                <input
+                                    type="text"
+                                    className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white"
+                                    placeholder="Ex: Aporte de troco..."
+                                    value={suprimentoForm.description}
+                                    onChange={(e) => setSuprimentoForm({ ...suprimentoForm, description: e.target.value })}
+                                />
+                            </div>
+                        </div>
+
+                        <div className="p-4 border-t border-gray-100 dark:border-gray-700 flex gap-3">
+                            <button
+                                onClick={() => setShowSuprimentoModal(false)}
+                                className="flex-1 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 py-3 rounded-lg font-medium hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                onClick={handleSaveSuprimento}
+                                className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white py-3 rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
+                            >
+                                <Save size={18} /> Confirmar Suprimento
                             </button>
                         </div>
                     </div>

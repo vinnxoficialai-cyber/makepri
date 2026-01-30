@@ -23,6 +23,7 @@ export interface Product {
     minStock: number;
     unit: string;
     imageUrl?: string;
+    additionalImages?: string[];
     expiryDate?: string;
     // Extended fields
     brand?: string;
@@ -38,6 +39,18 @@ export interface Product {
     // Bundle specific
     type?: 'single' | 'bundle'; // 'single' is default
     bundleComponents?: BundleComponent[];
+    variations?: ProductVariation[];
+}
+
+export interface ProductVariation {
+    id: string;
+    productId: string;
+    name: string; // "P", "Vermelho"
+    type: string; // "Tamanho", "Cor"
+    stock: number;
+    sku?: string;
+    priceOverride?: number;
+    createdAt?: string;
 }
 
 export interface CompanySettings {
@@ -107,6 +120,8 @@ export interface DeliveryOrder {
 
 export interface CartItem extends Product {
     quantity: number;
+    variationId?: string;
+    variationName?: string;
 }
 
 export interface Transaction {
