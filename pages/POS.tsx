@@ -299,6 +299,7 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
                 changeAmount: calculatedChange,
                 isDelivery: saleType === 'delivery',
                 motoboy: selectedMotoboy,
+                customerId: selectedCustomer?.id,
                 customerSnapshot: selectedCustomer,
                 sellerId: user?.id,
                 sellerName: user?.name
@@ -320,6 +321,7 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
                 changeAmount: calculatedChange,
                 isDelivery: saleType === 'delivery',
                 motoboy: selectedMotoboy,
+                customerId: selectedCustomer?.id,
                 customerSnapshot: selectedCustomer,
                 sellerId: user?.id,
                 sellerName: user?.name

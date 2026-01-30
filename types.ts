@@ -126,6 +126,7 @@ export interface Transaction {
     changeAmount?: number;
     isDelivery?: boolean;
     motoboy?: string;
+    customerId?: string;
     customerSnapshot?: Customer | null;
     // Vendedor responsável
     sellerId?: string;

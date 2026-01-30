@@ -504,7 +504,9 @@ const Dashboard: React.FC<DashboardProps> = ({ user, users = [], salesGoals, onN
                                 <div className="bg-pink-50 dark:bg-pink-900/20 p-5 rounded-xl border border-pink-100 dark:border-pink-800 flex flex-col justify-between">
                                     <div className="flex justify-between items-start mb-2">
                                         <div className="flex items-center gap-2 text-pink-700 dark:text-pink-300 font-bold"><CalendarIcon size={18} /> Meta Mensal</div>
-                                        <span className="text-xs bg-white dark:bg-pink-900/50 px-2 py-1 rounded font-mono text-pink-600 dark:text-pink-300">Maio</span>
+                                        <span className="text-xs bg-white dark:bg-pink-900/50 px-2 py-1 rounded font-mono text-pink-600 dark:text-pink-300 capitalize">
+                                            {new Date().toLocaleString('pt-BR', { month: 'long' })}
+                                        </span>
                                     </div>
                                     <div className="mb-4">
                                         <span className="text-2xl font-black text-gray-800 dark:text-white">R$ {myPerformance.salesMonth.toLocaleString('pt-BR')}</span>
