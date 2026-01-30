@@ -395,10 +395,19 @@ const Delivery: React.FC<DeliveryProps> = ({ user }) => {
                             <div className="p-4 flex-1 flex flex-col gap-3 pointer-events-none">
                                 <div className={`flex items-start gap-2 text-sm p-2 rounded-lg ${delivery.method === 'Motoboy' ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-800 dark:text-emerald-300' : 'bg-purple-50 dark:bg-purple-900/20 text-purple-800 dark:text-purple-300'}`}>
                                     <MapPin size={16} className="mt-0.5 flex-shrink-0" />
-                                    <div>
-                                        <p className="text-[10px] font-bold uppercase opacity-70">
-                                            {delivery.method === 'Motoboy' ? 'Entregar para Cliente:' : 'Levar para Despacho:'}
-                                        </p>
+                                    <div className="flex-1">
+                                        <div className="flex justify-between items-start">
+                                            <p className="text-[10px] font-bold uppercase opacity-70">
+                                                {delivery.method === 'Motoboy' ? 'Entregar para Cliente:' : 'Levar para Despacho:'}
+                                            </p>
+
+                                            {/* PAGO Badge */}
+                                            {delivery.payoutStatus === 'Paid' && (
+                                                <span className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300 text-[10px] font-black px-1.5 py-0.5 rounded border border-emerald-200 dark:border-emerald-700 flex items-center gap-1">
+                                                    <DollarSign size={10} /> PAGO
+                                                </span>
+                                            )}
+                                        </div>
                                         <p className="font-medium leading-tight">{delivery.address}</p>
                                         <p className="text-xs opacity-80">{delivery.city}</p>
                                     </div>
@@ -478,11 +487,26 @@ const Delivery: React.FC<DeliveryProps> = ({ user }) => {
                                     <div key={motoboy} className="flex justify-between items-center p-4 bg-gray-50 dark:bg-gray-700/50 rounded-xl border border-gray-200 dark:border-gray-600">
                                         <div>
                                             <p className="font-bold text-gray-800 dark:text-white">{motoboy}</p>
-                                            <p className="text-xs text-gray-500">{data.count} entregas realizadas</p>
+                                            <p className="text-xs text-gray-500">{data.count} entregas pendentes</p>
                                         </div>
-                                        <div className="text-right">
-                                            <p className="text-sm text-gray-500 uppercase font-bold text-[10px]">A Pagar</p>
-                                            <p className="text-xl font-bold text-emerald-600 dark:text-emerald-400">R$ {data.totalFee.toFixed(2)}</p>
+                                        <div className="text-right flex items-center gap-3">
+                                            <div>
+                                                <p className="text-sm text-gray-500 uppercase font-bold text-[10px]">A Pagar</p>
+                                                <p className="text-xl font-bold text-emerald-600 dark:text-emerald-400">R$ {data.totalFee.toFixed(2)}</p>
+                                            </div>
+                                            <button
+                                                onClick={async () => {
+                                                    if (window.confirm(`Confirma o pagamento de R$ ${data.totalFee.toFixed(2)} para ${motoboy}?`)) {
+                                                        await DeliveryService.markAsPaid(motoboy);
+                                                        loadPayoutData(); // Refresh modal
+                                                        refresh(); // Refresh list background
+                                                    }
+                                                }}
+                                                className="bg-emerald-600 hover:bg-emerald-700 text-white p-2 rounded-lg shadow-sm"
+                                                title="Confirmar Pagamento"
+                                            >
+                                                <CheckCircle size={20} />
+                                            </button>
                                         </div>
                                     </div>
                                 ))}

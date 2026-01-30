@@ -627,33 +627,133 @@ export const DeliveryService = {
     async getAll(): Promise<DeliveryOrder[]> {
         const { data, error } = await supabase.from('deliveries').select('*').order('created_at', { ascending: false });
         if (error) throw error;
-        return (data || []).map(d => ({ id: d.order_id, customerName: d.customer_name, phone: d.phone || '', address: d.address, city: d.city || '', source: d.source as any, method: d.method as any, status: d.status as any, itemsSummary: d.items_summary || '', totalValue: Number(d.total_value) || 0, fee: Number(d.fee) || 0, motoboyName: d.motoboy_name, trackingCode: d.tracking_code, notes: d.notes, date: d.created_at }));
+        return (data || []).map(d => ({
+            id: d.order_id,
+            customerName: d.customer_name,
+            phone: d.phone || '',
+            address: d.address,
+            city: d.city || '',
+            source: d.source as any,
+            method: d.method as any,
+            status: d.status as any,
+            itemsSummary: d.items_summary || '',
+            totalValue: Number(d.total_value) || 0,
+            fee: Number(d.fee) || 0,
+            motoboyName: d.motoboy_name,
+            trackingCode: d.tracking_code,
+            notes: d.notes,
+            date: d.created_at,
+            payoutStatus: d.payout_status as any || 'Pending'
+        }));
     },
+
     async create(delivery: Partial<DeliveryOrder>): Promise<DeliveryOrder> {
-        const deliveryData = { order_id: delivery.id || `DEL-${Date.now().toString().slice(-6)}`, customer_name: delivery.customerName || '', phone: delivery.phone, address: delivery.address || '', city: delivery.city, source: delivery.source, method: delivery.method, status: delivery.status || 'Pendente', items_summary: delivery.itemsSummary, total_value: delivery.totalValue, fee: delivery.fee, motoboy_name: delivery.motoboyName, tracking_code: delivery.trackingCode, notes: delivery.notes };
+        const deliveryData = {
+            order_id: delivery.id || `DEL-${Date.now().toString().slice(-6)}`,
+            customer_name: delivery.customerName || '',
+            phone: delivery.phone,
+            address: delivery.address || '',
+            city: delivery.city,
+            source: delivery.source,
+            method: delivery.method,
+            status: delivery.status || 'Pendente',
+            items_summary: delivery.itemsSummary,
+            total_value: delivery.totalValue,
+            fee: delivery.fee,
+            motoboy_name: delivery.motoboyName,
+            tracking_code: delivery.trackingCode,
+            notes: delivery.notes,
+            payout_status: 'Pending'
+        };
+
         const { data, error } = await supabase.from('deliveries').insert([deliveryData]).select().single();
         if (error) throw error;
-        return { id: data.order_id, customerName: data.customer_name, phone: data.phone || '', address: data.address, city: data.city || '', source: data.source as any, method: data.method as any, status: data.status as any, itemsSummary: data.items_summary || '', totalValue: Number(data.total_value) || 0, fee: Number(data.fee) || 0, motoboyName: data.motoboy_name, trackingCode: data.tracking_code, notes: data.notes, date: data.created_at };
+
+        return {
+            id: data.order_id,
+            customerName: data.customer_name,
+            phone: data.phone || '',
+            address: data.address,
+            city: data.city || '',
+            source: data.source as any,
+            method: data.method as any,
+            status: data.status as any,
+            itemsSummary: data.items_summary || '',
+            totalValue: Number(data.total_value) || 0,
+            fee: Number(data.fee) || 0,
+            motoboyName: data.motoboy_name,
+            trackingCode: data.tracking_code,
+            notes: data.notes,
+            date: data.created_at,
+            payoutStatus: data.payout_status as any
+        };
     },
+
     async update(orderId: string, updates: Partial<DeliveryOrder>): Promise<DeliveryOrder> {
         const updateData: any = { updated_at: new Date().toISOString() };
         if (updates.status !== undefined) updateData.status = updates.status;
         if (updates.notes !== undefined) updateData.notes = updates.notes;
         if (updates.motoboyName !== undefined) updateData.motoboy_name = updates.motoboyName;
+        if (updates.payoutStatus !== undefined) updateData.payout_status = updates.payoutStatus;
+
         const { data, error } = await supabase.from('deliveries').update(updateData).eq('order_id', orderId).select().single();
         if (error) throw error;
-        return { id: data.order_id, customerName: data.customer_name, phone: data.phone || '', address: data.address, city: data.city || '', source: data.source as any, method: data.method as any, status: data.status as any, itemsSummary: data.items_summary || '', totalValue: Number(data.total_value) || 0, fee: Number(data.fee) || 0, motoboyName: data.motoboy_name, trackingCode: data.tracking_code, notes: data.notes, date: data.created_at };
+
+        return {
+            id: data.order_id,
+            customerName: data.customer_name,
+            phone: data.phone || '',
+            address: data.address,
+            city: data.city || '',
+            source: data.source as any,
+            method: data.method as any,
+            status: data.status as any,
+            itemsSummary: data.items_summary || '',
+            totalValue: Number(data.total_value) || 0,
+            fee: Number(data.fee) || 0,
+            motoboyName: data.motoboy_name,
+            trackingCode: data.tracking_code,
+            notes: data.notes,
+            date: data.created_at,
+            payoutStatus: data.payout_status as any
+        };
     },
+
     async delete(orderId: string): Promise<void> {
         const { error } = await supabase.from('deliveries').delete().eq('order_id', orderId);
         if (error) throw error;
     },
+
     async getPayoutReport(): Promise<Record<string, { count: number, totalFee: number }>> {
-        const { data, error } = await supabase.from('deliveries').select('motoboy_name, fee').eq('status', 'Entregue').eq('method', 'Motoboy');
+        // Only fetch pending payouts
+        const { data, error } = await supabase
+            .from('deliveries')
+            .select('motoboy_name, fee')
+            .eq('status', 'Entregue')
+            .eq('method', 'Motoboy')
+            .eq('payout_status', 'Pending'); // Filter only Pending
+
         if (error) throw error;
+
         const payoutByMotoboy: Record<string, { count: number, totalFee: number }> = {};
-        (data || []).forEach(d => { const name = d.motoboy_name || 'Não Atribuído'; if (!payoutByMotoboy[name]) payoutByMotoboy[name] = { count: 0, totalFee: 0 }; payoutByMotoboy[name].count += 1; payoutByMotoboy[name].totalFee += Number(d.fee) || 0; });
+        (data || []).forEach(d => {
+            const name = d.motoboy_name || 'Não Atribuído';
+            if (!payoutByMotoboy[name]) payoutByMotoboy[name] = { count: 0, totalFee: 0 };
+            payoutByMotoboy[name].count += 1;
+            payoutByMotoboy[name].totalFee += Number(d.fee) || 0;
+        });
         return payoutByMotoboy;
+    },
+
+    async markAsPaid(motoboyName: string): Promise<void> {
+        const { error } = await supabase
+            .from('deliveries')
+            .update({ payout_status: 'Paid' })
+            .eq('motoboy_name', motoboyName)
+            .eq('status', 'Entregue')
+            .eq('payout_status', 'Pending');
+
+        if (error) throw error;
     }
 };
 

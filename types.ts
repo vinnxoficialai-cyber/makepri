@@ -102,6 +102,7 @@ export interface DeliveryOrder {
     notes?: string; // Observation field
     date: string;
     itemsSummary: string; // Ex: "2x Batom, 1x Base"
+    payoutStatus?: 'Pending' | 'Paid'; // Status do repasse para o motoboy
 }
 
 export interface CartItem extends Product {
