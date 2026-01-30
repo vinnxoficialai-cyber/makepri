@@ -6,8 +6,8 @@ import {
     Plus, X, User, DollarSign, Calendar, FileText, Save, Users, Printer, Map, Trash2, Edit, AlertCircle, TrendingUp, History, Archive
 } from 'lucide-react';
 import { DeliveryOrder, User as UserType } from '../types';
-import { MOCK_CUSTOMERS, MOCK_USERS } from '../constants';
-import { useDeliveries } from '../lib/hooks';
+import { MOCK_CUSTOMERS } from '../constants';
+import { useDeliveries, useCustomers, useUsers } from '../lib/hooks';
 import { DeliveryService } from '../lib/database';
 
 interface DeliveryProps {
@@ -17,6 +17,11 @@ interface DeliveryProps {
 const Delivery: React.FC<DeliveryProps> = ({ user }) => {
     // Load deliveries from Supabase
     const { deliveries, loading, error, refresh } = useDeliveries();
+    // Load customers for selection
+    const { customers } = useCustomers();
+    // Load users (motoboys)
+    const { users } = useUsers();
+
     // View State (Active vs Archived)
     const [viewMode, setViewMode] = useState<'active' | 'archived'>('active');
     const [historyDate, setHistoryDate] = useState(new Date().toISOString().split('T')[0]);
@@ -56,8 +61,8 @@ const Delivery: React.FC<DeliveryProps> = ({ user }) => {
     const isMotoboy = user?.role === 'Motoboy';
     const isAdmin = user?.role === 'Administrador' || user?.role === 'Gerente';
 
-    // Get list of available motoboys from users
-    const availableMotoboys = MOCK_USERS.filter(u => u.role === 'Motoboy');
+    // Get list of available motoboys from real users
+    const availableMotoboys = users.filter(u => u.role === 'Motoboy');
 
     // --- LOGIC ---
     const filteredDeliveries = deliveries.filter(d => {
@@ -145,12 +150,12 @@ const Delivery: React.FC<DeliveryProps> = ({ user }) => {
     };
 
     const handleSelectCustomer = (customerId: string) => {
-        const customer = MOCK_CUSTOMERS.find(c => c.id === customerId);
+        const customer = customers.find(c => c.id === customerId);
         if (customer) {
             setNewDeliveryForm(prev => ({
                 ...prev,
                 customerName: customer.name,
-                phone: customer.phone,
+                phone: customer.phone || '',
                 address: customer.address || '',
                 city: customer.city || ''
             }));
@@ -746,7 +751,7 @@ const Delivery: React.FC<DeliveryProps> = ({ user }) => {
                                     defaultValue=""
                                 >
                                     <option value="" disabled>Selecione...</option>
-                                    {MOCK_CUSTOMERS.map(c => (
+                                    {customers.map(c => (
                                         <option key={c.id} value={c.id}>{c.name}</option>
                                     ))}
                                 </select>
