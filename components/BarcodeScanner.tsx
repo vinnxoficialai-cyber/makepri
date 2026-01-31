@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { Html5QrcodeScanner, Html5QrcodeSupportedFormats } from 'html5-qrcode';
+import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import { AlertCircle, Camera } from 'lucide-react';
 
 interface BarcodeScannerProps {
@@ -10,92 +10,118 @@ interface BarcodeScannerProps {
 const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScanSuccess, onScanFailure }) => {
     const [error, setError] = useState<string | null>(null);
     const [initialized, setInitialized] = useState(false);
-    const scannerRef = useRef<Html5QrcodeScanner | null>(null);
     const scannerId = "html5qr-code-full-region";
+    const scannerRef = useRef<Html5Qrcode | null>(null);
+    const isScanningRef = useRef(false);
 
     useEffect(() => {
-        // Timeout to ensure DOM element is rendered
-        const timer = setTimeout(() => {
-            if (scannerRef.current) {
-                return; // Already initialized
-            }
+        // Inicializar o scanner
+        const startScanner = async () => {
+            if (isScanningRef.current) return;
 
             try {
-                const scanner = new Html5QrcodeScanner(
-                    scannerId,
-                    {
-                        fps: 10,
-                        qrbox: { width: 250, height: 250 },
-                        aspectRatio: 1.0,
-                        formatsToSupport: [
-                            Html5QrcodeSupportedFormats.QR_CODE,
-                            Html5QrcodeSupportedFormats.EAN_13,
-                            Html5QrcodeSupportedFormats.EAN_8,
-                            Html5QrcodeSupportedFormats.CODE_128,
-                            Html5QrcodeSupportedFormats.UPC_A,
-                            Html5QrcodeSupportedFormats.UPC_E
-                        ],
-                        rememberLastUsedCamera: true
-                    },
-                    /* verbose= */ false
-                );
+                // Pequeno delay para garantir que o DOM está pronto
+                await new Promise(r => setTimeout(r, 100));
 
-                scannerRef.current = scanner;
+                const html5Qrcode = new Html5Qrcode(scannerId);
+                scannerRef.current = html5Qrcode;
 
-                scanner.render(
+                isScanningRef.current = true;
+
+                // Configuração da câmera
+                // Preferir câmera traseira (environment)
+                const config = {
+                    fps: 10,
+                    qrbox: { width: 250, height: 250 },
+                    aspectRatio: 1.0
+                };
+
+                await html5Qrcode.start(
+                    { facingMode: "environment" },
+                    config,
                     (decodedText) => {
-                        // Prevent multiple success triggers
-                        // scanner.clear(); // Taking out clear so they can scan multiple if needed, or parent handles close
+                        // Sucesso
                         onScanSuccess(decodedText);
                     },
                     (errorMessage) => {
-                        // Scan error (frame didn't find qr code) - ignore
+                        // Erro de leitura (normal enquanto procura)
+                        if (onScanFailure) onScanFailure(errorMessage);
                     }
                 );
 
                 setInitialized(true);
-
             } catch (err: any) {
-                console.error("Erro ao iniciar scanner:", err);
-                setError(err.message || "Falha ao iniciar câmera.");
+                console.error("Erro ao iniciar câmera:", err);
+                setError(err.message || "Erro ao acessar câmera. Verifique permissões.");
+                isScanningRef.current = false;
             }
-        }, 100);
+        };
 
+        startScanner();
+
+        // Cleanup function
         return () => {
-            clearTimeout(timer);
-            if (scannerRef.current) {
-                scannerRef.current.clear().catch(error => console.error("Failed to clear scanner", error));
-                scannerRef.current = null;
+            if (scannerRef.current && isScanningRef.current) {
+                scannerRef.current.stop().then(() => {
+                    scannerRef.current?.clear();
+                    isScanningRef.current = false;
+                }).catch(err => {
+                    console.error("Falha ao parar scanner:", err);
+                });
             }
         };
     }, []);
 
     return (
-        <div className="w-full max-w-sm mx-auto bg-black/5 dark:bg-black/40 p-4 rounded-xl border border-gray-200 dark:border-gray-700 relative">
+        <div className="w-full max-w-sm mx-auto bg-black rounded-xl overflow-hidden relative shadow-lg">
             {error ? (
-                <div className="flex flex-col items-center justify-center p-8 bg-white dark:bg-gray-800 rounded-lg text-center gap-2 min-h-[250px]">
+                <div className="flex flex-col items-center justify-center p-8 bg-white dark:bg-gray-800 text-center gap-2 min-h-[250px]">
                     <AlertCircle className="text-red-500" size={32} />
-                    <p className="font-bold text-gray-800 dark:text-white">Não foi possível acessar a câmera</p>
+                    <p className="font-bold text-gray-800 dark:text-white">Erro na Câmera</p>
                     <p className="text-xs text-gray-500">{error}</p>
-                    <div className="text-[10px] text-gray-400 mt-2 p-2 bg-gray-100 dark:bg-gray-700 rounded text-left">
-                        <p className="font-bold mb-1">Soluções possíveis:</p>
-                        <ul className="list-disc pl-3 space-y-0.5">
-                            <li>Verifique se permitiu o acesso à câmera.</li>
-                            <li>Em celulares, o site deve usar <strong>HTTPS</strong>.</li>
-                            <li>Tente usar outro navegador.</li>
-                        </ul>
-                    </div>
                 </div>
             ) : (
-                <div id={scannerId} className="w-full overflow-hidden rounded-lg bg-white dark:bg-gray-800"></div>
+                <>
+                    {/* Container do vídeo */}
+                    <div id={scannerId} className="w-full h-full min-h-[300px] bg-black"></div>
+
+                    {/* Overlay nativo estilizado (Scanning grid) */}
+                    {initialized && (
+                        <div className="absolute inset-0 pointer-events-none border-2 border-white/20 rounded-xl relative">
+                            {/* Central Box Focus */}
+                            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 border-2 border-pink-400 rounded-lg shadow-[0_0_0_999px_rgba(0,0,0,0.5)]">
+                                {/* Scan Line Animation */}
+                                <div className="absolute top-0 left-0 w-full h-0.5 bg-pink-500 shadow-[0_0_10px_#ec4899] animate-[scan_2s_infinite_linear]"></div>
+                            </div>
+
+                            <div className="absolute bottom-4 left-0 w-full text-center text-white text-xs font-bold drop-shadow-md">
+                                Aponte para o código
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Loading State */}
+                    {!initialized && !error && (
+                        <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900 text-white z-20">
+                            <Camera className="animate-pulse mb-3 text-pink-400" size={40} />
+                            <p className="text-sm font-medium">Ligando Câmera...</p>
+                        </div>
+                    )}
+                </>
             )}
 
-            {!initialized && !error && (
-                <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-100 dark:bg-gray-800 rounded-xl z-10">
-                    <Camera className="text-gray-400 animate-pulse mb-2" size={32} />
-                    <p className="text-sm text-gray-500">Iniciando câmera...</p>
-                </div>
-            )}
+            <style>{`
+                @keyframes scan {
+                    0% { top: 0%; opacity: 0; }
+                    10% { opacity: 1; }
+                    90% { opacity: 1; }
+                    100% { top: 100%; opacity: 0; }
+                }
+                #html5qr-code-full-region video {
+                    object-fit: cover !important;
+                    border-radius: 12px;
+                }
+            `}</style>
         </div>
     );
 };

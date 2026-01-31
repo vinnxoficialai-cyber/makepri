@@ -181,6 +181,9 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
     };
 
     const handleScanSuccess = (decodedText: string) => {
+        // ALWAYS populate the input field with the scanned code
+        setSkuInput(decodedText);
+
         const product = MOCK_PRODUCTS.find(p => p.sku.toLowerCase() === decodedText.toLowerCase());
 
         if (product) {
@@ -188,11 +191,14 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
             if (scannerMode === 'sale') {
                 addToCart(product);
                 setIsScannerOpen(false);
-                alert(`Produto adicionado: ${product.name}`);
             } else {
                 // Check Mode
                 setScannedProduct(product);
             }
+        } else {
+            // Optional: If you want to alert that it wasn't found immediately or just leave it in the box
+            // For now, leaving it in the box is what user asked ("appear in SKU CODE")
+            // Can also keep the scanner open if not found?
         }
     };
 
@@ -1612,8 +1618,8 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
                                         key={variation.id}
                                         onClick={() => handleSelectVariation(variation)}
                                         className={`flex flex-col items-center justify-center p-3 rounded-lg border-2 transition-all ${variation.stock > 0
-                                                ? 'border-gray-200 dark:border-gray-600 hover:border-[#ffc8cb] hover:bg-[#ffc8cb]/10 cursor-pointer'
-                                                : 'border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 opacity-60 cursor-not-allowed'
+                                            ? 'border-gray-200 dark:border-gray-600 hover:border-[#ffc8cb] hover:bg-[#ffc8cb]/10 cursor-pointer'
+                                            : 'border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 opacity-60 cursor-not-allowed'
                                             }`}
                                         disabled={variation.stock <= 0}
                                     >

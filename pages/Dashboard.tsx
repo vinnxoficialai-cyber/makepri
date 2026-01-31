@@ -302,11 +302,16 @@ const Dashboard: React.FC<DashboardProps> = ({ user, users = [], salesGoals, onN
     };
 
     const handleScanSuccess = (decodedText: string) => {
+        setSkuInput(decodedText);
+
         const product = products.find(p => p.sku.toLowerCase() === decodedText.toLowerCase());
-        playBeep();
         if (product) {
+            playBeep();
             addToCart(product);
-            alert(`Produto adicionado: ${product.name}`);
+            setSaleSuccess(true);
+            setTimeout(() => setSaleSuccess(false), 2000);
+            // setIsScannerOpen(false); // Optional: keep scanner open for multiple scans? User asked for SKU Code to appear.
+            // If we find it, we add it. If not, it just sits in the box.
         } else {
             setSkuInput(decodedText);
             alert('Produto não encontrado no sistema.');
