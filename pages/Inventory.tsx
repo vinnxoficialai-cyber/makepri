@@ -1,6 +1,6 @@
 
-import React, { useState, useEffect } from 'react';
-import { Search, Plus, MoreVertical, AlertCircle, X, Save, Tag, Truck, Clock, AlertTriangle, RotateCcw, Percent, Sparkles, Activity, Timer, ArrowRight, CheckCircle2, Calculator, Wallet, CreditCard, Package, ChevronRight, Barcode, Trash2, Camera, Image, Upload, Layers } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Search, Plus, MoreVertical, AlertCircle, X, Save, Tag, Truck, Clock, AlertTriangle, RotateCcw, Percent, Sparkles, Activity, Timer, ArrowRight, CheckCircle2, Calculator, Wallet, CreditCard, Package, ChevronRight, Barcode, Trash2, Camera, Image, Upload, Layers, ChevronLeft, ChevronsLeft, ChevronsRight } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { MOCK_PRODUCTS } from '../constants';
 import { Product, ProductCategory, User } from '../types';
@@ -151,16 +151,49 @@ const Inventory: React.FC<InventoryProps> = ({ user, autoFilterStalled, resetAut
         value: products.filter(p => p.category === cat).reduce((acc, p) => acc + (p.priceSale * p.stock), 0)
     }));
 
-    const filteredProducts = products.filter(p => {
-        const matchesSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            p.sku.toLowerCase().includes(searchTerm.toLowerCase());
-        const matchesCategory = selectedCategory === 'Todos' || p.category === selectedCategory;
-        // Use last sale date or updated date for logic
-        const lastMoveDate = productLastSaleMap.get(p.id) || p.updatedAt;
-        const matchesStalled = showStalledOnly ? getDaysSinceDate(lastMoveDate) > 30 : true;
-
-        return matchesSearch && matchesCategory && matchesStalled;
+    // --- PAGINATION STATE ---
+    const [currentPage, setCurrentPage] = useState(() => {
+        if (typeof window !== 'undefined') {
+            const saved = localStorage.getItem('inventory_page');
+            return saved ? Number(saved) : 1;
+        }
+        return 1;
     });
+    const itemsPerPage = 10;
+
+    useEffect(() => {
+        localStorage.setItem('inventory_page', currentPage.toString());
+    }, [currentPage]);
+
+    // --- FILTER & PAGINATION LOGIC ---
+    const filteredProducts = useMemo(() => {
+        return products.filter(p => {
+            const matchesSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                p.sku.toLowerCase().includes(searchTerm.toLowerCase());
+            const matchesCategory = selectedCategory === 'Todos' || p.category === selectedCategory;
+
+            // Use last sale date or updated date for logic
+            const lastMoveDate = productLastSaleMap.get(p.id) || p.updatedAt;
+            const matchesStalled = showStalledOnly ? getDaysSinceDate(lastMoveDate) > 30 : true;
+
+            return matchesSearch && matchesCategory && matchesStalled;
+        });
+    }, [products, searchTerm, selectedCategory, showStalledOnly, productLastSaleMap]);
+
+    // Ensure valid page if filter reduces count
+    useEffect(() => {
+        const totalPages = Math.ceil(filteredProducts.length / itemsPerPage);
+        if (currentPage > totalPages && totalPages > 0) {
+            setCurrentPage(1);
+        }
+    }, [filteredProducts.length]);
+
+    const paginatedProducts = useMemo(() => {
+        const startIndex = (currentPage - 1) * itemsPerPage;
+        return filteredProducts.slice(startIndex, startIndex + itemsPerPage);
+    }, [filteredProducts, currentPage]);
+
+    const totalPages = Math.ceil(filteredProducts.length / itemsPerPage);
 
     // --- SMART ANALYSIS LOGIC ---
     const analyzeProduct = (product: Product): ProductAnalysis => {
@@ -551,7 +584,7 @@ const Inventory: React.FC<InventoryProps> = ({ user, autoFilterStalled, resetAut
                 {/* --- MOBILE: LIST VIEW (Refactored to show all items naturally) --- */}
                 {/* Note: Added 'lg:hidden' and 'space-y-3' for vertical list without overflow constraints */}
                 <div className="lg:hidden space-y-3 pb-24 px-1">
-                    {filteredProducts.map((product) => {
+                    {paginatedProducts.map((product) => {
                         const isLowStock = product.stock <= product.minStock;
                         const lastSaleDate = productLastSaleMap.get(product.id);
                         // Se teve venda, usa data da venda. Se não, usa data de criação/update.
@@ -616,7 +649,7 @@ const Inventory: React.FC<InventoryProps> = ({ user, autoFilterStalled, resetAut
                             </div>
                         );
                     })}
-                    {filteredProducts.length === 0 && (
+                    {paginatedProducts.length === 0 && (
                         <div className="text-center py-12 text-gray-400">
                             <Package size={48} className="mx-auto mb-2 opacity-20" />
                             <p>Nenhum produto encontrado.</p>
@@ -639,7 +672,7 @@ const Inventory: React.FC<InventoryProps> = ({ user, autoFilterStalled, resetAut
                             </tr>
                         </thead>
                         <tbody className="text-sm divide-y divide-gray-100 dark:divide-gray-700">
-                            {filteredProducts.map((product) => {
+                            {paginatedProducts.map((product) => {
                                 const isLowStock = product.stock <= product.minStock;
                                 const margin = calculateMargin(product.priceCost, product.priceSale);
                                 // Lógica Real de Giro
@@ -736,6 +769,53 @@ const Inventory: React.FC<InventoryProps> = ({ user, autoFilterStalled, resetAut
                             })}
                         </tbody>
                     </table>
+
+                    {/* Pagination Controls */}
+                    {totalPages > 1 && (
+                        <div className="p-4 border-t border-gray-100 dark:border-gray-700 flex flex-col sm:flex-row justify-between items-center gap-4 bg-white dark:bg-gray-800">
+                            <span className="text-sm text-gray-500 dark:text-gray-400">
+                                Mostrando <span className="font-bold text-gray-800 dark:text-white">{(currentPage - 1) * itemsPerPage + 1}</span> a <span className="font-bold text-gray-800 dark:text-white">{Math.min(currentPage * itemsPerPage, filteredProducts.length)}</span> de <span className="font-bold text-gray-800 dark:text-white">{filteredProducts.length}</span> resultados
+                            </span>
+
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={() => setCurrentPage(1)}
+                                    disabled={currentPage === 1}
+                                    className="p-2 rounded-lg border border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed text-gray-600 dark:text-gray-300 transition-colors"
+                                >
+                                    <ChevronsLeft size={18} />
+                                </button>
+                                <button
+                                    onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                                    disabled={currentPage === 1}
+                                    className="p-2 rounded-lg border border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed text-gray-600 dark:text-gray-300 transition-colors flex items-center gap-1"
+                                >
+                                    <span className="hidden sm:inline">Anterior</span>
+                                    <ChevronLeft size={18} />
+                                </button>
+
+                                <span className="px-4 py-2 bg-gray-50 dark:bg-gray-700 rounded-lg text-sm font-bold text-gray-800 dark:text-white border border-gray-200 dark:border-gray-600">
+                                    {currentPage}
+                                </span>
+
+                                <button
+                                    onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                                    disabled={currentPage === totalPages}
+                                    className="p-2 rounded-lg border border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed text-gray-600 dark:text-gray-300 transition-colors flex items-center gap-1"
+                                >
+                                    <span className="hidden sm:inline">Próximo</span>
+                                    <ChevronRight size={18} />
+                                </button>
+                                <button
+                                    onClick={() => setCurrentPage(totalPages)}
+                                    disabled={currentPage === totalPages}
+                                    className="p-2 rounded-lg border border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed text-gray-600 dark:text-gray-300 transition-colors"
+                                >
+                                    <ChevronsRight size={18} />
+                                </button>
+                            </div>
+                        </div>
+                    )}
                 </div>
             </div>
 
@@ -839,7 +919,8 @@ const Inventory: React.FC<InventoryProps> = ({ user, autoFilterStalled, resetAut
                         </div>
                     </div>
                 </div>
-            )}
+            )
+            }
 
             {/* Add/Edit Product Modal */}
             {isModalOpen && (
