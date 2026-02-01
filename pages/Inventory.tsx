@@ -770,675 +770,680 @@ const Inventory: React.FC<InventoryProps> = ({ user, autoFilterStalled, resetAut
                         </tbody>
                     </table>
 
-                    {/* Pagination Controls */}
-                    {totalPages > 1 && (
-                        <div className="p-4 border-t border-gray-100 dark:border-gray-700 flex flex-col sm:flex-row justify-between items-center gap-4 bg-white dark:bg-gray-800">
-                            <span className="text-sm text-gray-500 dark:text-gray-400">
-                                Mostrando <span className="font-bold text-gray-800 dark:text-white">{(currentPage - 1) * itemsPerPage + 1}</span> a <span className="font-bold text-gray-800 dark:text-white">{Math.min(currentPage * itemsPerPage, filteredProducts.length)}</span> de <span className="font-bold text-gray-800 dark:text-white">{filteredProducts.length}</span> resultados
+                </div>
+                {/* Pagination Controls */}{/* Shared */}
+                {totalPages > 1 && (
+                    <div className="p-4 border-t border-gray-100 dark:border-gray-700 flex flex-col sm:flex-row justify-between items-center gap-4 bg-white dark:bg-gray-800">
+                        <span className="text-sm text-gray-500 dark:text-gray-400">
+                            Mostrando <span className="font-bold text-gray-800 dark:text-white">{(currentPage - 1) * itemsPerPage + 1}</span> a <span className="font-bold text-gray-800 dark:text-white">{Math.min(currentPage * itemsPerPage, filteredProducts.length)}</span> de <span className="font-bold text-gray-800 dark:text-white">{filteredProducts.length}</span> resultados
+                        </span>
+
+                        <div className="flex items-center gap-2">
+                            <button
+                                onClick={() => setCurrentPage(1)}
+                                disabled={currentPage === 1}
+                                className="p-2 rounded-lg border border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed text-gray-600 dark:text-gray-300 transition-colors"
+                            >
+                                <ChevronsLeft size={18} />
+                            </button>
+                            <button
+                                onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                                disabled={currentPage === 1}
+                                className="p-2 rounded-lg border border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed text-gray-600 dark:text-gray-300 transition-colors flex items-center gap-1"
+                            >
+                                <span className="hidden sm:inline">Anterior</span>
+                                <ChevronLeft size={18} />
+                            </button>
+
+                            <span className="px-4 py-2 bg-gray-50 dark:bg-gray-700 rounded-lg text-sm font-bold text-gray-800 dark:text-white border border-gray-200 dark:border-gray-600">
+                                {currentPage}
                             </span>
 
-                            <div className="flex items-center gap-2">
-                                <button
-                                    onClick={() => setCurrentPage(1)}
-                                    disabled={currentPage === 1}
-                                    className="p-2 rounded-lg border border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed text-gray-600 dark:text-gray-300 transition-colors"
-                                >
-                                    <ChevronsLeft size={18} />
-                                </button>
-                                <button
-                                    onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-                                    disabled={currentPage === 1}
-                                    className="p-2 rounded-lg border border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed text-gray-600 dark:text-gray-300 transition-colors flex items-center gap-1"
-                                >
-                                    <span className="hidden sm:inline">Anterior</span>
-                                    <ChevronLeft size={18} />
-                                </button>
-
-                                <span className="px-4 py-2 bg-gray-50 dark:bg-gray-700 rounded-lg text-sm font-bold text-gray-800 dark:text-white border border-gray-200 dark:border-gray-600">
-                                    {currentPage}
-                                </span>
-
-                                <button
-                                    onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
-                                    disabled={currentPage === totalPages}
-                                    className="p-2 rounded-lg border border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed text-gray-600 dark:text-gray-300 transition-colors flex items-center gap-1"
-                                >
-                                    <span className="hidden sm:inline">Próximo</span>
-                                    <ChevronRight size={18} />
-                                </button>
-                                <button
-                                    onClick={() => setCurrentPage(totalPages)}
-                                    disabled={currentPage === totalPages}
-                                    className="p-2 rounded-lg border border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed text-gray-600 dark:text-gray-300 transition-colors"
-                                >
-                                    <ChevronsRight size={18} />
-                                </button>
-                            </div>
+                            <button
+                                onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                                disabled={currentPage === totalPages}
+                                className="p-2 rounded-lg border border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed text-gray-600 dark:text-gray-300 transition-colors flex items-center gap-1"
+                            >
+                                <span className="hidden sm:inline">Próximo</span>
+                                <ChevronRight size={18} />
+                            </button>
+                            <button
+                                onClick={() => setCurrentPage(totalPages)}
+                                disabled={currentPage === totalPages}
+                                className="p-2 rounded-lg border border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed text-gray-600 dark:text-gray-300 transition-colors"
+                            >
+                                <ChevronsRight size={18} />
+                            </button>
                         </div>
-                    )}
-                </div>
+                    </div>
+                )}
             </div>
 
             {/* Smart Analysis Modal */}
-            {isAnalysisModalOpen && (
-                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-                    <div className="absolute inset-0 bg-gray-900/60 backdrop-blur-sm" onClick={() => setIsAnalysisModalOpen(false)}></div>
-                    <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-4xl relative flex flex-col max-h-[90vh] overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-                        {/* ... (Existing Analysis Modal Content) ... */}
-                        <div className="p-5 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center bg-indigo-50 dark:bg-indigo-900/20">
-                            <div>
-                                <h3 className="font-bold text-xl text-indigo-900 dark:text-indigo-300 flex items-center gap-2">
-                                    <Sparkles className="text-indigo-600 dark:text-indigo-400" /> Inteligência de Estoque
-                                </h3>
-                                <p className="text-sm text-indigo-700 dark:text-indigo-400 mt-1">
-                                    Análise preditiva baseada na movimentação dos produtos.
-                                </p>
-                            </div>
-                            <button onClick={() => setIsAnalysisModalOpen(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
-                                <X size={24} />
-                            </button>
-                        </div>
-
-                        <div className="flex-1 overflow-y-auto p-6">
-                            <div className="mb-6 bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg border border-blue-100 dark:border-blue-800">
-                                <h4 className="font-bold text-blue-800 dark:text-blue-300 mb-1 flex items-center gap-2">
-                                    <Activity size={18} /> Como funciona?
-                                </h4>
-                                <p className="text-sm text-blue-700 dark:text-blue-400">
-                                    O sistema analisa a média de vendas diárias de cada produto para estimar em quantos dias o estoque irá acabar (<b>Duração Est.</b>).
-                                    Com base nisso, sugerimos um novo <b>Estoque Mínimo</b> (segurança para 15 dias) para evitar que você perca vendas.
-                                </p>
-                            </div>
-
-                            <table className="w-full text-left">
-                                <thead className="bg-gray-50 dark:bg-gray-700/50 text-gray-500 dark:text-gray-400 uppercase text-xs sticky top-0">
-                                    <tr>
-                                        <th className="p-4">Produto</th>
-                                        <th className="p-4 text-center">Média Vendas/Dia</th>
-                                        <th className="p-4 text-center">Estoque Atual</th>
-                                        <th className="p-4 text-center">Duração Est.</th>
-                                        <th className="p-4 text-center">Min. Atual</th>
-                                        <th className="p-4 text-center text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20 rounded-t-lg border-b border-indigo-100 dark:border-indigo-800">Sugestão Min.</th>
-                                        <th className="p-4 text-right">Ação</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-gray-100 dark:divide-gray-700 text-sm">
-                                    {getAnalysisData().map((analysis, idx) => {
-                                        const { product, avgDailySales, daysRemaining, suggestedMinStock, status } = analysis;
-                                        if (status === 'healthy' && Math.abs(product.minStock - suggestedMinStock) < 2) return null;
-
-                                        return (
-                                            <tr key={idx} className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
-                                                <td className="p-4 font-medium text-gray-800 dark:text-white">
-                                                    {product.name}
-                                                    <span className="block text-xs text-gray-400 font-normal">{product.sku}</span>
-                                                </td>
-                                                <td className="p-4 text-center text-gray-600 dark:text-gray-300">
-                                                    {avgDailySales.toFixed(1)} un
-                                                </td>
-                                                <td className="p-4 text-center font-bold text-gray-800 dark:text-white">
-                                                    {product.stock}
-                                                </td>
-                                                <td className="p-4 text-center">
-                                                    <div className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold ${status === 'critical'
-                                                        ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
-                                                        : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
-                                                        }`}>
-                                                        <Timer size={12} /> {daysRemaining} dias
-                                                    </div>
-                                                </td>
-                                                <td className="p-4 text-center text-gray-500 dark:text-gray-400">
-                                                    {product.minStock}
-                                                </td>
-                                                <td className="p-4 text-center bg-indigo-50/50 dark:bg-indigo-900/10 font-bold text-indigo-700 dark:text-indigo-300">
-                                                    {suggestedMinStock}
-                                                </td>
-                                                <td className="p-4 text-right">
-                                                    {product.minStock !== suggestedMinStock && (
-                                                        <button
-                                                            onClick={() => applySuggestion(product.id, suggestedMinStock)}
-                                                            className="text-xs bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded transition-colors flex items-center gap-1 ml-auto shadow-sm"
-                                                            title="Atualizar estoque mínimo do produto"
-                                                        >
-                                                            Aplicar <ArrowRight size={12} />
-                                                        </button>
-                                                    )}
-                                                </td>
-                                            </tr>
-                                        );
-                                    })}
-                                </tbody>
-                            </table>
-
-                            {getAnalysisData().filter(a => a.status !== 'healthy' || Math.abs(a.product.minStock - a.suggestedMinStock) >= 2).length === 0 && (
-                                <div className="text-center py-10 text-gray-500 dark:text-gray-400">
-                                    <CheckCircle2 size={48} className="mx-auto mb-2 text-emerald-500 opacity-50" />
-                                    <p>Tudo certo! Seu estoque parece estar equilibrado com base nas vendas recentes.</p>
+            {
+                isAnalysisModalOpen && (
+                    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+                        <div className="absolute inset-0 bg-gray-900/60 backdrop-blur-sm" onClick={() => setIsAnalysisModalOpen(false)}></div>
+                        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-4xl relative flex flex-col max-h-[90vh] overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                            {/* ... (Existing Analysis Modal Content) ... */}
+                            <div className="p-5 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center bg-indigo-50 dark:bg-indigo-900/20">
+                                <div>
+                                    <h3 className="font-bold text-xl text-indigo-900 dark:text-indigo-300 flex items-center gap-2">
+                                        <Sparkles className="text-indigo-600 dark:text-indigo-400" /> Inteligência de Estoque
+                                    </h3>
+                                    <p className="text-sm text-indigo-700 dark:text-indigo-400 mt-1">
+                                        Análise preditiva baseada na movimentação dos produtos.
+                                    </p>
                                 </div>
-                            )}
+                                <button onClick={() => setIsAnalysisModalOpen(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
+                                    <X size={24} />
+                                </button>
+                            </div>
+
+                            <div className="flex-1 overflow-y-auto p-6">
+                                <div className="mb-6 bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg border border-blue-100 dark:border-blue-800">
+                                    <h4 className="font-bold text-blue-800 dark:text-blue-300 mb-1 flex items-center gap-2">
+                                        <Activity size={18} /> Como funciona?
+                                    </h4>
+                                    <p className="text-sm text-blue-700 dark:text-blue-400">
+                                        O sistema analisa a média de vendas diárias de cada produto para estimar em quantos dias o estoque irá acabar (<b>Duração Est.</b>).
+                                        Com base nisso, sugerimos um novo <b>Estoque Mínimo</b> (segurança para 15 dias) para evitar que você perca vendas.
+                                    </p>
+                                </div>
+
+                                <table className="w-full text-left">
+                                    <thead className="bg-gray-50 dark:bg-gray-700/50 text-gray-500 dark:text-gray-400 uppercase text-xs sticky top-0">
+                                        <tr>
+                                            <th className="p-4">Produto</th>
+                                            <th className="p-4 text-center">Média Vendas/Dia</th>
+                                            <th className="p-4 text-center">Estoque Atual</th>
+                                            <th className="p-4 text-center">Duração Est.</th>
+                                            <th className="p-4 text-center">Min. Atual</th>
+                                            <th className="p-4 text-center text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20 rounded-t-lg border-b border-indigo-100 dark:border-indigo-800">Sugestão Min.</th>
+                                            <th className="p-4 text-right">Ação</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-100 dark:divide-gray-700 text-sm">
+                                        {getAnalysisData().map((analysis, idx) => {
+                                            const { product, avgDailySales, daysRemaining, suggestedMinStock, status } = analysis;
+                                            if (status === 'healthy' && Math.abs(product.minStock - suggestedMinStock) < 2) return null;
+
+                                            return (
+                                                <tr key={idx} className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
+                                                    <td className="p-4 font-medium text-gray-800 dark:text-white">
+                                                        {product.name}
+                                                        <span className="block text-xs text-gray-400 font-normal">{product.sku}</span>
+                                                    </td>
+                                                    <td className="p-4 text-center text-gray-600 dark:text-gray-300">
+                                                        {avgDailySales.toFixed(1)} un
+                                                    </td>
+                                                    <td className="p-4 text-center font-bold text-gray-800 dark:text-white">
+                                                        {product.stock}
+                                                    </td>
+                                                    <td className="p-4 text-center">
+                                                        <div className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold ${status === 'critical'
+                                                            ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                                                            : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+                                                            }`}>
+                                                            <Timer size={12} /> {daysRemaining} dias
+                                                        </div>
+                                                    </td>
+                                                    <td className="p-4 text-center text-gray-500 dark:text-gray-400">
+                                                        {product.minStock}
+                                                    </td>
+                                                    <td className="p-4 text-center bg-indigo-50/50 dark:bg-indigo-900/10 font-bold text-indigo-700 dark:text-indigo-300">
+                                                        {suggestedMinStock}
+                                                    </td>
+                                                    <td className="p-4 text-right">
+                                                        {product.minStock !== suggestedMinStock && (
+                                                            <button
+                                                                onClick={() => applySuggestion(product.id, suggestedMinStock)}
+                                                                className="text-xs bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded transition-colors flex items-center gap-1 ml-auto shadow-sm"
+                                                                title="Atualizar estoque mínimo do produto"
+                                                            >
+                                                                Aplicar <ArrowRight size={12} />
+                                                            </button>
+                                                        )}
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+
+                                {getAnalysisData().filter(a => a.status !== 'healthy' || Math.abs(a.product.minStock - a.suggestedMinStock) >= 2).length === 0 && (
+                                    <div className="text-center py-10 text-gray-500 dark:text-gray-400">
+                                        <CheckCircle2 size={48} className="mx-auto mb-2 text-emerald-500 opacity-50" />
+                                        <p>Tudo certo! Seu estoque parece estar equilibrado com base nas vendas recentes.</p>
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     </div>
-                </div>
-            )
+                )
             }
 
             {/* Add/Edit Product Modal */}
-            {isModalOpen && (
-                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-                    <div className="absolute inset-0 bg-gray-900/40 backdrop-blur-sm" onClick={() => setIsModalOpen(false)}></div>
-                    <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-3xl relative flex flex-col max-h-[90vh] overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-                        {/* Header */}
-                        <div className="p-5 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center bg-gray-50 dark:bg-gray-700/30">
-                            <h3 className="font-bold text-lg text-gray-800 dark:text-white flex items-center gap-2">
-                                {newProduct.id ? 'Editar Produto' : 'Novo Produto'}
-                                {hasVariations && <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">Passo {step}/2</span>}
-                            </h3>
-                            <button onClick={() => setIsModalOpen(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full p-1 transition-colors">
-                                <X size={20} />
-                            </button>
-                        </div>
+            {
+                isModalOpen && (
+                    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+                        <div className="absolute inset-0 bg-gray-900/40 backdrop-blur-sm" onClick={() => setIsModalOpen(false)}></div>
+                        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-3xl relative flex flex-col max-h-[90vh] overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                            {/* Header */}
+                            <div className="p-5 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center bg-gray-50 dark:bg-gray-700/30">
+                                <h3 className="font-bold text-lg text-gray-800 dark:text-white flex items-center gap-2">
+                                    {newProduct.id ? 'Editar Produto' : 'Novo Produto'}
+                                    {hasVariations && <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">Passo {step}/2</span>}
+                                </h3>
+                                <button onClick={() => setIsModalOpen(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full p-1 transition-colors">
+                                    <X size={20} />
+                                </button>
+                            </div>
 
-                        {/* STEP 1: BASIC INFO */}
-                        {step === 1 && (
-                            <form id="product-form" onSubmit={handleSaveProduct} className="flex-1 overflow-y-auto p-6 space-y-6">
+                            {/* STEP 1: BASIC INFO */}
+                            {step === 1 && (
+                                <form id="product-form" onSubmit={handleSaveProduct} className="flex-1 overflow-y-auto p-6 space-y-6">
 
-                                {/* Image Upload (Multi-Slot) */}
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Imagens do Produto (Até 3)</label>
-                                    <div className="flex items-start gap-4">
-                                        {/* Main Image */}
-                                        <div className="flex flex-col gap-1">
-                                            <span className="text-[10px] text-gray-500 font-medium ml-1">Principal</span>
-                                            <div className="relative w-28 h-28 rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-600 flex items-center justify-center bg-gray-50 dark:bg-gray-700 overflow-hidden group hover:border-[#ffc8cb] transition-colors shadow-sm">
-                                                {newProduct.imageUrl ? (
-                                                    <>
-                                                        <img src={newProduct.imageUrl} alt="Principal" className="w-full h-full object-cover" />
-                                                        <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                                            <button type="button" onClick={() => removeImage(0)} className="text-white hover:text-red-400 p-1 bg-black/20 rounded-full transition-transform hover:scale-110">
-                                                                <Trash2 size={20} />
-                                                            </button>
-                                                        </div>
-                                                    </>
-                                                ) : (
-                                                    <div className="text-gray-400 flex flex-col items-center">
-                                                        <Image size={24} />
-                                                        <span className="text-[10px] mt-1 font-medium">Capa</span>
-                                                    </div>
-                                                )}
-                                                <input
-                                                    type="file"
-                                                    className="absolute inset-0 opacity-0 cursor-pointer"
-                                                    accept="image/jpeg, image/jpg, image/png"
-                                                    onChange={(e) => handleImageUpload(e, 0)}
-                                                    disabled={!!newProduct.imageUrl}
-                                                />
-                                            </div>
-                                        </div>
-
-                                        {/* Additional Images */}
-                                        {[1, 2].map((slotIndex) => {
-                                            const imgUrl = newProduct.additionalImages?.[slotIndex - 1] || '';
-                                            return (
-                                                <div key={slotIndex} className="flex flex-col gap-1">
-                                                    <span className="text-[10px] text-gray-500 font-medium ml-1">Extra {slotIndex}</span>
-                                                    <div className="relative w-20 h-20 mt-auto rounded-lg border-2 border-dashed border-gray-200 dark:border-gray-600 flex items-center justify-center bg-gray-50 dark:bg-gray-700/50 overflow-hidden group hover:border-[#ffc8cb] transition-colors">
-                                                        {imgUrl ? (
-                                                            <>
-                                                                <img src={imgUrl} alt={`Extra ${slotIndex}`} className="w-full h-full object-cover" />
-                                                                <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                                                    <button type="button" onClick={() => removeImage(slotIndex)} className="text-white hover:text-red-400 p-1 bg-black/20 rounded-full transition-transform hover:scale-110">
-                                                                        <Trash2 size={16} />
-                                                                    </button>
-                                                                </div>
-                                                            </>
-                                                        ) : (
-                                                            <div className="text-gray-300 flex flex-col items-center">
-                                                                <Plus size={20} />
+                                    {/* Image Upload (Multi-Slot) */}
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Imagens do Produto (Até 3)</label>
+                                        <div className="flex items-start gap-4">
+                                            {/* Main Image */}
+                                            <div className="flex flex-col gap-1">
+                                                <span className="text-[10px] text-gray-500 font-medium ml-1">Principal</span>
+                                                <div className="relative w-28 h-28 rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-600 flex items-center justify-center bg-gray-50 dark:bg-gray-700 overflow-hidden group hover:border-[#ffc8cb] transition-colors shadow-sm">
+                                                    {newProduct.imageUrl ? (
+                                                        <>
+                                                            <img src={newProduct.imageUrl} alt="Principal" className="w-full h-full object-cover" />
+                                                            <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                                                <button type="button" onClick={() => removeImage(0)} className="text-white hover:text-red-400 p-1 bg-black/20 rounded-full transition-transform hover:scale-110">
+                                                                    <Trash2 size={20} />
+                                                                </button>
                                                             </div>
-                                                        )}
-                                                        <input
-                                                            type="file"
-                                                            className="absolute inset-0 opacity-0 cursor-pointer"
-                                                            accept="image/jpeg, image/jpg, image/png"
-                                                            onChange={(e) => handleImageUpload(e, slotIndex)}
-                                                            disabled={!!imgUrl}
-                                                        />
-                                                    </div>
+                                                        </>
+                                                    ) : (
+                                                        <div className="text-gray-400 flex flex-col items-center">
+                                                            <Image size={24} />
+                                                            <span className="text-[10px] mt-1 font-medium">Capa</span>
+                                                        </div>
+                                                    )}
+                                                    <input
+                                                        type="file"
+                                                        className="absolute inset-0 opacity-0 cursor-pointer"
+                                                        accept="image/jpeg, image/jpg, image/png"
+                                                        onChange={(e) => handleImageUpload(e, 0)}
+                                                        disabled={!!newProduct.imageUrl}
+                                                    />
                                                 </div>
-                                            );
-                                        })}
-
-                                        <div className="flex-1 min-w-[120px] ml-2 text-xs text-gray-500 dark:text-gray-400 self-center">
-                                            <p className="flex items-center gap-1 mb-1"><CheckCircle2 size={12} className="text-emerald-500" /> JPEG / PNG</p>
-                                            <p className="mb-2">Max: 5MB</p>
-                                            <p className="leading-tight text-[10px] text-gray-400">Clique nos slots para adicionar fotos secundárias.</p>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* Category Selection */}
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Categoria do Produto</label>
-                                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                                        {Object.values(ProductCategory).map(cat => (
-                                            <div
-                                                key={cat}
-                                                onClick={() => setNewProduct({ ...newProduct, category: cat })}
-                                                className={`cursor-pointer border rounded-lg p-3 text-center text-sm transition-all ${newProduct.category === cat
-                                                    ? 'border-[#ffc8cb] bg-[#ffc8cb]/20 text-pink-800 dark:text-pink-300 ring-1 ring-[#ffc8cb]'
-                                                    : 'border-gray-200 dark:border-gray-600 dark:text-gray-300 hover:border-gray-300 dark:hover:border-gray-500'
-                                                    }`}
-                                            >
-                                                {cat}
                                             </div>
-                                        ))}
-                                    </div>
-                                </div>
 
-                                {/* Basic Info */}
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <div className="md:col-span-2">
-                                        <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Nome do Produto</label>
-                                        <input
-                                            required
-                                            type="text"
-                                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-[#ffc8cb]/50 focus:border-[#ffc8cb] outline-none transition-all bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                                            placeholder="Ex: Camiseta Básica Algodão"
-                                            value={newProduct.name || ''}
-                                            onChange={e => setNewProduct({ ...newProduct, name: e.target.value })}
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Código (SKU)</label>
-                                        <div className="flex gap-2">
-                                            <input
-                                                type="text"
-                                                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-[#ffc8cb]/50 focus:border-[#ffc8cb] outline-none transition-all bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                                                placeholder="Automático se vazio"
-                                                value={newProduct.sku || ''}
-                                                onChange={e => setNewProduct({ ...newProduct, sku: e.target.value })}
-                                            />
-                                            <button
-                                                type="button"
-                                                onClick={() => setIsScannerOpen(!isScannerOpen)}
-                                                className={`p-2 rounded-lg border transition-colors ${isScannerOpen ? 'bg-pink-100 border-pink-300 text-pink-600' : 'bg-gray-100 border-gray-300 text-gray-600 hover:bg-gray-200'}`}
-                                                title="Ler Código de Barras"
-                                            >
-                                                <Camera size={18} />
-                                            </button>
+                                            {/* Additional Images */}
+                                            {[1, 2].map((slotIndex) => {
+                                                const imgUrl = newProduct.additionalImages?.[slotIndex - 1] || '';
+                                                return (
+                                                    <div key={slotIndex} className="flex flex-col gap-1">
+                                                        <span className="text-[10px] text-gray-500 font-medium ml-1">Extra {slotIndex}</span>
+                                                        <div className="relative w-20 h-20 mt-auto rounded-lg border-2 border-dashed border-gray-200 dark:border-gray-600 flex items-center justify-center bg-gray-50 dark:bg-gray-700/50 overflow-hidden group hover:border-[#ffc8cb] transition-colors">
+                                                            {imgUrl ? (
+                                                                <>
+                                                                    <img src={imgUrl} alt={`Extra ${slotIndex}`} className="w-full h-full object-cover" />
+                                                                    <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                                                        <button type="button" onClick={() => removeImage(slotIndex)} className="text-white hover:text-red-400 p-1 bg-black/20 rounded-full transition-transform hover:scale-110">
+                                                                            <Trash2 size={16} />
+                                                                        </button>
+                                                                    </div>
+                                                                </>
+                                                            ) : (
+                                                                <div className="text-gray-300 flex flex-col items-center">
+                                                                    <Plus size={20} />
+                                                                </div>
+                                                            )}
+                                                            <input
+                                                                type="file"
+                                                                className="absolute inset-0 opacity-0 cursor-pointer"
+                                                                accept="image/jpeg, image/jpg, image/png"
+                                                                onChange={(e) => handleImageUpload(e, slotIndex)}
+                                                                disabled={!!imgUrl}
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+
+                                            <div className="flex-1 min-w-[120px] ml-2 text-xs text-gray-500 dark:text-gray-400 self-center">
+                                                <p className="flex items-center gap-1 mb-1"><CheckCircle2 size={12} className="text-emerald-500" /> JPEG / PNG</p>
+                                                <p className="mb-2">Max: 5MB</p>
+                                                <p className="leading-tight text-[10px] text-gray-400">Clique nos slots para adicionar fotos secundárias.</p>
+                                            </div>
                                         </div>
-                                        {isScannerOpen && (
-                                            <div className="mt-2 relative">
-                                                <BarcodeScanner
-                                                    onScanSuccess={handleScanSuccess}
-                                                    onScanFailure={(err) => { }}
-                                                />
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setIsScannerOpen(false)}
-                                                    className="absolute top-2 right-2 bg-white/80 p-1 rounded-full text-red-500 hover:text-red-700 font-bold text-xs"
+                                    </div>
+
+                                    {/* Category Selection */}
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Categoria do Produto</label>
+                                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                                            {Object.values(ProductCategory).map(cat => (
+                                                <div
+                                                    key={cat}
+                                                    onClick={() => setNewProduct({ ...newProduct, category: cat })}
+                                                    className={`cursor-pointer border rounded-lg p-3 text-center text-sm transition-all ${newProduct.category === cat
+                                                        ? 'border-[#ffc8cb] bg-[#ffc8cb]/20 text-pink-800 dark:text-pink-300 ring-1 ring-[#ffc8cb]'
+                                                        : 'border-gray-200 dark:border-gray-600 dark:text-gray-300 hover:border-gray-300 dark:hover:border-gray-500'
+                                                        }`}
                                                 >
-                                                    <X size={16} />
-                                                </button>
-                                            </div>
-                                        )}
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Marca</label>
-                                        <input
-                                            type="text"
-                                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-[#ffc8cb]/50 focus:border-[#ffc8cb] outline-none transition-all bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                                            placeholder="Ex: Nike, Natura..."
-                                            value={newProduct.brand || ''}
-                                            onChange={e => setNewProduct({ ...newProduct, brand: e.target.value })}
-                                        />
-                                    </div>
-                                </div>
-
-                                {/* Extended Details */}
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div>
-                                        <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Fornecedor</label>
-                                        <div className="relative">
-                                            <Truck size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                                            <input
-                                                type="text"
-                                                className="w-full pl-8 pr-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-[#ffc8cb]/50 focus:border-[#ffc8cb] outline-none transition-all bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                                                placeholder="Nome do Fornecedor"
-                                                value={newProduct.supplier || ''}
-                                                onChange={e => setNewProduct({ ...newProduct, supplier: e.target.value })}
-                                            />
-                                        </div>
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Coleção</label>
-                                        <input
-                                            type="text"
-                                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-[#ffc8cb]/50 focus:border-[#ffc8cb] outline-none transition-all bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                                            placeholder="Ex: Verão 2024"
-                                            value={newProduct.collection || ''}
-                                            onChange={e => setNewProduct({ ...newProduct, collection: e.target.value })}
-                                        />
-                                    </div>
-                                </div>
-
-                                {/* Description */}
-                                <div>
-                                    <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Descrição Detalhada</label>
-                                    <textarea
-                                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-[#ffc8cb]/50 focus:border-[#ffc8cb] outline-none transition-all h-20 resize-none text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                                        placeholder="Detalhes sobre o produto, material, etc."
-                                        value={newProduct.description || ''}
-                                        onChange={e => setNewProduct({ ...newProduct, description: e.target.value })}
-                                    />
-                                </div>
-
-                                {/* VARIATION CHECKBOX */}
-                                <div className="bg-purple-50 dark:bg-purple-900/10 p-4 rounded-lg border border-purple-100 dark:border-purple-800">
-                                    <label className="flex items-center gap-2 cursor-pointer">
-                                        <input
-                                            type="checkbox"
-                                            className="w-4 h-4 text-purple-600 rounded focus:ring-purple-500"
-                                            checked={hasVariations}
-                                            onChange={e => setHasVariations(e.target.checked)}
-                                        />
-                                        <span className="font-medium text-purple-900 dark:text-purple-300 flex items-center gap-2">
-                                            <Layers size={16} /> Este produto possui variações (Tamanho, Cor, etc)
-                                        </span>
-                                    </label>
-                                    {hasVariations && <p className="text-xs text-purple-600 dark:text-purple-400 mt-2 ml-6">O estoque será gerenciado individualmente por variação no próximo passo.</p>}
-                                </div>
-
-                                {/* Inventory & Pricing */}
-                                <div className="bg-emerald-50/50 dark:bg-emerald-900/10 p-4 rounded-lg border border-emerald-100 dark:border-emerald-900/30">
-                                    <h4 className="text-xs font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider mb-3">Financeiro e Estoque</h4>
-                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                                        <div>
-                                            <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Preço Custo</label>
-                                            <div className="relative">
-                                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs">R$</span>
-                                                <input
-                                                    type="number"
-                                                    className="w-full pl-8 pr-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-[#ffc8cb]/50 focus:border-[#ffc8cb] outline-none transition-all bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                                                    placeholder="0.00"
-                                                    value={newProduct.priceCost || ''}
-                                                    onChange={e => setNewProduct({ ...newProduct, priceCost: parseFloat(e.target.value) })}
-                                                />
-                                            </div>
-                                        </div>
-                                        <div>
-                                            <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1 flex justify-between">
-                                                Preço Venda
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setIsCalcModalOpen(true)}
-                                                    className="text-[#ffc8cb] hover:text-pink-400 transition-colors"
-                                                    title="Calculadora de Preço"
-                                                >
-                                                    <Calculator size={14} />
-                                                </button>
-                                            </label>
-                                            <div className="relative">
-                                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs">R$</span>
-                                                <input
-                                                    type="number"
-                                                    className="w-full pl-8 pr-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-[#ffc8cb]/50 focus:border-[#ffc8cb] outline-none transition-all bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                                                    placeholder="0.00"
-                                                    value={newProduct.priceSale || ''}
-                                                    onChange={e => setNewProduct({ ...newProduct, priceSale: parseFloat(e.target.value) })}
-                                                />
-                                            </div>
-                                        </div>
-                                        <div>
-                                            <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
-                                                % Comissão <span className="text-gray-400">(Vend)</span>
-                                            </label>
-                                            <div className="relative">
-                                                <input
-                                                    type="number"
-                                                    className="w-full pl-3 pr-8 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-[#ffc8cb]/50 focus:border-[#ffc8cb] outline-none transition-all bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                                                    placeholder="0"
-                                                    value={newProduct.commissionRate || ''}
-                                                    onChange={e => setNewProduct({ ...newProduct, commissionRate: parseFloat(e.target.value) })}
-                                                />
-                                                <Percent size={12} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                                            </div>
-                                        </div>
-                                        <div>
-                                            <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Lucro Líquido</label>
-                                            <div className="px-3 py-2 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-sm text-emerald-600 dark:text-emerald-400 font-bold flex justify-between">
-                                                <span>R$ {calcEstimatedProfit().toFixed(2)}</span>
-                                            </div>
-                                        </div>
-                                        <div className="md:col-span-2">
-                                            <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Qtd. Estoque {hasVariations && '(Calculado Auto)'}</label>
-                                            <input
-                                                type="number"
-                                                disabled={hasVariations}
-                                                className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg outline-none transition-all ${hasVariations ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-[#ffc8cb]/50 focus:border-[#ffc8cb]'}`}
-                                                value={hasVariations ? variationsList.reduce((acc, v) => acc + (Number(v.stock) || 0), 0) : (newProduct.stock || '')}
-                                                onChange={e => setNewProduct({ ...newProduct, stock: parseInt(e.target.value) })}
-                                            />
-                                        </div>
-                                        <div className="md:col-span-2">
-                                            <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Estoque Mín.</label>
-                                            <input
-                                                type="number"
-                                                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-[#ffc8cb]/50 focus:border-[#ffc8cb] outline-none transition-all bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                                                value={newProduct.minStock || ''}
-                                                onChange={e => setNewProduct({ ...newProduct, minStock: parseInt(e.target.value) })}
-                                            />
-                                        </div>
-                                    </div>
-                                </div>
-                            </form>
-                        )}
-
-                        {/* STEP 2: VARIATIONS */}
-                        {step === 2 && (
-                            <div className="flex-1 overflow-y-auto p-6 space-y-6">
-                                <div className="bg-gray-50 dark:bg-gray-700/30 p-4 rounded-lg border border-gray-200 dark:border-gray-600">
-                                    <h4 className="font-bold text-gray-800 dark:text-white mb-4 flex items-center gap-2"><Plus size={16} /> Adicionar Variação</h4>
-                                    <div className="grid grid-cols-2 md:grid-cols-5 gap-3 items-end">
-                                        <div className="col-span-1">
-                                            <label className="block text-xs font-medium text-gray-500 mb-1">Tipo</label>
-                                            <select
-                                                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white dark:bg-gray-700 dark:text-white dark:border-gray-600"
-                                                value={currentVariation.type}
-                                                onChange={e => setCurrentVariation({ ...currentVariation, type: e.target.value })}
-                                            >
-                                                {variationTypes.map(t => <option key={t} value={t}>{t}</option>)}
-                                            </select>
-                                        </div>
-                                        <div className="col-span-1 md:col-span-2">
-                                            <label className="block text-xs font-medium text-gray-500 mb-1">Nome/Valor (ex: P, Azul)</label>
-                                            <input
-                                                type="text"
-                                                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white dark:bg-gray-700 dark:text-white dark:border-gray-600"
-                                                value={currentVariation.name}
-                                                onChange={e => setCurrentVariation({ ...currentVariation, name: e.target.value })}
-                                                placeholder="Ex: P, 38, Vermelho"
-                                            />
-                                        </div>
-                                        <div className="col-span-1">
-                                            <label className="block text-xs font-medium text-gray-500 mb-1">Estoque</label>
-                                            <input
-                                                type="number"
-                                                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white dark:bg-gray-700 dark:text-white dark:border-gray-600"
-                                                value={currentVariation.stock}
-                                                onChange={e => setCurrentVariation({ ...currentVariation, stock: Number(e.target.value) })}
-                                            />
-                                        </div>
-                                        <div className="col-span-1">
-                                            <button
-                                                type="button"
-                                                onClick={addVariationToList}
-                                                className="w-full py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 text-sm font-medium"
-                                            >
-                                                Adicionar
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* List */}
-                                <div className="border rounded-lg overflow-hidden dark:border-gray-700">
-                                    <table className="w-full text-left text-sm">
-                                        <thead className="bg-gray-50 dark:bg-gray-700/50">
-                                            <tr>
-                                                <th className="p-3 font-medium text-gray-500 dark:text-gray-400">Tipo</th>
-                                                <th className="p-3 font-medium text-gray-500 dark:text-gray-400">Nome</th>
-                                                <th className="p-3 font-medium text-gray-500 dark:text-gray-400 text-center">Estoque</th>
-                                                <th className="p-3 font-medium text-gray-500 dark:text-gray-400 text-right">Ação</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y dark:divide-gray-700">
-                                            {variationsList.map((v, idx) => (
-                                                <tr key={idx} className="hover:bg-gray-50 dark:hover:bg-gray-700/50 text-gray-800 dark:text-white">
-                                                    <td className="p-3">{v.type}</td>
-                                                    <td className="p-3 font-medium">{v.name}</td>
-                                                    <td className="p-3 text-center">{v.stock}</td>
-                                                    <td className="p-3 text-right">
-                                                        <button onClick={() => removeVariationFromList(idx)} className="text-red-500 hover:text-red-700 dark:hover:text-red-400"><Trash2 size={16} /></button>
-                                                    </td>
-                                                </tr>
+                                                    {cat}
+                                                </div>
                                             ))}
-                                            {variationsList.length === 0 && (
-                                                <tr>
-                                                    <td colSpan={4} className="p-8 text-center text-gray-400">Nenhuma variação adicionada ainda.</td>
-                                                </tr>
+                                        </div>
+                                    </div>
+
+                                    {/* Basic Info */}
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div className="md:col-span-2">
+                                            <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Nome do Produto</label>
+                                            <input
+                                                required
+                                                type="text"
+                                                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-[#ffc8cb]/50 focus:border-[#ffc8cb] outline-none transition-all bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                                                placeholder="Ex: Camiseta Básica Algodão"
+                                                value={newProduct.name || ''}
+                                                onChange={e => setNewProduct({ ...newProduct, name: e.target.value })}
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Código (SKU)</label>
+                                            <div className="flex gap-2">
+                                                <input
+                                                    type="text"
+                                                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-[#ffc8cb]/50 focus:border-[#ffc8cb] outline-none transition-all bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                                                    placeholder="Automático se vazio"
+                                                    value={newProduct.sku || ''}
+                                                    onChange={e => setNewProduct({ ...newProduct, sku: e.target.value })}
+                                                />
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setIsScannerOpen(!isScannerOpen)}
+                                                    className={`p-2 rounded-lg border transition-colors ${isScannerOpen ? 'bg-pink-100 border-pink-300 text-pink-600' : 'bg-gray-100 border-gray-300 text-gray-600 hover:bg-gray-200'}`}
+                                                    title="Ler Código de Barras"
+                                                >
+                                                    <Camera size={18} />
+                                                </button>
+                                            </div>
+                                            {isScannerOpen && (
+                                                <div className="mt-2 relative">
+                                                    <BarcodeScanner
+                                                        onScanSuccess={handleScanSuccess}
+                                                        onScanFailure={(err) => { }}
+                                                    />
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setIsScannerOpen(false)}
+                                                        className="absolute top-2 right-2 bg-white/80 p-1 rounded-full text-red-500 hover:text-red-700 font-bold text-xs"
+                                                    >
+                                                        <X size={16} />
+                                                    </button>
+                                                </div>
                                             )}
-                                        </tbody>
-                                    </table>
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Marca</label>
+                                            <input
+                                                type="text"
+                                                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-[#ffc8cb]/50 focus:border-[#ffc8cb] outline-none transition-all bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                                                placeholder="Ex: Nike, Natura..."
+                                                value={newProduct.brand || ''}
+                                                onChange={e => setNewProduct({ ...newProduct, brand: e.target.value })}
+                                            />
+                                        </div>
+                                    </div>
+
+                                    {/* Extended Details */}
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Fornecedor</label>
+                                            <div className="relative">
+                                                <Truck size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                                                <input
+                                                    type="text"
+                                                    className="w-full pl-8 pr-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-[#ffc8cb]/50 focus:border-[#ffc8cb] outline-none transition-all bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                                                    placeholder="Nome do Fornecedor"
+                                                    value={newProduct.supplier || ''}
+                                                    onChange={e => setNewProduct({ ...newProduct, supplier: e.target.value })}
+                                                />
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Coleção</label>
+                                            <input
+                                                type="text"
+                                                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-[#ffc8cb]/50 focus:border-[#ffc8cb] outline-none transition-all bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                                                placeholder="Ex: Verão 2024"
+                                                value={newProduct.collection || ''}
+                                                onChange={e => setNewProduct({ ...newProduct, collection: e.target.value })}
+                                            />
+                                        </div>
+                                    </div>
+
+                                    {/* Description */}
+                                    <div>
+                                        <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Descrição Detalhada</label>
+                                        <textarea
+                                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-[#ffc8cb]/50 focus:border-[#ffc8cb] outline-none transition-all h-20 resize-none text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                                            placeholder="Detalhes sobre o produto, material, etc."
+                                            value={newProduct.description || ''}
+                                            onChange={e => setNewProduct({ ...newProduct, description: e.target.value })}
+                                        />
+                                    </div>
+
+                                    {/* VARIATION CHECKBOX */}
+                                    <div className="bg-purple-50 dark:bg-purple-900/10 p-4 rounded-lg border border-purple-100 dark:border-purple-800">
+                                        <label className="flex items-center gap-2 cursor-pointer">
+                                            <input
+                                                type="checkbox"
+                                                className="w-4 h-4 text-purple-600 rounded focus:ring-purple-500"
+                                                checked={hasVariations}
+                                                onChange={e => setHasVariations(e.target.checked)}
+                                            />
+                                            <span className="font-medium text-purple-900 dark:text-purple-300 flex items-center gap-2">
+                                                <Layers size={16} /> Este produto possui variações (Tamanho, Cor, etc)
+                                            </span>
+                                        </label>
+                                        {hasVariations && <p className="text-xs text-purple-600 dark:text-purple-400 mt-2 ml-6">O estoque será gerenciado individualmente por variação no próximo passo.</p>}
+                                    </div>
+
+                                    {/* Inventory & Pricing */}
+                                    <div className="bg-emerald-50/50 dark:bg-emerald-900/10 p-4 rounded-lg border border-emerald-100 dark:border-emerald-900/30">
+                                        <h4 className="text-xs font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider mb-3">Financeiro e Estoque</h4>
+                                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                            <div>
+                                                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Preço Custo</label>
+                                                <div className="relative">
+                                                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs">R$</span>
+                                                    <input
+                                                        type="number"
+                                                        className="w-full pl-8 pr-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-[#ffc8cb]/50 focus:border-[#ffc8cb] outline-none transition-all bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                                                        placeholder="0.00"
+                                                        value={newProduct.priceCost || ''}
+                                                        onChange={e => setNewProduct({ ...newProduct, priceCost: parseFloat(e.target.value) })}
+                                                    />
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1 flex justify-between">
+                                                    Preço Venda
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setIsCalcModalOpen(true)}
+                                                        className="text-[#ffc8cb] hover:text-pink-400 transition-colors"
+                                                        title="Calculadora de Preço"
+                                                    >
+                                                        <Calculator size={14} />
+                                                    </button>
+                                                </label>
+                                                <div className="relative">
+                                                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs">R$</span>
+                                                    <input
+                                                        type="number"
+                                                        className="w-full pl-8 pr-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-[#ffc8cb]/50 focus:border-[#ffc8cb] outline-none transition-all bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                                                        placeholder="0.00"
+                                                        value={newProduct.priceSale || ''}
+                                                        onChange={e => setNewProduct({ ...newProduct, priceSale: parseFloat(e.target.value) })}
+                                                    />
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+                                                    % Comissão <span className="text-gray-400">(Vend)</span>
+                                                </label>
+                                                <div className="relative">
+                                                    <input
+                                                        type="number"
+                                                        className="w-full pl-3 pr-8 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-[#ffc8cb]/50 focus:border-[#ffc8cb] outline-none transition-all bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                                                        placeholder="0"
+                                                        value={newProduct.commissionRate || ''}
+                                                        onChange={e => setNewProduct({ ...newProduct, commissionRate: parseFloat(e.target.value) })}
+                                                    />
+                                                    <Percent size={12} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Lucro Líquido</label>
+                                                <div className="px-3 py-2 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-sm text-emerald-600 dark:text-emerald-400 font-bold flex justify-between">
+                                                    <span>R$ {calcEstimatedProfit().toFixed(2)}</span>
+                                                </div>
+                                            </div>
+                                            <div className="md:col-span-2">
+                                                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Qtd. Estoque {hasVariations && '(Calculado Auto)'}</label>
+                                                <input
+                                                    type="number"
+                                                    disabled={hasVariations}
+                                                    className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg outline-none transition-all ${hasVariations ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-[#ffc8cb]/50 focus:border-[#ffc8cb]'}`}
+                                                    value={hasVariations ? variationsList.reduce((acc, v) => acc + (Number(v.stock) || 0), 0) : (newProduct.stock || '')}
+                                                    onChange={e => setNewProduct({ ...newProduct, stock: parseInt(e.target.value) })}
+                                                />
+                                            </div>
+                                            <div className="md:col-span-2">
+                                                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Estoque Mín.</label>
+                                                <input
+                                                    type="number"
+                                                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-[#ffc8cb]/50 focus:border-[#ffc8cb] outline-none transition-all bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                                                    value={newProduct.minStock || ''}
+                                                    onChange={e => setNewProduct({ ...newProduct, minStock: parseInt(e.target.value) })}
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+                                </form>
+                            )}
+
+                            {/* STEP 2: VARIATIONS */}
+                            {step === 2 && (
+                                <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                                    <div className="bg-gray-50 dark:bg-gray-700/30 p-4 rounded-lg border border-gray-200 dark:border-gray-600">
+                                        <h4 className="font-bold text-gray-800 dark:text-white mb-4 flex items-center gap-2"><Plus size={16} /> Adicionar Variação</h4>
+                                        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 items-end">
+                                            <div className="col-span-1">
+                                                <label className="block text-xs font-medium text-gray-500 mb-1">Tipo</label>
+                                                <select
+                                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white dark:bg-gray-700 dark:text-white dark:border-gray-600"
+                                                    value={currentVariation.type}
+                                                    onChange={e => setCurrentVariation({ ...currentVariation, type: e.target.value })}
+                                                >
+                                                    {variationTypes.map(t => <option key={t} value={t}>{t}</option>)}
+                                                </select>
+                                            </div>
+                                            <div className="col-span-1 md:col-span-2">
+                                                <label className="block text-xs font-medium text-gray-500 mb-1">Nome/Valor (ex: P, Azul)</label>
+                                                <input
+                                                    type="text"
+                                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white dark:bg-gray-700 dark:text-white dark:border-gray-600"
+                                                    value={currentVariation.name}
+                                                    onChange={e => setCurrentVariation({ ...currentVariation, name: e.target.value })}
+                                                    placeholder="Ex: P, 38, Vermelho"
+                                                />
+                                            </div>
+                                            <div className="col-span-1">
+                                                <label className="block text-xs font-medium text-gray-500 mb-1">Estoque</label>
+                                                <input
+                                                    type="number"
+                                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white dark:bg-gray-700 dark:text-white dark:border-gray-600"
+                                                    value={currentVariation.stock}
+                                                    onChange={e => setCurrentVariation({ ...currentVariation, stock: Number(e.target.value) })}
+                                                />
+                                            </div>
+                                            <div className="col-span-1">
+                                                <button
+                                                    type="button"
+                                                    onClick={addVariationToList}
+                                                    className="w-full py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 text-sm font-medium"
+                                                >
+                                                    Adicionar
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* List */}
+                                    <div className="border rounded-lg overflow-hidden dark:border-gray-700">
+                                        <table className="w-full text-left text-sm">
+                                            <thead className="bg-gray-50 dark:bg-gray-700/50">
+                                                <tr>
+                                                    <th className="p-3 font-medium text-gray-500 dark:text-gray-400">Tipo</th>
+                                                    <th className="p-3 font-medium text-gray-500 dark:text-gray-400">Nome</th>
+                                                    <th className="p-3 font-medium text-gray-500 dark:text-gray-400 text-center">Estoque</th>
+                                                    <th className="p-3 font-medium text-gray-500 dark:text-gray-400 text-right">Ação</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y dark:divide-gray-700">
+                                                {variationsList.map((v, idx) => (
+                                                    <tr key={idx} className="hover:bg-gray-50 dark:hover:bg-gray-700/50 text-gray-800 dark:text-white">
+                                                        <td className="p-3">{v.type}</td>
+                                                        <td className="p-3 font-medium">{v.name}</td>
+                                                        <td className="p-3 text-center">{v.stock}</td>
+                                                        <td className="p-3 text-right">
+                                                            <button onClick={() => removeVariationFromList(idx)} className="text-red-500 hover:text-red-700 dark:hover:text-red-400"><Trash2 size={16} /></button>
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                                {variationsList.length === 0 && (
+                                                    <tr>
+                                                        <td colSpan={4} className="p-8 text-center text-gray-400">Nenhuma variação adicionada ainda.</td>
+                                                    </tr>
+                                                )}
+                                            </tbody>
+                                        </table>
+                                    </div>
+
+                                    <div className="text-right text-sm text-gray-500 dark:text-gray-400">
+                                        Total em Estoque: <span className="font-bold text-gray-800 dark:text-white">{variationsList.reduce((acc, v) => acc + (Number(v.stock) || 0), 0)}</span>
+                                    </div>
+                                </div>
+                            )}
+
+                            <div className="p-4 border-t border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/30 flex justify-end gap-3">
+                                {step === 2 && (
+                                    <button
+                                        onClick={() => setStep(1)}
+                                        className="px-4 py-2 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg text-sm font-medium transition-colors"
+                                        type="button"
+                                    >
+                                        Voltar
+                                    </button>
+                                )}
+                                {step === 1 && (
+                                    <button
+                                        onClick={() => setIsModalOpen(false)}
+                                        className="px-4 py-2 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg text-sm font-medium transition-colors"
+                                        type="button"
+                                    >
+                                        Cancelar
+                                    </button>
+                                )}
+                                <button
+                                    onClick={handleSaveProduct}
+                                    className="px-6 py-2 bg-[#ffc8cb] hover:bg-[#ffb6b9] text-gray-900 rounded-lg text-sm font-medium shadow-md shadow-pink-200 transition-all flex items-center gap-2"
+                                >
+                                    {hasVariations && step === 1 ? (
+                                        <>Próximo <ArrowRight size={16} /></>
+                                    ) : (
+                                        <><Save size={16} /> Salvar Produto</>
+                                    )}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )
+            }
+
+            {/* --- PRICING CALCULATOR MODAL (Nested/Overlay) --- */}
+            {
+                isCalcModalOpen && (
+                    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+                        <div className="absolute inset-0 bg-gray-900/50 backdrop-blur-sm" onClick={() => setIsCalcModalOpen(false)}></div>
+                        <div className="bg-white dark:bg-gray-800 w-full max-w-md rounded-xl shadow-2xl relative animate-in fade-in zoom-in-95 duration-200 border border-gray-200 dark:border-gray-700">
+                            <div className="p-4 border-b border-gray-100 dark:border-gray-700 bg-indigo-50 dark:bg-indigo-900/20 flex justify-between items-center">
+                                <h3 className="font-bold text-lg text-indigo-900 dark:text-indigo-300 flex items-center gap-2">
+                                    <Calculator size={20} /> Precificação Inteligente
+                                </h3>
+                                <button onClick={() => setIsCalcModalOpen(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
+                                    <X size={20} />
+                                </button>
+                            </div>
+
+                            <div className="p-6 space-y-5">
+                                <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-900/30 rounded-lg">
+                                    <p className="text-xs text-blue-700 dark:text-blue-300">
+                                        Custo Base do Produto: <strong>R$ {newProduct.priceCost ? newProduct.priceCost.toFixed(2) : '0.00'}</strong>
+                                        <br />
+                                        Comissão Vendedor: <strong>{newProduct.commissionRate || 0}%</strong>
+                                    </p>
                                 </div>
 
-                                <div className="text-right text-sm text-gray-500 dark:text-gray-400">
-                                    Total em Estoque: <span className="font-bold text-gray-800 dark:text-white">{variationsList.reduce((acc, v) => acc + (Number(v.stock) || 0), 0)}</span>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="col-span-2">
+                                        <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Margem de Lucro Desejada (%)</label>
+                                        <div className="relative">
+                                            <input
+                                                type="number"
+                                                className="w-full pl-3 pr-8 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-200 dark:focus:ring-indigo-900 outline-none bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                                                value={calcData.margin}
+                                                onChange={e => setCalcData({ ...calcData, margin: parseFloat(e.target.value) })}
+                                            />
+                                            <Percent size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Taxa Cartão/Pix (%)</label>
+                                        <input
+                                            type="number"
+                                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg outline-none bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm"
+                                            value={calcData.taxCard}
+                                            onChange={e => setCalcData({ ...calcData, taxCard: parseFloat(e.target.value) })}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Taxa Plataforma (%)</label>
+                                        <input
+                                            type="number"
+                                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg outline-none bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm"
+                                            value={calcData.taxPlatform}
+                                            onChange={e => setCalcData({ ...calcData, taxPlatform: parseFloat(e.target.value) })}
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="border-t border-gray-100 dark:border-gray-700 pt-4">
+                                    <p className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase text-center mb-2">Preço Sugerido de Venda</p>
+                                    <div className="text-3xl font-bold text-indigo-600 dark:text-indigo-400 text-center bg-gray-50 dark:bg-gray-700/50 p-4 rounded-xl border border-indigo-100 dark:border-indigo-900/30">
+                                        R$ {calcResult.suggestedPrice.toFixed(2)}
+                                    </div>
+                                    <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400 mt-2 px-2">
+                                        <span>Lucro Liq: <span className="text-emerald-600 dark:text-emerald-400 font-bold">R$ {calcResult.netProfit.toFixed(2)}</span></span>
+                                        <span>Taxas Totais: <span className="text-rose-600 dark:text-rose-400 font-bold">R$ {calcResult.totalFees.toFixed(2)}</span></span>
+                                    </div>
                                 </div>
                             </div>
-                        )}
 
-                        <div className="p-4 border-t border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/30 flex justify-end gap-3">
-                            {step === 2 && (
+                            <div className="p-4 border-t border-gray-100 dark:border-gray-700 flex gap-3 bg-gray-50 dark:bg-gray-700/30">
                                 <button
-                                    onClick={() => setStep(1)}
-                                    className="px-4 py-2 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg text-sm font-medium transition-colors"
-                                    type="button"
-                                >
-                                    Voltar
-                                </button>
-                            )}
-                            {step === 1 && (
-                                <button
-                                    onClick={() => setIsModalOpen(false)}
-                                    className="px-4 py-2 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg text-sm font-medium transition-colors"
-                                    type="button"
+                                    onClick={() => setIsCalcModalOpen(false)}
+                                    className="flex-1 py-2 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg text-sm font-medium transition-colors"
                                 >
                                     Cancelar
                                 </button>
-                            )}
-                            <button
-                                onClick={handleSaveProduct}
-                                className="px-6 py-2 bg-[#ffc8cb] hover:bg-[#ffb6b9] text-gray-900 rounded-lg text-sm font-medium shadow-md shadow-pink-200 transition-all flex items-center gap-2"
-                            >
-                                {hasVariations && step === 1 ? (
-                                    <>Próximo <ArrowRight size={16} /></>
-                                ) : (
-                                    <><Save size={16} /> Salvar Produto</>
-                                )}
-                            </button>
+                                <button
+                                    onClick={applyCalculatedPrice}
+                                    className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-bold shadow-md transition-all flex items-center justify-center gap-2"
+                                >
+                                    <CheckCircle2 size={16} /> Usar Preço
+                                </button>
+                            </div>
                         </div>
                     </div>
-                </div>
-            )}
-
-            {/* --- PRICING CALCULATOR MODAL (Nested/Overlay) --- */}
-            {isCalcModalOpen && (
-                <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
-                    <div className="absolute inset-0 bg-gray-900/50 backdrop-blur-sm" onClick={() => setIsCalcModalOpen(false)}></div>
-                    <div className="bg-white dark:bg-gray-800 w-full max-w-md rounded-xl shadow-2xl relative animate-in fade-in zoom-in-95 duration-200 border border-gray-200 dark:border-gray-700">
-                        <div className="p-4 border-b border-gray-100 dark:border-gray-700 bg-indigo-50 dark:bg-indigo-900/20 flex justify-between items-center">
-                            <h3 className="font-bold text-lg text-indigo-900 dark:text-indigo-300 flex items-center gap-2">
-                                <Calculator size={20} /> Precificação Inteligente
-                            </h3>
-                            <button onClick={() => setIsCalcModalOpen(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
-                                <X size={20} />
-                            </button>
-                        </div>
-
-                        <div className="p-6 space-y-5">
-                            <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-900/30 rounded-lg">
-                                <p className="text-xs text-blue-700 dark:text-blue-300">
-                                    Custo Base do Produto: <strong>R$ {newProduct.priceCost ? newProduct.priceCost.toFixed(2) : '0.00'}</strong>
-                                    <br />
-                                    Comissão Vendedor: <strong>{newProduct.commissionRate || 0}%</strong>
-                                </p>
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="col-span-2">
-                                    <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Margem de Lucro Desejada (%)</label>
-                                    <div className="relative">
-                                        <input
-                                            type="number"
-                                            className="w-full pl-3 pr-8 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-200 dark:focus:ring-indigo-900 outline-none bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                                            value={calcData.margin}
-                                            onChange={e => setCalcData({ ...calcData, margin: parseFloat(e.target.value) })}
-                                        />
-                                        <Percent size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                                    </div>
-                                </div>
-
-                                <div>
-                                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Taxa Cartão/Pix (%)</label>
-                                    <input
-                                        type="number"
-                                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg outline-none bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm"
-                                        value={calcData.taxCard}
-                                        onChange={e => setCalcData({ ...calcData, taxCard: parseFloat(e.target.value) })}
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Taxa Plataforma (%)</label>
-                                    <input
-                                        type="number"
-                                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg outline-none bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm"
-                                        value={calcData.taxPlatform}
-                                        onChange={e => setCalcData({ ...calcData, taxPlatform: parseFloat(e.target.value) })}
-                                    />
-                                </div>
-                            </div>
-
-                            <div className="border-t border-gray-100 dark:border-gray-700 pt-4">
-                                <p className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase text-center mb-2">Preço Sugerido de Venda</p>
-                                <div className="text-3xl font-bold text-indigo-600 dark:text-indigo-400 text-center bg-gray-50 dark:bg-gray-700/50 p-4 rounded-xl border border-indigo-100 dark:border-indigo-900/30">
-                                    R$ {calcResult.suggestedPrice.toFixed(2)}
-                                </div>
-                                <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400 mt-2 px-2">
-                                    <span>Lucro Liq: <span className="text-emerald-600 dark:text-emerald-400 font-bold">R$ {calcResult.netProfit.toFixed(2)}</span></span>
-                                    <span>Taxas Totais: <span className="text-rose-600 dark:text-rose-400 font-bold">R$ {calcResult.totalFees.toFixed(2)}</span></span>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="p-4 border-t border-gray-100 dark:border-gray-700 flex gap-3 bg-gray-50 dark:bg-gray-700/30">
-                            <button
-                                onClick={() => setIsCalcModalOpen(false)}
-                                className="flex-1 py-2 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg text-sm font-medium transition-colors"
-                            >
-                                Cancelar
-                            </button>
-                            <button
-                                onClick={applyCalculatedPrice}
-                                className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-bold shadow-md transition-all flex items-center justify-center gap-2"
-                            >
-                                <CheckCircle2 size={16} /> Usar Preço
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-        </div>
+                )
+            }
+        </div >
     );
 };
 
