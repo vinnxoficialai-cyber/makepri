@@ -181,24 +181,27 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
     };
 
     const handleScanSuccess = (decodedText: string) => {
-        // ALWAYS populate the input field with the scanned code
         setSkuInput(decodedText);
+        playBeep();
 
-        const product = MOCK_PRODUCTS.find(p => p.sku.toLowerCase() === decodedText.toLowerCase());
+        // Close scanner immediately on read (User Request)
+        setIsScannerOpen(false);
+
+        // Try to find product in the REAL custom hook list (not MOCK) if possible, 
+        // or just MOCK if that's what is being used currently. 
+        // Note: 'products' is available from useProducts() hook in this component scope (line 53).
+        const product = products.find(p => p.sku.toLowerCase() === decodedText.toLowerCase());
 
         if (product) {
-            playBeep();
             if (scannerMode === 'sale') {
                 addToCart(product);
-                setIsScannerOpen(false);
             } else {
-                // Check Mode
                 setScannedProduct(product);
             }
         } else {
-            // Optional: If you want to alert that it wasn't found immediately or just leave it in the box
-            // For now, leaving it in the box is what user asked ("appear in SKU CODE")
-            // Can also keep the scanner open if not found?
+            // Product not found in loaded list.
+            // Beep provided feedback that it scanned. Input is filled. 
+            // User can now modify or search manually.
         }
     };
 
