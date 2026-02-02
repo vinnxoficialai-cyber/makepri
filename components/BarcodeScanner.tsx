@@ -31,9 +31,9 @@ const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScanSuccess, onScanFa
                 // Configuração da câmera
                 // Preferir câmera traseira (environment)
                 const config = {
-                    fps: 10,
-                    qrbox: { width: 250, height: 250 },
-                    aspectRatio: 1.0
+                    fps: 15,
+                    qrbox: { width: 280, height: 280 },
+                    // aspectRatio: 1.0 - REMOVED to prevent distortion
                 };
 
                 await html5Qrcode.start(
@@ -73,29 +73,40 @@ const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScanSuccess, onScanFa
     }, []);
 
     return (
-        <div className="w-full max-w-sm mx-auto bg-black rounded-xl overflow-hidden relative shadow-lg">
+        <div className="w-full bg-black rounded-xl overflow-hidden relative shadow-lg h-[400px] flex items-center justify-center">
             {error ? (
-                <div className="flex flex-col items-center justify-center p-8 bg-white dark:bg-gray-800 text-center gap-2 min-h-[250px]">
+                <div className="flex flex-col items-center justify-center p-8 bg-white dark:bg-gray-800 text-center gap-2 w-full h-full">
                     <AlertCircle className="text-red-500" size={32} />
                     <p className="font-bold text-gray-800 dark:text-white">Erro na Câmera</p>
                     <p className="text-xs text-gray-500">{error}</p>
                 </div>
             ) : (
                 <>
-                    {/* Container do vídeo */}
-                    <div id={scannerId} className="w-full h-full min-h-[300px] bg-black"></div>
+                    {/* Container do vídeo - Force full cover */}
+                    <div id={scannerId} className="w-full h-full [&_video]:object-cover [&_video]:w-full [&_video]:h-full"></div>
 
                     {/* Overlay nativo estilizado (Scanning grid) */}
                     {initialized && (
-                        <div className="absolute inset-0 pointer-events-none border-2 border-white/20 rounded-xl relative">
+                        <div className="absolute inset-0 pointer-events-none z-10">
+                            {/* Darkened Background with transparent hole */}
+                            <div className="absolute inset-0 bg-black/40 mask-scan"></div>
+
                             {/* Central Box Focus */}
-                            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 border-2 border-pink-400 rounded-lg shadow-[0_0_0_999px_rgba(0,0,0,0.5)]">
+                            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 border-2 border-white/50 rounded-lg shadow-[0_0_0_9999px_rgba(0,0,0,0.5)]">
+                                {/* Corners */}
+                                <div className="absolute top-0 left-0 w-6 h-6 border-t-4 border-l-4 border-emerald-500 rounded-tl-sm -mt-1 -ml-1"></div>
+                                <div className="absolute top-0 right-0 w-6 h-6 border-t-4 border-r-4 border-emerald-500 rounded-tr-sm -mt-1 -mr-1"></div>
+                                <div className="absolute bottom-0 left-0 w-6 h-6 border-b-4 border-l-4 border-emerald-500 rounded-bl-sm -mb-1 -ml-1"></div>
+                                <div className="absolute bottom-0 right-0 w-6 h-6 border-b-4 border-r-4 border-emerald-500 rounded-br-sm -mb-1 -mr-1"></div>
+
                                 {/* Scan Line Animation */}
-                                <div className="absolute top-0 left-0 w-full h-0.5 bg-pink-500 shadow-[0_0_10px_#ec4899] animate-[scan_2s_infinite_linear]"></div>
+                                <div className="absolute top-0 left-0 w-full h-0.5 bg-emerald-400 shadow-[0_0_15px_#34d399] animate-[scan_2s_infinite_ease-in-out] opacity-80"></div>
                             </div>
 
-                            <div className="absolute bottom-4 left-0 w-full text-center text-white text-xs font-bold drop-shadow-md">
-                                Aponte para o código
+                            <div className="absolute bottom-6 left-0 w-full text-center">
+                                <span className="px-4 py-2 bg-black/60 text-white text-xs font-bold rounded-full backdrop-blur-md border border-white/10">
+                                    Posicione o código no centro
+                                </span>
                             </div>
                         </div>
                     )}
