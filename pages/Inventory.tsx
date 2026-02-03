@@ -946,8 +946,8 @@ const Inventory: React.FC<InventoryProps> = ({ user, autoFilterStalled, resetAut
 
                                     {/* Image Upload (Multi-Slot) */}
                                     <div>
-                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Imagens do Produto (Até 3)</label>
-                                        <div className="flex items-start gap-4">
+                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Imagens do Produto (Até 8)</label>
+                                        <div className="flex flex-wrap items-start gap-4">
                                             {/* Main Image */}
                                             <div className="flex flex-col gap-1">
                                                 <span className="text-[10px] text-gray-500 font-medium ml-1">Principal</span>
@@ -978,7 +978,7 @@ const Inventory: React.FC<InventoryProps> = ({ user, autoFilterStalled, resetAut
                                             </div>
 
                                             {/* Additional Images */}
-                                            {[1, 2].map((slotIndex) => {
+                                            {[1, 2, 3, 4, 5, 6, 7].map((slotIndex) => {
                                                 const imgUrl = newProduct.additionalImages?.[slotIndex - 1] || '';
                                                 return (
                                                     <div key={slotIndex} className="flex flex-col gap-1">
