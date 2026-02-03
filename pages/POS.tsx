@@ -110,11 +110,27 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
 
     const categories = ['Todos', 'Cosmético', 'Acessório', 'Roupa', 'Eletrônico', 'Kit / Combo'];
 
+    // PAGINATION STATE
+    const [currentPage, setCurrentPage] = useState(1);
+    const itemsPerPage = 12;
+
     const filteredProducts = products.filter(p => {
         const matchesSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase()) || p.sku.includes(searchTerm);
         const matchesCategory = selectedCategory === 'Todos' || p.category === selectedCategory;
         return matchesSearch && matchesCategory;
     });
+
+    // Reset page when filters change
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [searchTerm, selectedCategory]);
+
+    // PAGINATION LOGIC
+    const totalPages = Math.ceil(filteredProducts.length / itemsPerPage);
+    const paginatedProducts = filteredProducts.slice(
+        (currentPage - 1) * itemsPerPage,
+        currentPage * itemsPerPage
+    );
 
     const addToCart = async (product: Product) => {
         try {
@@ -668,30 +684,55 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
                             </div>
                         </div>
 
-                        <div className="flex-1 overflow-y-auto p-4 grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4 bg-gray-50/50 dark:bg-gray-900/50">
-                            {filteredProducts.map(product => (
-                                <div
-                                    key={product.id}
-                                    onClick={() => addToCart(product)}
-                                    className="bg-white dark:bg-gray-700 p-3 rounded-lg shadow-sm border border-gray-100 dark:border-gray-600 cursor-pointer hover:shadow-md hover:border-[#ffc8cb] transition-all group flex flex-col h-full"
-                                >
-                                    <div className="aspect-square bg-gray-100 dark:bg-gray-600 rounded-md mb-3 overflow-hidden relative">
-                                        {product.imageUrl ? (
-                                            <img src={product.imageUrl} alt={product.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
-                                        ) : (
-                                            <div className="w-full h-full flex items-center justify-center text-gray-300">No Img</div>
-                                        )}
-                                        <div className="absolute top-2 right-2 bg-white/90 dark:bg-gray-800/90 px-2 py-0.5 rounded text-xs font-bold text-gray-700 dark:text-gray-200 shadow-sm">
-                                            {product.stock} un
+                        <div className="flex-1 overflow-y-auto p-4 flex flex-col h-full bg-gray-50/50 dark:bg-gray-900/50">
+                            <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4 mb-4">
+                                {paginatedProducts.map(product => (
+                                    <div
+                                        key={product.id}
+                                        onClick={() => addToCart(product)}
+                                        className="bg-white dark:bg-gray-700 p-3 rounded-lg shadow-sm border border-gray-100 dark:border-gray-600 cursor-pointer hover:shadow-md hover:border-[#ffc8cb] transition-all group flex flex-col h-full"
+                                    >
+                                        <div className="aspect-square bg-gray-100 dark:bg-gray-600 rounded-md mb-3 overflow-hidden relative">
+                                            {product.imageUrl ? (
+                                                <img src={product.imageUrl} alt={product.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                                            ) : (
+                                                <div className="w-full h-full flex items-center justify-center text-gray-300">No Img</div>
+                                            )}
+                                            <div className="absolute top-2 right-2 bg-white/90 dark:bg-gray-800/90 px-2 py-0.5 rounded text-xs font-bold text-gray-700 dark:text-gray-200 shadow-sm">
+                                                {product.stock} un
+                                            </div>
+                                        </div>
+                                        <h4 className="font-medium text-gray-800 dark:text-white text-sm line-clamp-2">{product.name}</h4>
+                                        <div className="mt-auto pt-2">
+                                            <p className="text-pink-600 dark:text-pink-400 font-bold">R$ {product.priceSale.toFixed(2)}</p>
+                                            <p className="text-xs text-gray-400 font-mono">{product.sku}</p>
                                         </div>
                                     </div>
-                                    <h4 className="font-medium text-gray-800 dark:text-white text-sm line-clamp-2">{product.name}</h4>
-                                    <div className="mt-auto pt-2">
-                                        <p className="text-pink-600 dark:text-pink-400 font-bold">R$ {product.priceSale.toFixed(2)}</p>
-                                        <p className="text-xs text-gray-400 font-mono">{product.sku}</p>
-                                    </div>
+                                ))}
+                            </div>
+
+                            {/* Pagination Controls */}
+                            {totalPages > 1 && (
+                                <div className="mt-auto flex justify-center items-center gap-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+                                    <button
+                                        onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                                        disabled={currentPage === 1}
+                                        className="p-2 rounded-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200"
+                                    >
+                                        <ArrowLeft size={20} />
+                                    </button>
+                                    <span className="text-sm font-bold text-gray-600 dark:text-gray-300">
+                                        Página {currentPage} de {totalPages}
+                                    </span>
+                                    <button
+                                        onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                                        disabled={currentPage === totalPages}
+                                        className="p-2 rounded-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200"
+                                    >
+                                        <ArrowRight size={20} />
+                                    </button>
                                 </div>
-                            ))}
+                            )}
                         </div>
                     </>
                 ) : (

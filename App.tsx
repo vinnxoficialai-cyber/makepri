@@ -157,7 +157,10 @@ const App: React.FC = () => {
         }
     }, [supabaseSettings]);
 
-    const [activeTab, setActiveTab] = useState('dashboard');
+    const [activeTab, setActiveTab] = useState(() => {
+        const savedTab = localStorage.getItem('activeTab');
+        return savedTab || 'dashboard';
+    });
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
     // Sidebar State
@@ -205,6 +208,7 @@ const App: React.FC = () => {
 
     const handleNavigate = (tab: string) => {
         setActiveTab(tab);
+        localStorage.setItem('activeTab', tab); // Persist
         setMobileMenuOpen(false); // Close menu when navigating
     };
 
@@ -217,7 +221,10 @@ const App: React.FC = () => {
         setCurrentUser(user);
         setRealUser(user);
         setIsAuthenticated(true);
-        setActiveTab(user.permissions[0] || 'dashboard'); // Reset to first allowed tab
+        setIsAuthenticated(true);
+        const defaultTab = user.permissions[0] || 'dashboard';
+        setActiveTab(defaultTab);
+        localStorage.setItem('activeTab', defaultTab);
 
         // Salvar no localStorage para persistir após F5
         localStorage.setItem('currentUser', JSON.stringify(user));
