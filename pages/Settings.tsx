@@ -182,7 +182,9 @@ const Settings: React.FC<SettingsProps> = ({
             password: '',
             avatarUrl: '',
             customGoal: '0',
-            goalType: 'monthly'
+            goalType: 'monthly',
+            defaultGoal: 0,
+            defaultGoalType: 'monthly'
         });
         setIsUserModalOpen(true);
     };
@@ -192,8 +194,9 @@ const Settings: React.FC<SettingsProps> = ({
         setUserForm({
             ...user,
             password: '',
-            customGoal: (salesGoals.userGoals[user.id] || 0).toString(),
-            goalType: salesGoals.goalTypes[user.id] || 'monthly'
+            // Prioritize persistent goal (defaultGoal), fallback to SalesGoals table
+            customGoal: (user.defaultGoal || salesGoals.userGoals[user.id] || 0).toString(),
+            goalType: user.defaultGoalType || salesGoals.goalTypes[user.id] || 'monthly'
         });
         setIsUserModalOpen(true);
     };
@@ -217,7 +220,9 @@ const Settings: React.FC<SettingsProps> = ({
                     role: userForm.role as UserRole,
                     permissions: userForm.permissions || [],
                     active: userForm.active !== undefined ? userForm.active : true,
-                    avatarUrl: userForm.avatarUrl
+                    avatarUrl: userForm.avatarUrl,
+                    defaultGoal: goalValue, // Save persistently
+                    defaultGoalType: goalType
                 };
 
                 const updatedUser = await UserService.update(editingUserId, userData);
@@ -237,7 +242,9 @@ const Settings: React.FC<SettingsProps> = ({
                     role: userForm.role as UserRole,
                     permissions: userForm.permissions || [],
                     active: userForm.active !== undefined ? userForm.active : true,
-                    avatarUrl: userForm.avatarUrl || ''
+                    avatarUrl: userForm.avatarUrl || '',
+                    defaultGoal: goalValue, // Save persistently
+                    defaultGoalType: goalType
                 };
 
                 const createdUser = await UserService.create(userToAdd);
@@ -655,46 +662,69 @@ const Settings: React.FC<SettingsProps> = ({
                                 </div>
 
                                 <div className="col-span-2">
-                                    <div className="flex justify-between items-center mb-1">
-                                        <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 flex items-center gap-1">
-                                            <Target size={12} /> Meta Individual (R$)
-                                        </label>
+                                    <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-2 flex items-center gap-1">
+                                        <Target size={12} /> Definição de Metas (Sincronizadas)
+                                    </label>
 
-                                        <div className="flex bg-gray-100 dark:bg-gray-700 rounded p-0.5">
-                                            <button
-                                                type="button"
-                                                onClick={() => setUserForm({ ...userForm, goalType: 'daily' })}
-                                                className={`px-2 py-0.5 text-[10px] font-bold rounded transition-all ${userForm.goalType === 'daily' ? 'bg-white dark:bg-gray-600 shadow text-indigo-600 dark:text-indigo-400' : 'text-gray-500'}`}
-                                            >
-                                                Diária
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={() => setUserForm({ ...userForm, goalType: 'monthly' })}
-                                                className={`px-2 py-0.5 text-[10px] font-bold rounded transition-all ${userForm.goalType === 'monthly' ? 'bg-white dark:bg-gray-600 shadow text-indigo-600 dark:text-indigo-400' : 'text-gray-500'}`}
-                                            >
-                                                Mensal
-                                            </button>
+                                    <div className="grid grid-cols-2 gap-4 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg border border-gray-100 dark:border-gray-600">
+                                        {/* Meta Diária */}
+                                        <div>
+                                            <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1">
+                                                Meta Diária
+                                            </label>
+                                            <div className="relative">
+                                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs font-bold">R$</span>
+                                                <input
+                                                    type="number"
+                                                    className="w-full pl-8 pr-2 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-1 focus:ring-indigo-500 outline-none bg-white dark:bg-gray-800 text-gray-900 dark:text-white font-bold text-sm"
+                                                    placeholder="0.00"
+                                                    step="0.01"
+                                                    value={userForm.goalType === 'daily' ? userForm.customGoal : (parseFloat(userForm.customGoal || '0') / 30).toFixed(2)}
+                                                    onChange={(e) => {
+                                                        const val = parseFloat(e.target.value || '0');
+                                                        setUserForm({
+                                                            ...userForm,
+                                                            customGoal: (val * 30).toFixed(2), // Always store Monthly in customGoal/defaultGoal
+                                                            goalType: 'daily'
+                                                        });
+                                                    }}
+                                                    onClick={() => setUserForm({ ...userForm, goalType: 'daily' })}
+                                                />
+                                            </div>
+                                        </div>
+
+                                        {/* Meta Mensal */}
+                                        <div>
+                                            <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1">
+                                                Meta Mensal
+                                            </label>
+                                            <div className="relative">
+                                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs font-bold">R$</span>
+                                                <input
+                                                    type="number"
+                                                    className="w-full pl-8 pr-2 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-1 focus:ring-indigo-500 outline-none bg-white dark:bg-gray-800 text-gray-900 dark:text-white font-bold text-sm"
+                                                    placeholder="0.00"
+                                                    step="0.01"
+                                                    value={userForm.goalType === 'monthly' ? userForm.customGoal : (parseFloat(userForm.customGoal || '0')).toString()}
+                                                    onChange={(e) => {
+                                                        setUserForm({
+                                                            ...userForm,
+                                                            customGoal: e.target.value,
+                                                            goalType: 'monthly'
+                                                        });
+                                                    }}
+                                                    onClick={() => setUserForm({ ...userForm, goalType: 'monthly' })}
+                                                />
+                                            </div>
                                         </div>
                                     </div>
-                                    <div className="relative">
-                                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm font-bold">R$</span>
-                                        <input
-                                            type="number"
-                                            className="w-full pl-9 pr-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-[#ffc8cb]/50 focus:border-[#ffc8cb] outline-none bg-white dark:bg-gray-700 text-gray-900 dark:text-white font-bold"
-                                            placeholder="0.00"
-                                            value={userForm.customGoal}
-                                            onChange={e => setUserForm({ ...userForm, customGoal: e.target.value })}
-                                        />
-                                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-[10px] uppercase font-bold">
-                                            {userForm.goalType === 'daily' ? '/ Dia' : '/ Mês'}
-                                        </span>
+
+                                    <div className="flex items-center gap-2 mt-2">
+                                        <div className={`w-2 h-2 rounded-full ${userForm.goalType === 'daily' ? 'bg-indigo-500' : 'bg-gray-300 dark:bg-gray-600'}`}></div>
+                                        <p className="text-[10px] text-gray-400">
+                                            Visualização preferida: <strong className="text-gray-600 dark:text-gray-300">{userForm.goalType === 'daily' ? 'Diária' : 'Mensal'}</strong>
+                                        </p>
                                     </div>
-                                    <p className="text-[10px] text-gray-400 mt-1">
-                                        {userForm.goalType === 'daily'
-                                            ? 'Defina quanto este usuário deve vender por dia.'
-                                            : 'Defina o objetivo total para o mês.'}
-                                    </p>
                                 </div>
                             </div>
 

@@ -197,4 +197,6 @@ export interface User {
     permissions: ModuleType[];
     avatarUrl?: string;
     active: boolean;
+    defaultGoal?: number; // Persisted default goal (monthly value base)
+    defaultGoalType?: 'daily' | 'monthly'; // Preference for viewing/editing
 }

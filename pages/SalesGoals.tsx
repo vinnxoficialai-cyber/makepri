@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
-import { 
-    Target, Calendar, Save, Users, ChevronLeft, ChevronRight, 
+import {
+    Target, Calendar, Save, Users, ChevronLeft, ChevronRight,
     CheckCircle, AlertCircle, Loader2, Trophy
 } from 'lucide-react';
 import { User, SalesGoal } from '../types';
@@ -23,9 +23,55 @@ const SalesGoals: React.FC<SalesGoalsProps> = ({ users, salesGoals, setSalesGoal
     const [loading, setLoading] = useState(false);
     const [saved, setSaved] = useState(false);
 
-    // Local state for editing - Ensuring goalTypes is initialized
-    const [localGoals, setLocalGoals] = useState<SalesGoal>(salesGoals || { storeGoal: 0, userGoals: {}, goalTypes: {} });
-    
+    // Initialize Local State merging DB goals with User Defaults
+    const [localGoals, setLocalGoals] = useState<SalesGoal>(() => {
+        const initial = salesGoals || { storeGoal: 0, userGoals: {}, goalTypes: {} };
+        const mergedUserGoals = { ...initial.userGoals };
+        const mergedGoalTypes = { ...initial.goalTypes };
+
+        // Determine active users
+        const activeUsers = users.filter(u => u.active && (u.role === 'Vendedor' || u.role === 'Gerente' || u.role === 'Administrador'));
+
+        // Apply defaults if no specific goal exists
+        activeUsers.forEach(user => {
+            if (!mergedUserGoals[user.id] && user.defaultGoal && user.defaultGoal > 0) {
+                mergedUserGoals[user.id] = user.defaultGoal;
+                mergedGoalTypes[user.id] = user.defaultGoalType || 'monthly';
+            }
+        });
+
+        return {
+            ...initial,
+            userGoals: mergedUserGoals,
+            goalTypes: mergedGoalTypes
+        };
+    });
+
+    // Update local state when props change (e.g. real-time updates or navigation)
+    useEffect(() => {
+        if (salesGoals) {
+            setLocalGoals(prev => {
+                const mergedUserGoals = { ...salesGoals.userGoals };
+                const mergedGoalTypes = { ...salesGoals.goalTypes };
+
+                // Re-apply defaults for missing entries
+                const activeUsers = users.filter(u => u.active && (u.role === 'Vendedor' || u.role === 'Gerente' || u.role === 'Administrador'));
+                activeUsers.forEach(user => {
+                    if (!mergedUserGoals[user.id] && user.defaultGoal && user.defaultGoal > 0) {
+                        mergedUserGoals[user.id] = user.defaultGoal;
+                        mergedGoalTypes[user.id] = user.defaultGoalType || 'monthly';
+                    }
+                });
+
+                return {
+                    ...salesGoals,
+                    userGoals: mergedUserGoals,
+                    goalTypes: mergedGoalTypes
+                };
+            });
+        }
+    }, [salesGoals, users]);
+
     // Mock Sales Data
     const [salesBySeller, setSalesBySeller] = useState<Record<string, number>>({});
 
@@ -48,13 +94,14 @@ const SalesGoals: React.FC<SalesGoalsProps> = ({ users, salesGoals, setSalesGoal
     }, [currentMonth, currentYear, users.length]);
 
     // Calculate Total Team Goal (Projecting Daily goals to Monthly if needed)
+    // Calculate Total Team Goal (Projecting Daily goals to Monthly if needed)
     const totalTeamGoal = Object.entries(localGoals.userGoals).reduce((acc: number, [userId, val]) => {
-        const numVal = val as number;
+        const numVal = Number(val || 0);
         const type = localGoals.goalTypes?.[userId] || 'monthly';
         const monthlyValue = type === 'daily' ? numVal * 30 : numVal;
         return acc + (monthlyValue || 0);
     }, 0);
-    
+
     const currentStoreSales = Object.values(salesBySeller).reduce((acc: number, curr: number) => acc + curr, 0);
     const storeProgress = totalTeamGoal > 0 ? (currentStoreSales / totalTeamGoal) * 100 : 0;
 
@@ -68,7 +115,7 @@ const SalesGoals: React.FC<SalesGoalsProps> = ({ users, salesGoals, setSalesGoal
         const numValue = parseFloat(value) || 0;
         setLocalGoals(prev => {
             const updatedUserGoals = { ...prev.userGoals, [userId]: numValue };
-            
+
             // Recalculate Store Goal
             const newStoreGoal = Object.entries(updatedUserGoals).reduce((acc: number, [uid, val]) => {
                 const numVal = val as number;
@@ -154,8 +201,8 @@ const SalesGoals: React.FC<SalesGoalsProps> = ({ users, salesGoals, setSalesGoal
                                     <span>{storeProgress.toFixed(1)}%</span>
                                 </div>
                                 <div className="w-full bg-gray-700/50 rounded-full h-3 overflow-hidden backdrop-blur-sm border border-white/5">
-                                    <div 
-                                        className="bg-gradient-to-r from-pink-500 to-purple-500 h-full transition-all duration-1000 ease-out shadow-[0_0_10px_rgba(236,72,153,0.5)]" 
+                                    <div
+                                        className="bg-gradient-to-r from-pink-500 to-purple-500 h-full transition-all duration-1000 ease-out shadow-[0_0_10px_rgba(236,72,153,0.5)]"
                                         style={{ width: `${Math.min(storeProgress, 100)}%` }}
                                     ></div>
                                 </div>
@@ -178,10 +225,10 @@ const SalesGoals: React.FC<SalesGoalsProps> = ({ users, salesGoals, setSalesGoal
                                 {salesUsers.length} Membros
                             </span>
                         </div>
-                        
+
                         <div className="p-6 space-y-4 flex-1 overflow-y-auto max-h-[500px]">
                             {salesUsers.map(member => {
-                                const currentMeta = localGoals.userGoals[member.id] || 0;
+                                const currentMeta = Number(localGoals.userGoals[member.id] || 0);
                                 const goalType = localGoals.goalTypes?.[member.id] || 'monthly';
                                 const currentSales = salesBySeller[member.id] || 0;
                                 const monthlyTarget = goalType === 'daily' ? currentMeta * 30 : currentMeta;
@@ -198,7 +245,7 @@ const SalesGoals: React.FC<SalesGoalsProps> = ({ users, salesGoals, setSalesGoal
                                                 </div>
                                             )}
                                         </div>
-                                        
+
                                         <div className="flex-1 min-w-0">
                                             <p className="font-bold text-gray-800 dark:text-white truncate">{member.name}</p>
                                             <div className="flex items-center gap-2">
@@ -220,8 +267,8 @@ const SalesGoals: React.FC<SalesGoalsProps> = ({ users, salesGoals, setSalesGoal
                                                 Meta {goalType === 'daily' ? 'Dia' : 'Mês'}
                                             </label>
                                             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm font-bold group-focus-within:text-pink-500 transition-colors">R$</span>
-                                            <input 
-                                                type="number" 
+                                            <input
+                                                type="number"
                                                 value={localGoals.userGoals[member.id] || ''}
                                                 onChange={(e) => handleGoalChange(member.id, e.target.value)}
                                                 placeholder="0.00"
@@ -234,7 +281,7 @@ const SalesGoals: React.FC<SalesGoalsProps> = ({ users, salesGoals, setSalesGoal
                         </div>
 
                         <div className="p-5 border-t border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/30 flex justify-end">
-                            <button 
+                            <button
                                 onClick={handleSave}
                                 disabled={loading}
                                 className={`flex items-center gap-2 px-8 py-3 rounded-xl font-bold shadow-md transition-all ${saved ? 'bg-emerald-500 text-white scale-105' : 'bg-pink-600 hover:bg-pink-700 text-white hover:shadow-lg hover:-translate-y-0.5'} ${loading ? 'opacity-70 cursor-not-allowed' : ''}`}
