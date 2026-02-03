@@ -22,7 +22,7 @@ import {
 import { MOCK_USERS, MOCK_DELIVERIES } from './constants';
 import { User, ModuleType, CompanySettings, SalesGoal, DeliveryOrder } from './types';
 import { testarIntegracaoCompleta } from './test-supabase';
-import { useSettings, useUsers, useSalesGoals } from './lib/hooks';
+import { useSettings, useUsers, useSalesGoals, useProducts } from './lib/hooks';
 
 // --- MOBILE BOTTOM NAVIGATION COMPONENT ---
 interface MobileBottomNavProps {
@@ -346,6 +346,13 @@ const App: React.FC = () => {
 
     const accessibleMenuItems = menuItems.filter(item => currentUser.permissions.includes(item.id as ModuleType));
 
+    // Global Products for Notifications
+    const { products } = useProducts();
+    const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+
+    const lowStockItems = products.filter(p => p.stock <= p.minStock);
+    const hasNotifications = lowStockItems.length > 0;
+
     return (
         <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex font-sans transition-colors duration-200">
 
@@ -368,7 +375,7 @@ const App: React.FC = () => {
             <main className={`flex-1 flex flex-col min-w-0 overflow-hidden h-screen transition-all duration-300 ${isSidebarCollapsed ? 'lg:ml-20' : 'lg:ml-64'}`}>
 
                 {/* --- NEW MOBILE HEADER --- */}
-                <header className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 lg:hidden px-4 py-3 flex items-center justify-between shadow-sm z-30 transition-colors">
+                <header className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 lg:hidden px-4 py-3 flex items-center justify-between shadow-sm z-30 transition-colors relative">
                     <div className="font-bold text-xl text-pink-600 dark:text-pink-400 tracking-tight">
                         PriMAKE
                     </div>
@@ -381,10 +388,65 @@ const App: React.FC = () => {
                             {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
                         </button>
 
-                        <button className="text-gray-500 dark:text-gray-400 hover:text-pink-500 dark:hover:text-pink-400 transition-colors relative">
-                            <Bell size={20} />
-                            <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white dark:border-gray-800"></span>
-                        </button>
+                        <div className="relative">
+                            <button
+                                onClick={() => setIsNotificationsOpen(!isNotificationsOpen)}
+                                className="text-gray-500 dark:text-gray-400 hover:text-pink-500 dark:hover:text-pink-400 transition-colors relative block"
+                            >
+                                <Bell size={20} />
+                                {hasNotifications && (
+                                    <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white dark:border-gray-800 animation-pulse"></span>
+                                )}
+                            </button>
+
+                            {/* Notifications Dropdown */}
+                            {isNotificationsOpen && (
+                                <>
+                                    <div className="fixed inset-0 z-40 bg-transparent" onClick={() => setIsNotificationsOpen(false)}></div>
+                                    <div className="absolute top-full right-0 mt-2 w-72 bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-100 dark:border-gray-700 z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                                        <div className="p-3 border-b border-gray-100 dark:border-gray-700 font-bold text-sm text-gray-800 dark:text-white flex justify-between items-center bg-gray-50 dark:bg-gray-700/50">
+                                            Notificações
+                                            {hasNotifications && <span className="bg-red-100 text-red-600 text-[10px] px-2 py-0.5 rounded-full">{lowStockItems.length}</span>}
+                                        </div>
+                                        <div className="max-h-[300px] overflow-y-auto">
+                                            {hasNotifications ? (
+                                                <div className="divide-y divide-gray-50 dark:divide-gray-700">
+                                                    {lowStockItems.slice(0, 5).map(item => (
+                                                        <div key={item.id} className="p-3 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors cursor-pointer" onClick={() => {
+                                                            setIsNotificationsOpen(false);
+                                                            handleNavigateToStalled(); // Reuse stalled logic or go to Inventory
+                                                        }}>
+                                                            <div className="flex items-start gap-3">
+                                                                <div className="bg-amber-100 text-amber-600 p-1.5 rounded-full shrink-0 mt-0.5">
+                                                                    <AlertTriangle size={14} />
+                                                                </div>
+                                                                <div>
+                                                                    <p className="text-xs font-bold text-gray-800 dark:text-gray-200 line-clamp-1">{item.name}</p>
+                                                                    <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">
+                                                                        Baixo estoque: <strong className="text-red-500">{item.stock} un</strong> (Min: {item.minStock})
+                                                                    </p>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                    {lowStockItems.length > 5 && (
+                                                        <div className="p-2 text-center text-xs text-indigo-600 dark:text-indigo-400 font-medium bg-gray-50 dark:bg-gray-800/50">
+                                                            + {lowStockItems.length - 5} alertas
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            ) : (
+                                                <div className="p-6 text-center text-gray-400 flex flex-col items-center">
+                                                    <Bell size={24} className="mb-2 opacity-20" />
+                                                    <p className="text-xs">Tudo certo por aqui!</p>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                </>
+                            )}
+                        </div>
+
 
                         <button
                             onClick={() => handleNavigate('settings')}

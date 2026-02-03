@@ -197,6 +197,89 @@ const Delivery: React.FC<DeliveryProps> = ({ user }) => {
         }
     }, [isPayoutModalOpen]);
 
+    const handlePrintPayoutReport = () => {
+        const printWindow = window.open('', 'PRINT', 'height=600,width=800');
+        if (!printWindow) return;
+
+        const dateStr = new Date().toLocaleString('pt-BR');
+        const totalGeneral = Object.values(payoutData).reduce((sum, item: any) => sum + item.totalFee, 0);
+
+        printWindow.document.write(`
+            <html>
+            <head>
+                <title>Comprovante de Repasse</title>
+                <style>
+                    body { font-family: 'Courier New', Courier, monospace; padding: 20px; max-width: 400px; margin: 0 auto; color: #000; }
+                    .header { text-align: center; margin-bottom: 20px; border-bottom: 2px dashed #000; padding-bottom: 10px; }
+                    .title { font-size: 18px; font-weight: bold; margin: 5px 0; text-transform: uppercase; }
+                    .subtitle { font-size: 12px; margin-bottom: 5px; }
+                    .item { margin-bottom: 8px; border-bottom: 1px dotted #999; padding-bottom: 4px; }
+                    .row { display: flex; justify-content: space-between; font-size: 14px; margin-bottom: 2px; }
+                    .total { margin-top: 15px; border-top: 2px dashed #000; padding-top: 10px; font-size: 16px; font-weight: bold; text-align: right; }
+                    .signature-block { margin-top: 40px; display: flex; flex-direction: column; gap: 30px; }
+                    .signature { text-align: center; border-top: 1px solid #000; padding-top: 5px; font-size: 11px; width: 80%; margin: 0 auto; }
+                    .footer { margin-top: 30px; text-align: center; font-size: 10px; font-style: italic; }
+                    @media print {
+                        body { width: 100%; max-width: none; }
+                        .no-print { display: none; }
+                    }
+                </style>
+            </head>
+            <body>
+                <div class="header">
+                    <div class="title">PriMAKE Delivery</div>
+                    <div class="subtitle">Comprovante de Repasse</div>
+                    <div class="subtitle">${dateStr}</div>
+                </div>
+
+                <div style="margin-bottom: 15px; font-size: 12px; font-weight: bold;">DETALHAMENTO:</div>
+
+                ${Object.entries(payoutData).map(([name, data]: [string, any]) => `
+                    <div class="item">
+                        <div class="row" style="font-weight:bold;">
+                            <span>${name.toUpperCase()}</span>
+                        </div>
+                        <div class="row">
+                            <span>Qtde: ${data.count}</span>
+                            <span>R$ ${data.totalFee.toFixed(2)}</span>
+                        </div>
+                    </div>
+                `).join('')}
+
+                <div class="total">
+                    TOTAL PAGO: R$ ${totalGeneral.toFixed(2)}
+                </div>
+
+                <div class="signature-block">
+                    <div class="signature">
+                        RESPONSÁVEL FINANCEIRO
+                    </div>
+                    ${Object.keys(payoutData).length === 1 ? `
+                        <div class="signature">
+                            ENTREGADOR: ${Object.keys(payoutData)[0].toUpperCase()}
+                        </div>
+                    ` : `
+                        <div class="signature">
+                            ASSINATURA DOS ENTREGADORES
+                        </div>
+                    `}
+                </div>
+
+                <div class="footer">
+                    Sistema PriMAKE - Gerado Automaticamente
+                </div>
+            </body>
+            </html>
+        `);
+
+        printWindow.document.close();
+        printWindow.focus();
+        setTimeout(() => {
+            printWindow.print();
+            printWindow.close();
+        }, 500);
+    };
+
     // --- WHATSAPP LINK ---
     const openWhatsApp = (phone: string, name: string) => {
         const cleanPhone = phone.replace(/\D/g, '');
@@ -516,7 +599,9 @@ const Delivery: React.FC<DeliveryProps> = ({ user }) => {
                             </div>
                         </div>
                         <div className="p-4 bg-gray-50 dark:bg-gray-900/30 text-center border-t border-gray-100 dark:border-gray-700">
-                            <button onClick={() => window.print()} className="text-emerald-600 text-sm font-bold hover:underline">Imprimir Relatório</button>
+                            <button onClick={handlePrintPayoutReport} className="text-emerald-600 text-sm font-bold hover:underline flex items-center justify-center gap-2 w-full">
+                                <Printer size={16} /> Imprimir Comprovante
+                            </button>
                         </div>
                     </div>
                 </div>
