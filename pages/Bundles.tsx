@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Layers, Plus, Search, Package, ArrowRight, Save, X, Trash2, AlertCircle } from 'lucide-react';
+import { Layers, Plus, Search, Package, ArrowRight, ArrowLeft, Save, X, Trash2, AlertCircle } from 'lucide-react';
 import { useProducts } from '../lib/hooks';
 import { BundleService } from '../lib/database';
 import { Product, ProductCategory, BundleComponent } from '../types';
@@ -163,11 +163,45 @@ const Bundles: React.FC = () => {
         }
     };
 
+    // Mobile Check
+    const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+
+    useEffect(() => {
+        const handleResize = () => setIsMobile(window.innerWidth < 768);
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+    }, []);
+
+    // Wizard State for Mobile
+    const [wizardStep, setWizardStep] = useState(1);
+
     // Filter Logic
     const existingBundles = allProducts.filter(p => p.type === 'bundle');
-    const availableProducts = allProducts.filter(p =>
+    const filteredProducts = allProducts.filter(p =>
         p.type !== 'bundle' &&
         (p.name.toLowerCase().includes(searchTerm.toLowerCase()) || p.sku.toLowerCase().includes(searchTerm.toLowerCase()))
+    );
+
+    // Pagination State
+    const [productPage, setProductPage] = useState(1);
+
+    // Limit displayed products based on device
+    const displayLimit = isMobile ? 5 : 8;
+
+    // Reset page when search changes
+    useEffect(() => {
+        setProductPage(1);
+    }, [searchTerm]);
+
+    // Reset wizard when modal opens
+    useEffect(() => {
+        if (isModalOpen) setWizardStep(1);
+    }, [isModalOpen]);
+
+    const totalPages = Math.ceil(filteredProducts.length / displayLimit);
+    const availableProducts = filteredProducts.slice(
+        (productPage - 1) * displayLimit,
+        productPage * displayLimit
     );
 
     return (
@@ -276,12 +310,20 @@ const Bundles: React.FC = () => {
                     <div className="absolute inset-0 bg-gray-900/60 backdrop-blur-sm" onClick={() => setIsModalOpen(false)}></div>
                     <div className="bg-white dark:bg-gray-800 w-full max-w-5xl h-[90vh] rounded-xl shadow-2xl relative flex flex-col md:flex-row overflow-hidden animate-in fade-in zoom-in-95 duration-200">
 
-                        {/* LEFT: FORM & PREVIEW */}
-                        <div className="w-full md:w-1/2 p-6 flex flex-col border-r border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 overflow-y-auto">
+                        {/* LEFT: FORM & PREVIEW (Step 2 on Mobile) */}
+                        <div className={`w-full md:w-1/2 p-6 flex flex-col border-r border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 overflow-y-auto shrink-0 md:shrink ${isMobile && wizardStep !== 2 ? 'hidden' : ''}`}>
                             <div className="flex justify-between items-center mb-6">
-                                <h3 className="font-bold text-xl text-gray-800 dark:text-white flex items-center gap-2">
-                                    <Layers className="text-lime-600" /> Novo Kit
-                                </h3>
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        onClick={() => setWizardStep(1)}
+                                        className="md:hidden p-1 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500"
+                                    >
+                                        <ArrowLeft size={20} />
+                                    </button>
+                                    <h3 className="font-bold text-xl text-gray-800 dark:text-white flex items-center gap-2">
+                                        <Layers className="text-lime-600" /> Novo Kit
+                                    </h3>
+                                </div>
                                 <button onClick={() => setIsModalOpen(false)} className="md:hidden text-gray-400">
                                     <X size={24} />
                                 </button>
@@ -327,7 +369,9 @@ const Bundles: React.FC = () => {
                                     <h4 className="text-sm font-bold text-gray-800 dark:text-white mb-3">Itens do Kit ({bundleForm.bundleComponents?.length})</h4>
 
                                     {bundleForm.bundleComponents?.length === 0 ? (
-                                        <p className="text-xs text-gray-400 text-center py-4">Selecione produtos ao lado para adicionar.</p>
+                                        <p className="text-xs text-gray-400 text-center py-4">
+                                            {isMobile ? 'Volte para selecionar produtos.' : 'Selecione produtos ao lado para adicionar.'}
+                                        </p>
                                     ) : (
                                         <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
                                             {bundleForm.bundleComponents?.map((comp) => {
@@ -387,14 +431,25 @@ const Bundles: React.FC = () => {
                                         </span>
                                     </div>
                                 </div>
+
+                                {/* Mobile Save Button (Step 2) */}
+                                <button
+                                    type="submit"
+                                    className="md:hidden w-full bg-lime-600 text-white font-bold py-3 rounded-xl shadow-md mt-4 flex items-center justify-center gap-2"
+                                >
+                                    <Save size={18} /> Salvar Kit
+                                </button>
                             </form>
                         </div>
 
-                        {/* RIGHT: PRODUCT SELECTOR */}
-                        <div className="w-full md:w-1/2 p-6 flex flex-col bg-white dark:bg-gray-800">
+                        {/* RIGHT: PRODUCT SELECTOR (Step 1 on Mobile) */}
+                        <div className={`w-full md:w-1/2 p-6 flex flex-col bg-white dark:bg-gray-800 flex-1 min-h-0 ${isMobile && wizardStep !== 1 ? 'hidden' : ''}`}>
                             <div className="flex justify-between items-center mb-4">
                                 <h4 className="font-bold text-gray-700 dark:text-gray-300">Adicionar Produtos</h4>
                                 <button onClick={() => setIsModalOpen(false)} className="hidden md:block text-gray-400 hover:text-gray-600">
+                                    <X size={24} />
+                                </button>
+                                <button onClick={() => setIsModalOpen(false)} className="md:hidden text-gray-400">
                                     <X size={24} />
                                 </button>
                             </div>
@@ -440,17 +495,44 @@ const Bundles: React.FC = () => {
                                         </div>
                                     );
                                 })}
+                                {availableProducts.length === 0 && (
+                                    <p className="text-center text-gray-400 text-sm py-4">Nenhum produto encontrado.</p>
+                                )}
                             </div>
 
-                            <div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-700 md:hidden">
-                                <button
-                                    form="bundle-form"
-                                    type="submit"
-                                    className="w-full bg-lime-600 text-white font-bold py-3 rounded-xl shadow-md"
-                                >
-                                    Salvar Kit
-                                </button>
-                            </div>
+                            {/* Pagination Controls */}
+                            {totalPages > 1 && (
+                                <div className="flex justify-between items-center mt-2 pt-2 border-t border-gray-100 dark:border-gray-700">
+                                    <button
+                                        onClick={() => setProductPage(prev => Math.max(1, prev - 1))}
+                                        disabled={productPage === 1}
+                                        className="text-xs text-gray-500 disabled:opacity-30 hover:text-lime-600"
+                                    >
+                                        Anterior
+                                    </button>
+                                    <span className="text-xs text-gray-400">
+                                        Página {productPage} de {totalPages}
+                                    </span>
+                                    <button
+                                        onClick={() => setProductPage(prev => Math.min(totalPages, prev + 1))}
+                                        disabled={productPage === totalPages}
+                                        className="text-xs text-gray-500 disabled:opacity-30 hover:text-lime-600"
+                                    >
+                                        Próximo
+                                    </button>
+                                </div>
+                            )}
+
+                            {/* Mobile Next Button */}
+                            <button
+                                type="button"
+                                onClick={() => setWizardStep(2)}
+                                className="md:hidden w-full bg-blue-600 text-white font-bold py-3 rounded-xl shadow-md mt-4 flex items-center justify-center gap-2"
+                            >
+                                Próximo: Definir Detalhes <ArrowRight size={18} />
+                            </button>
+
+
                             <div className="hidden md:block mt-4 pt-4 border-t border-gray-100 dark:border-gray-700">
                                 <button
                                     form="bundle-form"
