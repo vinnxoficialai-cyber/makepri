@@ -209,64 +209,75 @@ const Delivery: React.FC<DeliveryProps> = ({ user }) => {
             <head>
                 <title>Comprovante de Repasse</title>
                 <style>
-                    body { font-family: 'Courier New', Courier, monospace; padding: 20px; max-width: 400px; margin: 0 auto; color: #000; }
-                    .header { text-align: center; margin-bottom: 20px; border-bottom: 2px dashed #000; padding-bottom: 10px; }
-                    .title { font-size: 18px; font-weight: bold; margin: 5px 0; text-transform: uppercase; }
-                    .subtitle { font-size: 12px; margin-bottom: 5px; }
-                    .item { margin-bottom: 8px; border-bottom: 1px dotted #999; padding-bottom: 4px; }
-                    .row { display: flex; justify-content: space-between; font-size: 14px; margin-bottom: 2px; }
-                    .total { margin-top: 15px; border-top: 2px dashed #000; padding-top: 10px; font-size: 16px; font-weight: bold; text-align: right; }
-                    .signature-block { margin-top: 40px; display: flex; flex-direction: column; gap: 30px; }
-                    .signature { text-align: center; border-top: 1px solid #000; padding-top: 5px; font-size: 11px; width: 80%; margin: 0 auto; }
-                    .footer { margin-top: 30px; text-align: center; font-size: 10px; font-style: italic; }
+                    * { box-sizing: border-box; margin: 0; padding: 0; }
+                    body { 
+                        font-family: 'Courier New', monospace; 
+                        font-size: 11px;
+                        width: 75mm; 
+                        padding: 3mm;
+                        color: #000; 
+                    }
+                    .header { text-align: center; margin-bottom: 15px; border-bottom: 2px dashed #000; padding-bottom: 10px; }
+                    .title { font-size: 14px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; }
+                    .subtitle { font-size: 10px; margin-top: 4px; }
+                    .datetime { font-size: 10px; margin-top: 8px; padding: 4px; background: #f0f0f0; border-radius: 4px; }
+                    .section-title { font-size: 10px; font-weight: bold; margin: 12px 0 8px; text-transform: uppercase; border-bottom: 1px dotted #999; padding-bottom: 4px; }
+                    .item { margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px dotted #ccc; }
+                    .item-name { font-weight: bold; font-size: 11px; margin-bottom: 2px; }
+                    .item-row { display: flex; justify-content: space-between; font-size: 10px; }
+                    .total { margin-top: 12px; border-top: 2px dashed #000; padding-top: 10px; font-size: 14px; font-weight: bold; text-align: center; }
+                    .signature-block { margin-top: 30px; }
+                    .signature { text-align: center; margin-top: 25px; }
+                    .signature-line { border-top: 1px solid #000; width: 90%; margin: 0 auto; padding-top: 4px; font-size: 9px; }
+                    .footer { margin-top: 20px; text-align: center; font-size: 9px; color: #666; }
                     @media print {
-                        body { width: 100%; max-width: none; }
-                        .no-print { display: none; }
+                        body { width: 75mm; }
                     }
                 </style>
             </head>
             <body>
                 <div class="header">
-                    <div class="title">PriMAKE Delivery</div>
+                    <div class="title">PriMAKE</div>
                     <div class="subtitle">Comprovante de Repasse</div>
-                    <div class="subtitle">${dateStr}</div>
+                    <div class="datetime">
+                        📅 ${new Date().toLocaleDateString('pt-BR')}<br/>
+                        🕐 ${new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                    </div>
                 </div>
 
-                <div style="margin-bottom: 15px; font-size: 12px; font-weight: bold;">DETALHAMENTO:</div>
+                <div class="section-title">Detalhamento</div>
 
                 ${Object.entries(payoutData).map(([name, data]: [string, any]) => `
                     <div class="item">
-                        <div class="row" style="font-weight:bold;">
-                            <span>${name.toUpperCase()}</span>
-                        </div>
-                        <div class="row">
-                            <span>Qtde: ${data.count}</span>
+                        <div class="item-name">${name.toUpperCase()}</div>
+                        <div class="item-row">
+                            <span>Entregas: ${data.count}</span>
                             <span>R$ ${data.totalFee.toFixed(2)}</span>
                         </div>
                     </div>
                 `).join('')}
 
                 <div class="total">
-                    TOTAL PAGO: R$ ${totalGeneral.toFixed(2)}
+                    TOTAL: R$ ${totalGeneral.toFixed(2)}
                 </div>
 
                 <div class="signature-block">
                     <div class="signature">
-                        RESPONSÁVEL FINANCEIRO
+                        <div class="signature-line">Responsável Financeiro</div>
                     </div>
                     ${Object.keys(payoutData).length === 1 ? `
                         <div class="signature">
-                            ENTREGADOR: ${Object.keys(payoutData)[0].toUpperCase()}
+                            <div class="signature-line">Entregador: ${Object.keys(payoutData)[0]}</div>
                         </div>
                     ` : `
                         <div class="signature">
-                            ASSINATURA DOS ENTREGADORES
+                            <div class="signature-line">Entregador(es)</div>
                         </div>
                     `}
                 </div>
 
                 <div class="footer">
-                    Sistema PriMAKE - Gerado Automaticamente
+                    Sistema PriMAKE • Gerado automaticamente
                 </div>
             </body>
             </html>
@@ -727,60 +738,64 @@ const Delivery: React.FC<DeliveryProps> = ({ user }) => {
                             </button>
                         </div>
 
-                        <div className="flex-1 overflow-y-auto p-6" id="printable-route">
-                            <div className="mb-6 flex justify-between items-start border-b pb-4">
-                                <div>
-                                    <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Manifesto de Entrega</h1>
-                                    <p className="text-sm text-gray-500">Data: {new Date().toLocaleDateString()}</p>
-                                </div>
-                                <div className="text-right">
-                                    <p className="font-bold">Total de Paradas: {selectedRouteIds.length}</p>
-                                </div>
+                        <div className="flex-1 overflow-y-auto p-4" id="printable-route">
+                            {/* Header - 75mm optimized */}
+                            <div className="mb-4 pb-3 border-b-2 border-dashed border-gray-400 text-center">
+                                <h1 className="text-lg font-bold text-gray-900 dark:text-gray-100 uppercase tracking-wide">Manifesto de Entrega</h1>
+                                <p className="text-xs text-gray-500 mt-1">Data: {new Date().toLocaleDateString('pt-BR')} • {selectedRouteIds.length} paradas</p>
                             </div>
 
-                            <table className="w-full text-left border-collapse">
-                                <thead>
-                                    <tr className="border-b-2 border-gray-300 dark:border-gray-600">
-                                        <th className="py-2 font-bold text-gray-700 dark:text-gray-200">Seq</th>
-                                        <th className="py-2 font-bold text-gray-700 dark:text-gray-200">Cliente / Contato</th>
-                                        <th className="py-2 font-bold text-gray-700 dark:text-gray-200 w-1/3">Endereço</th>
-                                        <th className="py-2 font-bold text-gray-700 dark:text-gray-200 text-right">Valor</th>
-                                        <th className="py-2 font-bold text-gray-700 dark:text-gray-200 w-1/6 text-center">Assinatura</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                                    {deliveries
-                                        .filter(d => selectedRouteIds.includes(d.id))
-                                        .map((d, index) => (
-                                            <tr key={d.id} className="break-inside-avoid">
-                                                <td className="py-4 align-top font-bold text-gray-500">{index + 1}</td>
-                                                <td className="py-4 align-top">
-                                                    <p className="font-bold text-gray-900 dark:text-white">{d.customerName}</p>
-                                                    <p className="text-sm text-gray-500">{d.phone}</p>
-                                                    <p className="text-xs text-gray-400 mt-1">ID: {d.id}</p>
-                                                </td>
-                                                <td className="py-4 align-top">
-                                                    <p className="text-sm text-gray-800 dark:text-gray-200">{d.address}</p>
-                                                    <p className="text-xs text-gray-500">{d.city}</p>
-                                                    {d.notes && (
-                                                        <p className="mt-1 text-xs bg-yellow-100 text-yellow-800 p-1 rounded inline-block">Obs: {d.notes}</p>
-                                                    )}
-                                                </td>
-                                                <td className="py-4 align-top text-right font-bold text-gray-900 dark:text-white">
-                                                    R$ {d.totalValue.toFixed(2)}
-                                                </td>
-                                                <td className="py-4 align-top border-b border-gray-100">
-                                                    <div className="h-8 border-b border-gray-300 dark:border-gray-600"></div>
-                                                </td>
-                                            </tr>
-                                        ))}
-                                </tbody>
-                            </table>
+                            {/* Deliveries - Compact Vertical Blocks */}
+                            <div className="space-y-3">
+                                {deliveries
+                                    .filter(d => selectedRouteIds.includes(d.id))
+                                    .map((d, index) => (
+                                        <div key={d.id} className="border border-gray-200 dark:border-gray-600 rounded-lg p-3 break-inside-avoid bg-white dark:bg-gray-700/50">
+                                            {/* Sequence Number & Value Row */}
+                                            <div className="flex justify-between items-center mb-2">
+                                                <span className="bg-gray-900 text-white text-xs font-bold px-2 py-1 rounded">{index + 1}</span>
+                                                <span className="text-base font-bold text-gray-900 dark:text-white">R$ {d.totalValue.toFixed(2)}</span>
+                                            </div>
 
-                            <div className="mt-8 pt-4 border-t border-gray-300 flex justify-between text-sm text-gray-500">
-                                <p>Entregador: __________________________________</p>
-                                <p>Saída: ____:____</p>
-                                <p>Retorno: ____:____</p>
+                                            {/* Customer Info */}
+                                            <div className="mb-2">
+                                                <p className="font-bold text-sm text-gray-900 dark:text-white truncate">{d.customerName}</p>
+                                                <p className="text-xs text-gray-500">{d.phone}</p>
+                                            </div>
+
+                                            {/* Address */}
+                                            <div className="text-xs text-gray-700 dark:text-gray-300 border-t border-gray-100 dark:border-gray-600 pt-2">
+                                                <p className="break-words">{d.address}</p>
+                                                <p className="text-gray-500">{d.city}</p>
+                                            </div>
+
+                                            {/* Notes */}
+                                            {d.notes && (
+                                                <div className="mt-2 text-[10px] bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-200 p-1.5 rounded">
+                                                    ⚠️ {d.notes}
+                                                </div>
+                                            )}
+
+                                            {/* Status Check */}
+                                            <div className="mt-2 pt-2 border-t border-dashed border-gray-200 dark:border-gray-600 flex items-center gap-3 text-[10px] text-gray-400">
+                                                <span>☐ Entregue</span>
+                                                <span>☐ Ausente</span>
+                                                <span>☐ Recusado</span>
+                                            </div>
+                                        </div>
+                                    ))}
+                            </div>
+
+                            {/* Footer */}
+                            <div className="mt-6 pt-4 border-t-2 border-dashed border-gray-400 space-y-3 text-xs text-gray-600 dark:text-gray-400">
+                                <div className="flex justify-between">
+                                    <span>Saída: ____:____</span>
+                                    <span>Retorno: ____:____</span>
+                                </div>
+                                <div className="pt-4 border-t border-gray-200 dark:border-gray-600">
+                                    <p className="text-center mb-8">Assinatura do Entregador</p>
+                                    <div className="border-b border-gray-400 w-full"></div>
+                                </div>
                             </div>
                         </div>
 
@@ -799,17 +814,58 @@ const Delivery: React.FC<DeliveryProps> = ({ user }) => {
                                                 <head>
                                                     <title>Rota de Entrega</title>
                                                     <style>
-                                                        body { font-family: sans-serif; padding: 20px; }
-                                                        table { width: 100%; border-collapse: collapse; }
-                                                        th, td { padding: 8px; text-align: left; }
-                                                        tr { break-inside: avoid; }
-                                                        .text-right { text-align: right; }
-                                                        .text-center { text-align: center; }
+                                                        * { box-sizing: border-box; margin: 0; padding: 0; }
+                                                        body { 
+                                                            font-family: 'Courier New', monospace; 
+                                                            font-size: 11px;
+                                                            width: 75mm; 
+                                                            padding: 3mm;
+                                                            color: #000;
+                                                        }
+                                                        .mb-4 { margin-bottom: 12px; }
+                                                        .mb-2 { margin-bottom: 8px; }
+                                                        .mt-2 { margin-top: 8px; }
+                                                        .mt-6 { margin-top: 20px; }
+                                                        .pt-2 { padding-top: 8px; }
+                                                        .pt-4 { padding-top: 12px; }
+                                                        .pb-3 { padding-bottom: 10px; }
+                                                        .p-3 { padding: 10px; }
+                                                        .p-1\\.5 { padding: 4px; }
+                                                        .space-y-3 > * + * { margin-top: 10px; }
+                                                        .border { border: 1px solid #ccc; }
+                                                        .border-dashed { border-style: dashed; }
+                                                        .border-t { border-top: 1px solid #ccc; }
+                                                        .border-t-2 { border-top: 2px dashed #666; }
                                                         .border-b { border-bottom: 1px solid #ccc; }
+                                                        .border-b-2 { border-bottom: 2px dashed #666; }
+                                                        .rounded { border-radius: 4px; }
+                                                        .rounded-lg { border-radius: 6px; }
+                                                        .text-center { text-align: center; }
+                                                        .text-xs { font-size: 10px; }
+                                                        .text-sm { font-size: 11px; }
+                                                        .text-base { font-size: 13px; }
+                                                        .text-lg { font-size: 14px; }
                                                         .font-bold { font-weight: bold; }
-                                                        .text-sm { font-size: 14px; }
-                                                        .text-xs { font-size: 12px; }
-                                                        .mt-1 { margin-top: 4px; }
+                                                        .uppercase { text-transform: uppercase; }
+                                                        .tracking-wide { letter-spacing: 1px; }
+                                                        .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+                                                        .break-words { word-wrap: break-word; }
+                                                        .break-inside-avoid { break-inside: avoid; }
+                                                        .flex { display: flex; }
+                                                        .justify-between { justify-content: space-between; }
+                                                        .items-center { align-items: center; }
+                                                        .gap-3 { gap: 10px; }
+                                                        .bg-gray-900 { background: #111; color: #fff; }
+                                                        .bg-yellow-100 { background: #fef3c7; }
+                                                        .text-yellow-800 { color: #92400e; }
+                                                        .text-gray-400 { color: #9ca3af; }
+                                                        .text-gray-500 { color: #6b7280; }
+                                                        .text-gray-700 { color: #374151; }
+                                                        .text-gray-900 { color: #111827; }
+                                                        @media print {
+                                                            body { width: 75mm; }
+                                                            .dark\\:bg-gray-700\\/50 { background: white; }
+                                                        }
                                                     </style>
                                                 </head>
                                                 <body>
