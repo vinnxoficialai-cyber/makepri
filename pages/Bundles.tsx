@@ -44,6 +44,9 @@ const Bundles: React.FC = () => {
         category: ProductCategory.BUNDLE
     });
 
+    // Edit Mode State
+    const [editingBundleId, setEditingBundleId] = useState<string | null>(null);
+
     // Helper: Get product details by ID
     const getProductById = (id: string) => allProducts.find(p => p.id === id);
 
@@ -89,6 +92,11 @@ const Bundles: React.FC = () => {
         }
 
         try {
+            // Get first component's image as the bundle cover
+            const firstComponentId = bundleForm.bundleComponents[0]?.productId;
+            const firstProduct = firstComponentId ? getProductById(firstComponentId) : null;
+            const bundleImageUrl = firstProduct?.imageUrl || '';
+
             const productData = {
                 name: bundleForm.name || 'Novo Kit',
                 sku: bundleForm.sku || `KIT-${Math.floor(Math.random() * 1000)}`,
@@ -99,19 +107,27 @@ const Bundles: React.FC = () => {
                 stock: calculateBundleStock(bundleForm.bundleComponents),
                 minStock: 5,
                 unit: 'kit',
-                imageUrl: 'https://picsum.photos/205',
+                imageUrl: bundleImageUrl,
                 description: 'Kit promocional'
             };
 
-            await BundleService.createBundle(productData, bundleForm.bundleComponents);
+            if (editingBundleId) {
+                // Update existing bundle
+                await BundleService.updateBundle(editingBundleId, productData, bundleForm.bundleComponents);
+            } else {
+                // Create new bundle
+                await BundleService.createBundle(productData, bundleForm.bundleComponents);
+            }
+
             await refresh(); // Reload products
             setIsModalOpen(false);
+            setEditingBundleId(null);
             setBundleForm({
                 name: '', sku: '', priceSale: 0, bundleComponents: [], type: 'bundle', category: ProductCategory.BUNDLE
             });
         } catch (error) {
-            console.error('Error creating bundle:', error);
-            alert('Erro ao criar kit. Verifique o console.');
+            console.error('Error saving bundle:', error);
+            alert('Erro ao salvar kit. Verifique o console.');
         }
     };
 
@@ -161,6 +177,22 @@ const Bundles: React.FC = () => {
                 alert('Erro ao excluir kit.');
             }
         }
+    };
+
+    // Handle Edit Bundle - open modal with existing data
+    const handleEditBundle = (bundle: Product) => {
+        const components = bundleComponents[bundle.id] || [];
+        setBundleForm({
+            id: bundle.id,
+            name: bundle.name,
+            sku: bundle.sku,
+            priceSale: bundle.priceSale,
+            bundleComponents: components.map(c => ({ productId: c.productId, quantity: c.quantity })),
+            type: 'bundle',
+            category: ProductCategory.BUNDLE
+        });
+        setEditingBundleId(bundle.id);
+        setIsModalOpen(true);
     };
 
     // Mobile Check
@@ -215,7 +247,13 @@ const Bundles: React.FC = () => {
                     <p className="text-gray-500 dark:text-gray-400">Crie ofertas especiais agrupando produtos.</p>
                 </div>
                 <button
-                    onClick={() => setIsModalOpen(true)}
+                    onClick={() => {
+                        setEditingBundleId(null);
+                        setBundleForm({
+                            name: '', sku: '', priceSale: 0, bundleComponents: [], type: 'bundle', category: ProductCategory.BUNDLE
+                        });
+                        setIsModalOpen(true);
+                    }}
                     className="bg-lime-600 hover:bg-lime-700 text-white px-5 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 shadow-lg shadow-lime-200 dark:shadow-none transition-all hover:scale-105"
                 >
                     <Plus size={18} /> Novo Kit
@@ -233,18 +271,20 @@ const Bundles: React.FC = () => {
                     const savingsPct = realValue > 0 ? (savings / realValue) * 100 : 0;
 
                     return (
-                        <div key={bundle.id} className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden flex flex-col group hover:border-lime-300 transition-all relative">
-                            {/* Delete Button */}
-                            <button
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleDeleteBundle(bundle.id, bundle.name);
-                                }}
-                                className="absolute top-2 right-2 z-10 bg-white/80 dark:bg-black/50 p-1.5 rounded-lg text-gray-500 hover:text-red-500 hover:bg-white dark:hover:bg-gray-700 transition-all shadow-sm"
-                                title="Excluir Kit"
-                            >
-                                <Trash2 size={16} />
-                            </button>
+                        <div key={bundle.id} className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden flex flex-col group hover:border-lime-300 transition-all relative cursor-pointer" onClick={() => handleEditBundle(bundle)}>
+                            {/* Action Buttons */}
+                            <div className="absolute top-2 right-2 z-10 flex gap-1">
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleDeleteBundle(bundle.id, bundle.name);
+                                    }}
+                                    className="bg-white/80 dark:bg-black/50 p-1.5 rounded-lg text-gray-500 hover:text-red-500 hover:bg-white dark:hover:bg-gray-700 transition-all shadow-sm"
+                                    title="Excluir Kit"
+                                >
+                                    <Trash2 size={16} />
+                                </button>
+                            </div>
 
                             <div className="h-32 bg-gray-100 dark:bg-gray-700 relative">
                                 {bundle.imageUrl ? (
@@ -321,7 +361,7 @@ const Bundles: React.FC = () => {
                                         <ArrowLeft size={20} />
                                     </button>
                                     <h3 className="font-bold text-xl text-gray-800 dark:text-white flex items-center gap-2">
-                                        <Layers className="text-lime-600" /> Novo Kit
+                                        <Layers className="text-lime-600" /> {editingBundleId ? 'Editar Kit' : 'Novo Kit'}
                                     </h3>
                                 </div>
                                 <button onClick={() => setIsModalOpen(false)} className="md:hidden text-gray-400">
