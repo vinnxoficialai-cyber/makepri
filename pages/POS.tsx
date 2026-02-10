@@ -63,6 +63,10 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
     const [isReceiptOpen, setIsReceiptOpen] = useState(false);
     const [completedSale, setCompletedSale] = useState<any>(null);
 
+    // Cash Register Closed Modal
+    const [isCashClosedModalOpen, setIsCashClosedModalOpen] = useState(false);
+    const [openingCashValue, setOpeningCashValue] = useState('');
+
     // New States for Improved POS
     const [deliveryAddress, setDeliveryAddress] = useState('');
     const [customerSearch, setCustomerSearch] = useState('');
@@ -257,17 +261,14 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
         e.preventDefault();
         if (!newCustomerForm.name.trim()) return;
 
-        const fullAddress = newCustomerForm.address
-            ? `${newCustomerForm.address}, ${newCustomerForm.number} - ${newCustomerForm.neighborhood}`
-            : '';
         try {
             const savedCustomer = await addCustomer({
                 name: newCustomerForm.name,
-                cpf: newCustomerForm.cpf,
+                cpf: '',
                 phone: newCustomerForm.phone,
-                email: newCustomerForm.email,
-                birthDate: newCustomerForm.birthDate,
-                address: fullAddress,
+                email: '',
+                birthDate: '',
+                address: newCustomerForm.address,
                 city: newCustomerForm.city,
                 state: newCustomerForm.state,
                 totalSpent: 0,
@@ -339,7 +340,7 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
             console.log('🔍 Checando caixa antes da venda:', currentCash);
 
             if (!currentCash) {
-                alert('⛔ ATENÇÃO: O caixa está FECHADO!\n\nVocê NÃO pode realizar vendas com o caixa fechado.\nPor favor, vá até a aba "Caixa" e abra-o primeiro.');
+                setIsCashClosedModalOpen(true);
                 return; // BLOQUEIA A VENDA TOTALMENTE
             }
         } catch (error) {
@@ -582,6 +583,20 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
         // Just close, state is already cleared
         setIsReceiptOpen(false);
         setCompletedSale(null);
+    };
+
+    // --- OPEN CASH REGISTER FROM POS ---
+    const handleOpenCashFromPOS = async () => {
+        const value = parseFloat(openingCashValue) || 0;
+        try {
+            await CashService.openRegister(value, user?.name || 'PDV');
+            setIsCashClosedModalOpen(false);
+            setOpeningCashValue('');
+            alert('✅ Caixa aberto com sucesso! Agora pode finalizar a venda.');
+        } catch (error: any) {
+            console.error('Erro ao abrir caixa:', error);
+            alert('❌ Erro ao abrir caixa: ' + error.message);
+        }
     };
 
     const changeAmount = cashReceived ? Math.max(0, parseFloat(cashReceived) - finalTotal) : 0;
@@ -1526,13 +1541,14 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
                         </div>
 
                         <form onSubmit={handleSaveNewCustomer} className="p-6 space-y-4 overflow-y-auto flex-1">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div className="md:col-span-2">
-                                    <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Nome Completo <span className="text-red-500">*</span></label>
+                            <p className="text-xs text-gray-400 dark:text-gray-500 mb-2">Cadastro rápido. Complete os dados depois na área de Clientes.</p>
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Nome <span className="text-red-500">*</span></label>
                                     <input
                                         required
                                         type="text"
-                                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-pink-200 focus:border-pink-500 outline-none bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                                        className="w-full px-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-pink-200 focus:border-pink-500 outline-none bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                                         placeholder="Ex: Maria Silva"
                                         value={newCustomerForm.name}
                                         onChange={e => setNewCustomerForm({ ...newCustomerForm, name: e.target.value })}
@@ -1540,104 +1556,25 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">CPF</label>
-                                    <input
-                                        type="text"
-                                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-pink-200 focus:border-pink-500 outline-none bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                                        placeholder="000.000.000-00"
-                                        value={newCustomerForm.cpf}
-                                        onChange={e => setNewCustomerForm({ ...newCustomerForm, cpf: e.target.value })}
-                                    />
-                                </div>
-                                <div>
                                     <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Telefone / WhatsApp</label>
                                     <input
                                         type="text"
-                                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-pink-200 focus:border-pink-500 outline-none bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                                        className="w-full px-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-pink-200 focus:border-pink-500 outline-none bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                                         placeholder="(00) 90000-0000"
                                         value={newCustomerForm.phone}
                                         onChange={e => setNewCustomerForm({ ...newCustomerForm, phone: e.target.value })}
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">E-mail</label>
+                                    <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1 flex items-center gap-1"><MapPin size={12} /> Endereço</label>
                                     <input
-                                        type="email"
-                                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-pink-200 focus:border-pink-500 outline-none bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                                        placeholder="cliente@email.com"
-                                        value={newCustomerForm.email}
-                                        onChange={e => setNewCustomerForm({ ...newCustomerForm, email: e.target.value })}
+                                        type="text"
+                                        className="w-full px-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-pink-200 focus:border-pink-500 outline-none bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                                        placeholder="Rua, Nº, Bairro..."
+                                        value={newCustomerForm.address}
+                                        onChange={e => setNewCustomerForm({ ...newCustomerForm, address: e.target.value })}
                                     />
                                 </div>
-                                <div>
-                                    <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Data de Nascimento</label>
-                                    <input
-                                        type="date"
-                                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-pink-200 focus:border-pink-500 outline-none bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                                        value={newCustomerForm.birthDate}
-                                        onChange={e => setNewCustomerForm({ ...newCustomerForm, birthDate: e.target.value })}
-                                    />
-                                </div>
-                            </div>
-
-                            <div className="pt-2 border-t border-gray-100 dark:border-gray-700">
-                                <h4 className="text-xs font-bold text-gray-400 uppercase mb-3 flex items-center gap-1">
-                                    <MapPin size={12} /> Endereço Completo
-                                </h4>
-                                <div className="space-y-3">
-                                    <div className="grid grid-cols-3 gap-3">
-                                        <div className="col-span-2">
-                                            <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Logradouro</label>
-                                            <input
-                                                type="text"
-                                                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-pink-200 focus:border-pink-500 outline-none bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                                                placeholder="Rua, Av..."
-                                                value={newCustomerForm.address}
-                                                onChange={e => setNewCustomerForm({ ...newCustomerForm, address: e.target.value })}
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Número</label>
-                                            <input
-                                                type="text"
-                                                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-pink-200 focus:border-pink-500 outline-none bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                                                placeholder="123"
-                                                value={newCustomerForm.number}
-                                                onChange={e => setNewCustomerForm({ ...newCustomerForm, number: e.target.value })}
-                                            />
-                                        </div>
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-3">
-                                        <div>
-                                            <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Bairro</label>
-                                            <input
-                                                type="text"
-                                                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-pink-200 focus:border-pink-500 outline-none bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                                                value={newCustomerForm.neighborhood}
-                                                onChange={e => setNewCustomerForm({ ...newCustomerForm, neighborhood: e.target.value })}
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Cidade</label>
-                                            <input
-                                                type="text"
-                                                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-pink-200 focus:border-pink-500 outline-none bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                                                value={newCustomerForm.city}
-                                                onChange={e => setNewCustomerForm({ ...newCustomerForm, city: e.target.value })}
-                                            />
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div>
-                                <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Observações</label>
-                                <textarea
-                                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-pink-200 focus:border-pink-500 outline-none bg-white dark:bg-gray-700 text-gray-900 dark:text-white h-20 resize-none"
-                                    placeholder="Preferências, alergias, observações gerais..."
-                                    value={newCustomerForm.notes}
-                                    onChange={e => setNewCustomerForm({ ...newCustomerForm, notes: e.target.value })}
-                                />
                             </div>
                         </form>
 
@@ -1654,6 +1591,52 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
                             >
                                 <Save size={18} /> Salvar Cliente
                             </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* --- CASH REGISTER CLOSED MODAL --- */}
+            {isCashClosedModalOpen && (
+                <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+                    <div className="absolute inset-0 bg-gray-900/70 backdrop-blur-sm" onClick={() => setIsCashClosedModalOpen(false)}></div>
+                    <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-sm relative animate-in fade-in zoom-in-95 duration-200 overflow-hidden">
+                        <div className="p-6 text-center">
+                            <div className="w-16 h-16 mx-auto mb-4 bg-red-100 dark:bg-red-900/30 rounded-full flex items-center justify-center">
+                                <DollarSign size={32} className="text-red-500" />
+                            </div>
+                            <h3 className="font-bold text-xl text-gray-800 dark:text-white mb-2">Caixa Fechado!</h3>
+                            <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">O caixa precisa estar aberto para registrar vendas. Deseja abrir agora?</p>
+
+                            <div className="mb-5">
+                                <label className="block text-xs font-bold text-gray-600 dark:text-gray-300 mb-2 text-left">Valor Inicial do Caixa (R$)</label>
+                                <div className="relative">
+                                    <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                                    <input
+                                        type="number"
+                                        className="w-full pl-10 pr-4 py-3 border-2 border-gray-200 dark:border-gray-600 rounded-xl focus:border-emerald-500 outline-none text-lg font-bold bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white"
+                                        placeholder="0.00"
+                                        value={openingCashValue}
+                                        onChange={(e) => setOpeningCashValue(e.target.value)}
+                                        autoFocus
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="flex gap-3">
+                                <button
+                                    onClick={() => setIsCashClosedModalOpen(false)}
+                                    className="flex-1 py-3 border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 rounded-xl font-medium hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                                >
+                                    Cancelar
+                                </button>
+                                <button
+                                    onClick={handleOpenCashFromPOS}
+                                    className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold shadow-lg shadow-emerald-200 dark:shadow-none transition-all flex items-center justify-center gap-2"
+                                >
+                                    <DollarSign size={18} /> Abrir Caixa
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
