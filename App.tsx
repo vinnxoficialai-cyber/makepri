@@ -168,6 +168,8 @@ const App: React.FC = () => {
 
     // State to handle direct navigation to "Stalled Products" in Inventory
     const [autoFilterStalled, setAutoFilterStalled] = useState(false);
+    // State to handle direct navigation to "Low Stock" in Inventory
+    const [autoFilterLowStock, setAutoFilterLowStock] = useState(false);
 
     // --- AI MODAL STATE ---
     const [isAIModalOpen, setIsAIModalOpen] = useState(false);
@@ -214,6 +216,11 @@ const App: React.FC = () => {
 
     const handleNavigateToStalled = () => {
         setAutoFilterStalled(true);
+        setActiveTab('inventory');
+    };
+
+    const handleNavigateToLowStock = () => {
+        setAutoFilterLowStock(true);
         setActiveTab('inventory');
     };
 
@@ -270,10 +277,11 @@ const App: React.FC = () => {
                 return (
                     <Dashboard
                         user={currentUser}
-                        users={users} // Pass all users for leaderboard
-                        salesGoals={salesGoals} // Pass sales goals
+                        users={users}
+                        salesGoals={salesGoals}
                         onNavigate={handleNavigate}
                         onViewStalled={handleNavigateToStalled}
+                        onViewLowStock={handleNavigateToLowStock}
                     />
                 );
             case 'inventory':
@@ -282,6 +290,8 @@ const App: React.FC = () => {
                         user={currentUser}
                         autoFilterStalled={autoFilterStalled}
                         resetAutoFilter={() => setAutoFilterStalled(false)}
+                        autoFilterLowStock={autoFilterLowStock}
+                        resetAutoFilterLowStock={() => setAutoFilterLowStock(false)}
                     />
                 );
             case 'pos':

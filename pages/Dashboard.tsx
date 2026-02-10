@@ -38,10 +38,11 @@ const COLORS = ['#ec4899', '#f472b6', '#fb7185', '#818cf8'];
 
 interface DashboardProps {
     user: User;
-    users?: User[]; // Optional to avoid breaking if not passed yet, but we will pass it
-    salesGoals?: SalesGoal; // Optional
+    users?: User[];
+    salesGoals?: SalesGoal;
     onNavigate: (tab: string) => void;
     onViewStalled?: () => void;
+    onViewLowStock?: () => void;
 }
 
 // Custom Tooltip for Charts to handle Dark Mode
@@ -71,7 +72,7 @@ const CustomPieTooltip = ({ active, payload }: any) => {
     return null;
 };
 
-const Dashboard: React.FC<DashboardProps> = ({ user, users = [], salesGoals, onNavigate, onViewStalled }) => {
+const Dashboard: React.FC<DashboardProps> = ({ user, users = [], salesGoals, onNavigate, onViewStalled, onViewLowStock }) => {
     // --- QUICK SALE STATE ---
     const [isPosModalOpen, setIsPosModalOpen] = useState(false);
     const [isScannerOpen, setIsScannerOpen] = useState(false); // Scanner State
@@ -461,7 +462,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, users = [], salesGoals, onN
                         <StatCard title="Minhas Vendas (Mês)" value={`R$ ${myPersonalSalesMonth.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`} subtext="Acumulado" icon={DollarSign} color="bg-pink-500" trend="info" />
                         <StatCard title="Envios Pendentes" value={itemsToShip} subtext="Pedidos para separar" icon={Truck} trend="info" color="bg-indigo-500" onClick={() => onNavigate('delivery')} />
                         <StatCard title="Produtos Parados" value={stalledCount} subtext="Sem vendas > 30d" icon={Clock} color="bg-amber-500" onClick={() => onViewStalled && onViewStalled()} action={<div className="text-xs bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200 px-2 py-1 rounded font-bold">Ver Estoque</div>} />
-                        <StatCard title="Estoque Crítico" value={lowStockCount} subtext="Itens para repor" icon={AlertTriangle} trend={lowStockCount > 0 ? "down" : "info"} color="bg-rose-500" />
+                        <StatCard title="Estoque Crítico" value={lowStockCount} subtext="Itens para repor" icon={AlertTriangle} trend={lowStockCount > 0 ? "down" : "info"} color="bg-rose-500" onClick={() => onViewLowStock && onViewLowStock()} action={<div className="text-xs bg-rose-100 text-rose-800 dark:bg-rose-900 dark:text-rose-200 px-2 py-1 rounded font-bold">Ver Estoque</div>} />
                     </>
                 ) : (
                     <>
@@ -470,7 +471,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, users = [], salesGoals, onN
                         <StatCard title="Envios Pendentes" value={itemsToShip} subtext={`${ecommercePending} E-commerce / ${itemsToShip - ecommercePending} Loja`} icon={Truck} trend="info" color="bg-indigo-500" onClick={() => onNavigate('delivery')} />
                         <StatCard title="Comissão (Total)" value={`R$ ${commission.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`} subtext={commissionSubtext} icon={Award} color="bg-purple-500" />
                         <StatCard title="Produtos Parados" value={stalledCount} subtext="Sem vendas > 30d" icon={Clock} color="bg-amber-500" onClick={() => onViewStalled && onViewStalled()} action={<div className="text-xs bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200 px-2 py-1 rounded font-bold">Ver Estoque</div>} />
-                        <StatCard title="Estoque Crítico" value={lowStockCount} subtext="Itens para repor" icon={AlertTriangle} trend={lowStockCount > 0 ? "down" : "info"} color="bg-rose-500" />
+                        <StatCard title="Estoque Crítico" value={lowStockCount} subtext="Itens para repor" icon={AlertTriangle} trend={lowStockCount > 0 ? "down" : "info"} color="bg-rose-500" onClick={() => onViewLowStock && onViewLowStock()} action={<div className="text-xs bg-rose-100 text-rose-800 dark:bg-rose-900 dark:text-rose-200 px-2 py-1 rounded font-bold">Ver Estoque</div>} />
                     </>
                 )}
             </div>

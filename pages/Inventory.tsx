@@ -13,6 +13,8 @@ interface InventoryProps {
     user?: User;
     autoFilterStalled?: boolean;
     resetAutoFilter?: () => void;
+    autoFilterLowStock?: boolean;
+    resetAutoFilterLowStock?: () => void;
 }
 
 // Helper interface for analysis
@@ -24,10 +26,11 @@ interface ProductAnalysis {
     status: 'critical' | 'warning' | 'healthy';
 }
 
-const Inventory: React.FC<InventoryProps> = ({ user, autoFilterStalled, resetAutoFilter }) => {
+const Inventory: React.FC<InventoryProps> = ({ user, autoFilterStalled, resetAutoFilter, autoFilterLowStock, resetAutoFilterLowStock }) => {
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedCategory, setSelectedCategory] = useState<string>('Todos');
     const [showStalledOnly, setShowStalledOnly] = useState(false);
+    const [showLowStockOnly, setShowLowStockOnly] = useState(false);
 
     // Supabase hooks
     const {
@@ -69,10 +72,18 @@ const Inventory: React.FC<InventoryProps> = ({ user, autoFilterStalled, resetAut
     useEffect(() => {
         if (autoFilterStalled) {
             setShowStalledOnly(true);
-            // Reset the trigger so it doesn't get stuck if user navigates away and back
+            setShowLowStockOnly(false);
             if (resetAutoFilter) resetAutoFilter();
         }
     }, [autoFilterStalled, resetAutoFilter]);
+
+    useEffect(() => {
+        if (autoFilterLowStock) {
+            setShowLowStockOnly(true);
+            setShowStalledOnly(false);
+            if (resetAutoFilterLowStock) resetAutoFilterLowStock();
+        }
+    }, [autoFilterLowStock, resetAutoFilterLowStock]);
 
     // Modal States
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -176,9 +187,11 @@ const Inventory: React.FC<InventoryProps> = ({ user, autoFilterStalled, resetAut
             const lastMoveDate = productLastSaleMap.get(p.id) || p.updatedAt;
             const matchesStalled = showStalledOnly ? getDaysSinceDate(lastMoveDate) > 30 : true;
 
-            return matchesSearch && matchesCategory && matchesStalled;
+            const matchesLowStock = showLowStockOnly ? p.stock <= p.minStock : true;
+
+            return matchesSearch && matchesCategory && matchesStalled && matchesLowStock;
         });
-    }, [products, searchTerm, selectedCategory, showStalledOnly, productLastSaleMap]);
+    }, [products, searchTerm, selectedCategory, showStalledOnly, showLowStockOnly, productLastSaleMap]);
 
     // Ensure valid page if filter reduces count
     useEffect(() => {
@@ -557,13 +570,22 @@ const Inventory: React.FC<InventoryProps> = ({ user, autoFilterStalled, resetAut
 
                     <div className="flex gap-2 w-full lg:w-auto overflow-x-auto pb-1 scrollbar-hide items-center">
                         <button
-                            onClick={() => setShowStalledOnly(!showStalledOnly)}
+                            onClick={() => { setShowStalledOnly(!showStalledOnly); if (!showStalledOnly) setShowLowStockOnly(false); }}
                             className={`px-3 py-1.5 rounded-lg text-sm font-bold flex items-center gap-2 transition-colors border ${showStalledOnly
                                 ? 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800'
                                 : 'bg-white dark:bg-gray-700 text-gray-500 dark:text-gray-300 border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600'
                                 }`}
                         >
                             <AlertTriangle size={14} /> Itens Parados
+                        </button>
+                        <button
+                            onClick={() => { setShowLowStockOnly(!showLowStockOnly); if (!showLowStockOnly) setShowStalledOnly(false); }}
+                            className={`px-3 py-1.5 rounded-lg text-sm font-bold flex items-center gap-2 transition-colors border ${showLowStockOnly
+                                ? 'bg-rose-100 dark:bg-rose-900/40 text-rose-700 dark:text-rose-400 border-rose-200 dark:border-rose-800'
+                                : 'bg-white dark:bg-gray-700 text-gray-500 dark:text-gray-300 border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600'
+                                }`}
+                        >
+                            <AlertTriangle size={14} /> Estoque Crítico
                         </button>
                         <div className="h-6 w-px bg-gray-300 dark:bg-gray-600 mx-1"></div>
                         {categories.map(cat => (
