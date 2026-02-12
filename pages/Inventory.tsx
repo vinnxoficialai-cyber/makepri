@@ -31,6 +31,7 @@ const Inventory: React.FC<InventoryProps> = ({ user, autoFilterStalled, resetAut
     const [selectedCategory, setSelectedCategory] = useState<string>('Todos');
     const [showStalledOnly, setShowStalledOnly] = useState(false);
     const [showLowStockOnly, setShowLowStockOnly] = useState(false);
+    const [showPromotionOnly, setShowPromotionOnly] = useState(false);
 
     // Supabase hooks
     const {
@@ -188,10 +189,11 @@ const Inventory: React.FC<InventoryProps> = ({ user, autoFilterStalled, resetAut
             const matchesStalled = showStalledOnly ? getDaysSinceDate(lastMoveDate) > 30 : true;
 
             const matchesLowStock = showLowStockOnly ? p.stock <= p.minStock : true;
+            const matchesPromotion = showPromotionOnly ? !!p.isPromotion : true;
 
-            return matchesSearch && matchesCategory && matchesStalled && matchesLowStock;
+            return matchesSearch && matchesCategory && matchesStalled && matchesLowStock && matchesPromotion;
         });
-    }, [products, searchTerm, selectedCategory, showStalledOnly, showLowStockOnly, productLastSaleMap]);
+    }, [products, searchTerm, selectedCategory, showStalledOnly, showLowStockOnly, showPromotionOnly, productLastSaleMap]);
 
     // Ensure valid page if filter reduces count
     useEffect(() => {
@@ -330,7 +332,9 @@ const Inventory: React.FC<InventoryProps> = ({ user, autoFilterStalled, resetAut
                     commissionRate: Number(newProduct.commissionRate) || 0,
                     imageUrl: newProduct.imageUrl || '',
                     supplier: newProduct.supplier,
-                    collection: newProduct.collection
+                    collection: newProduct.collection,
+                    isPromotion: newProduct.isPromotion || false,
+                    pricePromotion: Number(newProduct.pricePromotion) || 0
                 };
                 savedProduct = await addProductToDb(productToAdd as Omit<Product, 'id' | 'createdAt' | 'updatedAt'>);
                 alert('✅ Produto criado!');
@@ -431,12 +435,13 @@ const Inventory: React.FC<InventoryProps> = ({ user, autoFilterStalled, resetAut
     };
 
     const handleDeleteProduct = async (productId: string, productName: string) => {
-        if (window.confirm(`Tem certeza que deseja excluir o produto "${productName}" do estoque?`)) {
+        if (window.confirm(`Deseja inativar o produto "${productName}"? Ele poderá ser reativado nas Configurações > Inativos.`)) {
             try {
                 await deleteProductFromDb(productId);
+                alert('✅ Produto inativado com sucesso!');
             } catch (error: any) {
-                console.error('Erro ao deletar produto:', error);
-                alert('❌ Erro ao deletar produto: ' + error.message);
+                console.error('Erro ao inativar produto:', error);
+                alert('❌ Erro ao inativar produto: ' + error.message);
             }
         }
     };
@@ -586,6 +591,15 @@ const Inventory: React.FC<InventoryProps> = ({ user, autoFilterStalled, resetAut
                                 }`}
                         >
                             <AlertTriangle size={14} /> Estoque Crítico
+                        </button>
+                        <button
+                            onClick={() => { setShowPromotionOnly(!showPromotionOnly); if (!showPromotionOnly) { setShowStalledOnly(false); setShowLowStockOnly(false); } }}
+                            className={`px-3 py-1.5 rounded-lg text-sm font-bold flex items-center gap-2 transition-colors border ${showPromotionOnly
+                                ? 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400 border-green-200 dark:border-green-800'
+                                : 'bg-white dark:bg-gray-700 text-gray-500 dark:text-gray-300 border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600'
+                                }`}
+                        >
+                            <Percent size={14} /> Em Promoção
                         </button>
                         <div className="h-6 w-px bg-gray-300 dark:bg-gray-600 mx-1"></div>
                         {categories.map(cat => (
@@ -1157,6 +1171,22 @@ const Inventory: React.FC<InventoryProps> = ({ user, autoFilterStalled, resetAut
                                         />
                                     </div>
 
+                                    {/* PROMOTION CHECKBOX */}
+                                    <div className={`p-4 rounded-lg border transition-colors ${newProduct.isPromotion ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800' : 'bg-gray-50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700'}`}>
+                                        <label className="flex items-center gap-2 cursor-pointer">
+                                            <input
+                                                type="checkbox"
+                                                className="w-4 h-4 text-green-600 rounded focus:ring-green-500"
+                                                checked={!!newProduct.isPromotion}
+                                                onChange={e => setNewProduct({ ...newProduct, isPromotion: e.target.checked, pricePromotion: e.target.checked ? newProduct.pricePromotion : 0 })}
+                                            />
+                                            <span className={`font-medium flex items-center gap-2 ${newProduct.isPromotion ? 'text-green-800 dark:text-green-300' : 'text-gray-600 dark:text-gray-400'}`}>
+                                                <Percent size={16} /> Este produto está em promoção
+                                            </span>
+                                        </label>
+                                        {newProduct.isPromotion && <p className="text-xs text-green-600 dark:text-green-400 mt-2 ml-6">O preço promocional será usado no PDV automaticamente.</p>}
+                                    </div>
+
                                     {/* VARIATION CHECKBOX */}
                                     <div className="bg-purple-50 dark:bg-purple-900/10 p-4 rounded-lg border border-purple-100 dark:border-purple-800">
                                         <label className="flex items-center gap-2 cursor-pointer">
@@ -1213,6 +1243,22 @@ const Inventory: React.FC<InventoryProps> = ({ user, autoFilterStalled, resetAut
                                                     />
                                                 </div>
                                             </div>
+                                            {/* PROMOTION PRICE FIELD - only visible when checkbox is checked */}
+                                            {newProduct.isPromotion && (
+                                                <div>
+                                                    <label className="block text-xs font-medium text-green-600 dark:text-green-400 mb-1">Preço Promoção</label>
+                                                    <div className="relative">
+                                                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-green-500 text-xs">R$</span>
+                                                        <input
+                                                            type="number"
+                                                            className="w-full pl-8 pr-3 py-2 border border-green-300 dark:border-green-600 rounded-lg focus:ring-2 focus:ring-green-400/50 focus:border-green-400 outline-none transition-all bg-green-50 dark:bg-green-900/20 text-gray-900 dark:text-white"
+                                                            placeholder="0.00"
+                                                            value={newProduct.pricePromotion || ''}
+                                                            onChange={e => setNewProduct({ ...newProduct, pricePromotion: parseFloat(e.target.value) })}
+                                                        />
+                                                    </div>
+                                                </div>
+                                            )}
                                             <div>
                                                 <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
                                                     % Comissão <span className="text-gray-400">(Vend)</span>

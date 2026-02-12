@@ -74,12 +74,12 @@ const CRM: React.FC = () => {
     };
 
     const handleDelete = async (id: string) => {
-        if (window.confirm('Tem certeza que deseja excluir este cliente?')) {
+        if (window.confirm('Deseja inativar este cliente? Ele poderá ser reativado nas Configurações > Inativos.')) {
             try {
                 await deleteCustomer(id);
-                // Feedback?
+                alert('✅ Cliente inativado com sucesso!');
             } catch (error) {
-                alert('Erro ao excluir cliente');
+                alert('Erro ao inativar cliente');
             }
         }
     };
@@ -325,7 +325,7 @@ const CRM: React.FC = () => {
                                     <button
                                         onClick={() => handleDelete(customer.id)}
                                         className="p-2 text-gray-500 hover:text-rose-600 dark:text-gray-400 dark:hover:text-rose-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
-                                        title="Excluir"
+                                        title="Inativar"
                                     >
                                         <Trash2 size={16} />
                                     </button>

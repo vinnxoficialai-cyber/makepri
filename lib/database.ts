@@ -59,6 +59,7 @@ export const ProductService = {
         const { data, error } = await supabase
             .from('products')
             .select('*')
+            .eq('is_active', true)
             .order('created_at', { ascending: false });
 
         if (error) throw error;
@@ -121,14 +122,39 @@ export const ProductService = {
         return toCamelCase(data) as Product;
     },
 
-    // Deletar produto
+    // Inativar produto (soft delete)
     async delete(id: string): Promise<void> {
         const { error } = await supabase
             .from('products')
-            .delete()
+            .update({ is_active: false })
             .eq('id', id);
 
         if (error) throw error;
+    },
+
+    // Buscar produtos inativos
+    async getInactive(): Promise<Product[]> {
+        const { data, error } = await supabase
+            .from('products')
+            .select('*')
+            .eq('is_active', false)
+            .order('updated_at', { ascending: false });
+
+        if (error) throw error;
+        return toCamelCase(data) as Product[];
+    },
+
+    // Reativar produto
+    async reactivate(id: string): Promise<Product> {
+        const { data, error } = await supabase
+            .from('products')
+            .update({ is_active: true })
+            .eq('id', id)
+            .select()
+            .single();
+
+        if (error) throw error;
+        return toCamelCase(data) as Product;
     },
 
     // Atualizar estoque
@@ -203,6 +229,7 @@ export const CustomerService = {
         const { data, error } = await supabase
             .from('customers')
             .select('*')
+            .eq('is_active', true)
             .order('created_at', { ascending: false });
 
         if (error) throw error;
@@ -265,14 +292,39 @@ export const CustomerService = {
         return toCamelCase(data) as Customer;
     },
 
-    // Deletar cliente
+    // Inativar cliente (soft delete)
     async delete(id: string): Promise<void> {
         const { error } = await supabase
             .from('customers')
-            .delete()
+            .update({ is_active: false })
             .eq('id', id);
 
         if (error) throw error;
+    },
+
+    // Buscar clientes inativos
+    async getInactive(): Promise<Customer[]> {
+        const { data, error } = await supabase
+            .from('customers')
+            .select('*')
+            .eq('is_active', false)
+            .order('updated_at', { ascending: false });
+
+        if (error) throw error;
+        return toCamelCase(data) as Customer[];
+    },
+
+    // Reativar cliente
+    async reactivate(id: string): Promise<Customer> {
+        const { data, error } = await supabase
+            .from('customers')
+            .update({ is_active: true })
+            .eq('id', id)
+            .select()
+            .single();
+
+        if (error) throw error;
+        return toCamelCase(data) as Customer;
     },
 
     // Atualizar total gasto
@@ -858,5 +910,136 @@ export const SalesGoalService = {
             });
 
         if (error) throw error;
+    }
+};
+
+// =====================================================
+// SERVIÇO DE PROMOÇÕES
+// =====================================================
+
+export const PromotionService = {
+    // Buscar todas as promoções
+    async getAll(): Promise<any[]> {
+        const { data, error } = await supabase
+            .from('promotions')
+            .select('*')
+            .order('created_at', { ascending: false });
+
+        if (error) throw error;
+        return (data || []).map(toCamelCase);
+    },
+
+    // Buscar promoção por ID
+    async getById(id: string): Promise<any | null> {
+        const { data, error } = await supabase
+            .from('promotions')
+            .select('*')
+            .eq('id', id)
+            .single();
+
+        if (error) {
+            if (error.code === 'PGRST116') return null;
+            throw error;
+        }
+        return toCamelCase(data);
+    },
+
+    // Criar promoção com produtos
+    async create(promotion: any, productIds: string[]): Promise<any> {
+        const promoData = toSnakeCase({
+            name: promotion.name,
+            description: promotion.description || '',
+            discountType: promotion.discountType,
+            discountValue: promotion.discountValue,
+            startDate: promotion.startDate || null,
+            endDate: promotion.endDate || null,
+            status: promotion.status || 'active'
+        });
+
+        const { data, error } = await supabase
+            .from('promotions')
+            .insert(promoData)
+            .select()
+            .single();
+
+        if (error) throw error;
+
+        // Inserir produtos da promoção
+        if (productIds.length > 0) {
+            const promoProducts = productIds.map(pid => ({
+                promotion_id: data.id,
+                product_id: pid
+            }));
+
+            const { error: ppError } = await supabase
+                .from('promotion_products')
+                .insert(promoProducts);
+
+            if (ppError) throw ppError;
+        }
+
+        return toCamelCase(data);
+    },
+
+    // Atualizar promoção
+    async update(id: string, promotion: any, productIds?: string[]): Promise<any> {
+        const promoData = toSnakeCase({
+            name: promotion.name,
+            description: promotion.description || '',
+            discountType: promotion.discountType,
+            discountValue: promotion.discountValue,
+            startDate: promotion.startDate || null,
+            endDate: promotion.endDate || null,
+            status: promotion.status || 'active',
+            updatedAt: new Date().toISOString()
+        });
+
+        const { data, error } = await supabase
+            .from('promotions')
+            .update(promoData)
+            .eq('id', id)
+            .select()
+            .single();
+
+        if (error) throw error;
+
+        // Atualizar produtos se fornecidos
+        if (productIds !== undefined) {
+            // Remove antigos
+            await supabase.from('promotion_products').delete().eq('promotion_id', id);
+
+            // Inserir novos
+            if (productIds.length > 0) {
+                const promoProducts = productIds.map(pid => ({
+                    promotion_id: id,
+                    product_id: pid
+                }));
+
+                const { error: ppError } = await supabase
+                    .from('promotion_products')
+                    .insert(promoProducts);
+
+                if (ppError) throw ppError;
+            }
+        }
+
+        return toCamelCase(data);
+    },
+
+    // Deletar promoção (cascade deleta promotion_products)
+    async delete(id: string): Promise<void> {
+        const { error } = await supabase.from('promotions').delete().eq('id', id);
+        if (error) throw error;
+    },
+
+    // Buscar produtos de uma promoção
+    async getProducts(promotionId: string): Promise<string[]> {
+        const { data, error } = await supabase
+            .from('promotion_products')
+            .select('product_id')
+            .eq('promotion_id', promotionId);
+
+        if (error) throw error;
+        return (data || []).map((d: any) => d.product_id);
     }
 };

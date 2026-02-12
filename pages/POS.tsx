@@ -176,7 +176,7 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
                 quantity: 1,
                 variationId: variation?.id,
                 variationName: variation ? `${variation.type}: ${variation.name}` : undefined,
-                priceSale: variation?.priceOverride || product.priceSale // Use override if exists
+                priceSale: variation?.priceOverride || (product.isPromotion && product.pricePromotion ? product.pricePromotion : product.priceSale) // Use override > promo > regular
             }];
         });
     };

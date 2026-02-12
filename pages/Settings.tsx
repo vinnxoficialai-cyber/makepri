@@ -1,10 +1,10 @@
 
 import React, { useState, useEffect } from 'react';
-import { User, UserRole, ModuleType, CompanySettings, SalesGoal } from '../types';
-import { Users, Shield, Plus, X, Save, Trash2, Check, UserCircle, Image, Building, Upload, Edit, Camera, Lock, Target, MapPin, Phone, Globe, FileText, Calendar, Clock } from 'lucide-react';
+import { User, UserRole, ModuleType, CompanySettings, SalesGoal, Product, Customer } from '../types';
+import { Users, Shield, Plus, X, Save, Trash2, Check, UserCircle, Image, Building, Upload, Edit, Camera, Lock, Target, MapPin, Phone, Globe, FileText, Calendar, Clock, RotateCcw, Package, Search } from 'lucide-react';
 import { useSettings } from '../lib/hooks';
 import { useImageUpload } from '../lib/images';
-import { UserService } from '../lib/database';
+import { UserService, ProductService, CustomerService } from '../lib/database';
 
 interface SettingsProps {
     users: User[];
@@ -20,9 +20,15 @@ interface SettingsProps {
 const Settings: React.FC<SettingsProps> = ({
     users, setUsers, currentUser, setCurrentUser, companySettings, setCompanySettings, salesGoals, onUpdateGoal
 }) => {
-    const [activeTab, setActiveTab] = useState<'users' | 'company'>('users');
+    const [activeTab, setActiveTab] = useState<'users' | 'company' | 'inactive'>('users');
     const [isUserModalOpen, setIsUserModalOpen] = useState(false);
     const [editingUserId, setEditingUserId] = useState<string | null>(null);
+
+    // Inactive items state
+    const [inactiveProducts, setInactiveProducts] = useState<Product[]>([]);
+    const [inactiveCustomers, setInactiveCustomers] = useState<Customer[]>([]);
+    const [inactiveLoading, setInactiveLoading] = useState(false);
+    const [inactiveSearch, setInactiveSearch] = useState('');
 
     // Default form state for new user
     const [userForm, setUserForm] = useState<Partial<User> & { login?: string; password?: string; customGoal?: string; goalType?: 'daily' | 'monthly' }>({
@@ -52,6 +58,49 @@ const Settings: React.FC<SettingsProps> = ({
     }, [supabaseSettings]);
 
     const isAdmin = currentUser.role === 'Administrador';
+
+    // Load inactive items when tab is selected
+    useEffect(() => {
+        if (activeTab === 'inactive') {
+            loadInactiveItems();
+        }
+    }, [activeTab]);
+
+    const loadInactiveItems = async () => {
+        setInactiveLoading(true);
+        try {
+            const [products, customers] = await Promise.all([
+                ProductService.getInactive(),
+                CustomerService.getInactive()
+            ]);
+            setInactiveProducts(products);
+            setInactiveCustomers(customers);
+        } catch (error) {
+            console.error('Erro ao carregar inativos:', error);
+        } finally {
+            setInactiveLoading(false);
+        }
+    };
+
+    const handleReactivateProduct = async (id: string) => {
+        try {
+            await ProductService.reactivate(id);
+            setInactiveProducts(prev => prev.filter(p => p.id !== id));
+            alert('✅ Produto reativado!');
+        } catch (error: any) {
+            alert('❌ Erro ao reativar: ' + error.message);
+        }
+    };
+
+    const handleReactivateCustomer = async (id: string) => {
+        try {
+            await CustomerService.reactivate(id);
+            setInactiveCustomers(prev => prev.filter(c => c.id !== id));
+            alert('✅ Cliente reativado!');
+        } catch (error: any) {
+            alert('❌ Erro ao reativar: ' + error.message);
+        }
+    };
 
     const handleSaveCompany = async () => {
         if (!isAdmin) {
@@ -315,6 +364,13 @@ const Settings: React.FC<SettingsProps> = ({
                             }`}
                     >
                         <Building size={16} /> Dados da Empresa
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('inactive')}
+                        className={`px-6 py-4 text-sm font-medium transition-colors border-b-2 flex items-center gap-2 whitespace-nowrap ${activeTab === 'inactive' ? 'border-[#ffc8cb] text-gray-900 dark:text-white' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+                            }`}
+                    >
+                        <RotateCcw size={16} /> Inativos
                     </button>
                 </div>
 
@@ -593,6 +649,124 @@ const Settings: React.FC<SettingsProps> = ({
                                     <Save size={18} /> Salvar Todos os Dados
                                 </button>
                             </div>
+                        </div>
+                    )}
+
+                    {/* INACTIVE ITEMS TAB */}
+                    {activeTab === 'inactive' && (
+                        <div className="space-y-6">
+                            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                                <div>
+                                    <h3 className="text-lg font-bold text-gray-800 dark:text-white flex items-center gap-2">
+                                        <RotateCcw size={20} className="text-amber-500" /> Itens Inativos
+                                    </h3>
+                                    <p className="text-sm text-gray-500 dark:text-gray-400">Produtos e clientes que foram inativados. Reative-os quando necessário.</p>
+                                </div>
+                                <div className="relative w-full md:w-72">
+                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                                    <input
+                                        type="text"
+                                        placeholder="Buscar por nome..."
+                                        className="w-full pl-9 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-[#ffc8cb]/50 focus:border-[#ffc8cb] outline-none bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm"
+                                        value={inactiveSearch}
+                                        onChange={e => setInactiveSearch(e.target.value)}
+                                    />
+                                </div>
+                            </div>
+
+                            {inactiveLoading ? (
+                                <div className="flex justify-center py-12">
+                                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#ffc8cb]"></div>
+                                </div>
+                            ) : (
+                                <>
+                                    {/* Inactive Products */}
+                                    <div className="bg-gray-50 dark:bg-gray-700/30 rounded-xl border border-gray-100 dark:border-gray-700 overflow-hidden">
+                                        <div className="p-4 border-b border-gray-100 dark:border-gray-700 flex items-center gap-2">
+                                            <Package size={16} className="text-amber-500" />
+                                            <h4 className="font-bold text-gray-800 dark:text-white text-sm">Produtos Inativos</h4>
+                                            <span className="ml-auto bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 px-2 py-0.5 rounded-full text-xs font-bold">
+                                                {inactiveProducts.filter(p => p.name?.toLowerCase().includes(inactiveSearch.toLowerCase())).length}
+                                            </span>
+                                        </div>
+                                        {inactiveProducts.filter(p => p.name?.toLowerCase().includes(inactiveSearch.toLowerCase())).length > 0 ? (
+                                            <div className="divide-y divide-gray-100 dark:divide-gray-700">
+                                                {inactiveProducts
+                                                    .filter(p => p.name?.toLowerCase().includes(inactiveSearch.toLowerCase()))
+                                                    .map(product => (
+                                                        <div key={product.id} className="flex items-center justify-between p-4 hover:bg-white dark:hover:bg-gray-700/50 transition-colors">
+                                                            <div className="flex items-center gap-3">
+                                                                {product.imageUrl ? (
+                                                                    <img src={product.imageUrl} alt={product.name} className="w-10 h-10 rounded-lg object-cover border border-gray-200 dark:border-gray-600" />
+                                                                ) : (
+                                                                    <div className="w-10 h-10 rounded-lg bg-gray-200 dark:bg-gray-600 flex items-center justify-center">
+                                                                        <Package size={16} className="text-gray-400" />
+                                                                    </div>
+                                                                )}
+                                                                <div>
+                                                                    <p className="font-medium text-gray-800 dark:text-white text-sm">{product.name}</p>
+                                                                    <p className="text-xs text-gray-400">SKU: {product.sku} • R$ {product.priceSale?.toFixed(2)}</p>
+                                                                </div>
+                                                            </div>
+                                                            <button
+                                                                onClick={() => handleReactivateProduct(product.id)}
+                                                                className="px-3 py-1.5 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 rounded-lg text-xs font-bold hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition-colors flex items-center gap-1.5"
+                                                            >
+                                                                <RotateCcw size={12} /> Reativar
+                                                            </button>
+                                                        </div>
+                                                    ))}
+                                            </div>
+                                        ) : (
+                                            <div className="p-8 text-center text-gray-400 dark:text-gray-500">
+                                                <Package size={32} className="mx-auto mb-2 opacity-30" />
+                                                <p className="text-sm">Nenhum produto inativo encontrado.</p>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Inactive Customers */}
+                                    <div className="bg-gray-50 dark:bg-gray-700/30 rounded-xl border border-gray-100 dark:border-gray-700 overflow-hidden">
+                                        <div className="p-4 border-b border-gray-100 dark:border-gray-700 flex items-center gap-2">
+                                            <Users size={16} className="text-amber-500" />
+                                            <h4 className="font-bold text-gray-800 dark:text-white text-sm">Clientes Inativos</h4>
+                                            <span className="ml-auto bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 px-2 py-0.5 rounded-full text-xs font-bold">
+                                                {inactiveCustomers.filter(c => c.name?.toLowerCase().includes(inactiveSearch.toLowerCase())).length}
+                                            </span>
+                                        </div>
+                                        {inactiveCustomers.filter(c => c.name?.toLowerCase().includes(inactiveSearch.toLowerCase())).length > 0 ? (
+                                            <div className="divide-y divide-gray-100 dark:divide-gray-700">
+                                                {inactiveCustomers
+                                                    .filter(c => c.name?.toLowerCase().includes(inactiveSearch.toLowerCase()))
+                                                    .map(customer => (
+                                                        <div key={customer.id} className="flex items-center justify-between p-4 hover:bg-white dark:hover:bg-gray-700/50 transition-colors">
+                                                            <div className="flex items-center gap-3">
+                                                                <div className="w-10 h-10 rounded-full bg-indigo-50 dark:bg-indigo-900/20 flex items-center justify-center text-indigo-600 dark:text-indigo-400 font-bold text-sm border border-indigo-100 dark:border-indigo-800">
+                                                                    {customer.name ? customer.name.substring(0, 2).toUpperCase() : '??'}
+                                                                </div>
+                                                                <div>
+                                                                    <p className="font-medium text-gray-800 dark:text-white text-sm">{customer.name}</p>
+                                                                    <p className="text-xs text-gray-400">{customer.email || customer.phone || 'Sem contato'}</p>
+                                                                </div>
+                                                            </div>
+                                                            <button
+                                                                onClick={() => handleReactivateCustomer(customer.id)}
+                                                                className="px-3 py-1.5 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 rounded-lg text-xs font-bold hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition-colors flex items-center gap-1.5"
+                                                            >
+                                                                <RotateCcw size={12} /> Reativar
+                                                            </button>
+                                                        </div>
+                                                    ))}
+                                            </div>
+                                        ) : (
+                                            <div className="p-8 text-center text-gray-400 dark:text-gray-500">
+                                                <Users size={32} className="mx-auto mb-2 opacity-30" />
+                                                <p className="text-sm">Nenhum cliente inativo encontrado.</p>
+                                            </div>
+                                        )}
+                                    </div>
+                                </>
+                            )}
                         </div>
                     )}
                 </div>

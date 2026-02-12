@@ -39,6 +39,10 @@ export interface Product {
     // Bundle specific
     type?: 'single' | 'bundle'; // 'single' is default
     bundleComponents?: BundleComponent[];
+    // Promotion
+    isPromotion?: boolean;
+    pricePromotion?: number;
+    isActive?: boolean;
     variations?: ProductVariation[];
 }
 
@@ -86,6 +90,7 @@ export interface Customer {
     lastPurchase: string;
     status: 'Active' | 'Inactive';
     notes?: string;
+    isActive?: boolean;
 }
 
 export interface Task {
@@ -186,7 +191,27 @@ export interface CashMovement {
     createdBy?: string;
     createdAt: string;
 }
-export type ModuleType = 'dashboard' | 'inventory' | 'pos' | 'crm' | 'finance' | 'reports' | 'cash' | 'settings' | 'ecommerce' | 'tasks' | 'bundles' | 'ai' | 'goals' | 'delivery' | 'team';
+// Promotion Types
+export interface Promotion {
+    id: string;
+    name: string;
+    description?: string;
+    discountType: 'percentage' | 'fixed';
+    discountValue: number;
+    startDate?: string;
+    endDate?: string;
+    status: 'active' | 'inactive' | 'scheduled';
+    createdAt?: string;
+    updatedAt?: string;
+}
+
+export interface PromotionProduct {
+    id: string;
+    promotionId: string;
+    productId: string;
+}
+
+export type ModuleType = 'dashboard' | 'inventory' | 'pos' | 'crm' | 'finance' | 'reports' | 'cash' | 'settings' | 'ecommerce' | 'tasks' | 'bundles' | 'ai' | 'goals' | 'delivery' | 'team' | 'promotions';
 export type UserRole = 'Administrador' | 'Gerente' | 'Vendedor' | 'Estoquista' | 'Caixa' | 'Motoboy';
 
 export interface User {
