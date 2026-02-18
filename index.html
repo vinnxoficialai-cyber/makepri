@@ -1,49 +1,148 @@
-
 <!DOCTYPE html>
 <html lang="pt-BR">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <meta name="theme-color" content="#4f46e5" />
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="PriMake">
-    <link rel="manifest" href="/manifest.json">
-    <link rel="apple-touch-icon" href="/apple-touch-icon.png">
-    <title>Pri MAKE ERP</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-      tailwind.config = {
-        darkMode: 'class',
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#4f46e5" />
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="PriMake">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <title>Pri MAKE ERP</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+    }
+  </script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+    }
+
+    /* Custom Scrollbar for cleaner look */
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: #f1f1f1;
+    }
+
+    .dark ::-webkit-scrollbar-track {
+      background: #1f2937;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: #c1c1c1;
+      border-radius: 4px;
+    }
+
+    .dark ::-webkit-scrollbar-thumb {
+      background: #4b5563;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: #a8a8a8;
+    }
+
+    /* ===== 80mm Thermal Print Styles ===== */
+    @media print {
+      @page {
+        size: 80mm auto;
+        margin: 0;
       }
-    </script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <style>
+
+      html,
       body {
-        font-family: 'Inter', sans-serif;
+        width: 80mm !important;
+        height: auto !important;
+        min-height: 0 !important;
+        max-height: none !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        background: white !important;
+        color: #000 !important;
+        font-family: 'Courier New', monospace !important;
+        font-size: 11px !important;
+        overflow: visible !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
       }
-      /* Custom Scrollbar for cleaner look */
-      ::-webkit-scrollbar {
-        width: 8px;
-        height: 8px;
+
+      /* Hide everything by default */
+      body>* {
+        display: none !important;
       }
-      ::-webkit-scrollbar-track {
-        background: #f1f1f1; 
+
+      /* Show the receipt and all its ancestors up to body */
+      #receipt-content,
+      #receipt-content * {
+        display: revert !important;
       }
-      .dark ::-webkit-scrollbar-track {
-        background: #1f2937; 
+
+      /* Reset ALL ancestors of receipt-content: kill fixed/absolute positioning, heights, overlays */
+      div:has(#receipt-content) {
+        display: block !important;
+        position: static !important;
+        width: 80mm !important;
+        max-width: 80mm !important;
+        height: auto !important;
+        min-height: 0 !important;
+        max-height: none !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        background: white !important;
+        box-shadow: none !important;
+        border: none !important;
+        border-radius: 0 !important;
+        overflow: visible !important;
+        inset: unset !important;
+        backdrop-filter: none !important;
+        -webkit-backdrop-filter: none !important;
       }
-      ::-webkit-scrollbar-thumb {
-        background: #c1c1c1; 
-        border-radius: 4px;
+
+      #receipt-content {
+        width: 80mm !important;
+        max-width: 80mm !important;
+        height: auto !important;
+        padding: 2mm !important;
+        margin: 0 !important;
+        background: white !important;
+        color: #000 !important;
+        font-family: 'Courier New', monospace !important;
+        font-size: 11px !important;
+        box-shadow: none !important;
+        border-radius: 0 !important;
+        overflow: visible !important;
       }
-      .dark ::-webkit-scrollbar-thumb {
-        background: #4b5563; 
+
+      #receipt-content p,
+      #receipt-content span,
+      #receipt-content div {
+        color: #000 !important;
+        word-wrap: break-word !important;
+        overflow-wrap: break-word !important;
       }
-      ::-webkit-scrollbar-thumb:hover {
-        background: #a8a8a8; 
+
+      #receipt-content .truncate {
+        overflow: visible !important;
+        text-overflow: unset !important;
+        white-space: normal !important;
+        word-wrap: break-word !important;
       }
-    </style>
+
+      /* Hide print:hidden elements */
+      .print\\:hidden,
+      [class*="print:hidden"] {
+        display: none !important;
+      }
+    }
+  </style>
   <script type="importmap">
 {
   "imports": {
@@ -57,10 +156,11 @@
   }
 }
 </script>
-<link rel="stylesheet" href="/index.css">
+  <link rel="stylesheet" href="/index.css">
 </head>
-  <body class="bg-gray-50 text-gray-900 dark:bg-gray-900 dark:text-gray-100 transition-colors duration-200">
-    <div id="root"></div>
+
+<body class="bg-gray-50 text-gray-900 dark:bg-gray-900 dark:text-gray-100 transition-colors duration-200">
+  <div id="root"></div>
   <script type="module" src="/index.tsx"></script>
   <script>
     if ('serviceWorker' in navigator) {
@@ -72,4 +172,5 @@
     }
   </script>
 </body>
+
 </html>

@@ -2,12 +2,13 @@
 import React, { useState, useEffect } from 'react';
 import {
     Users, CheckSquare, Target, Trophy, Calendar, Plus,
-    ChevronLeft, ChevronRight, CheckCircle2,
+    ChevronLeft, ChevronRight, ChevronDown, CheckCircle2,
     User as UserIcon, Trash2, X, ShoppingBag, Clock,
-    Sun, Moon
+    Sun, Moon, Bike
 } from 'lucide-react';
 import { User, SalesGoal, Task } from '../types';
 import { MOCK_TASKS } from '../constants';
+import { useTransactions } from '../lib/hooks';
 
 const MONTHS = [
     'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
@@ -31,10 +32,13 @@ const Team: React.FC<TeamProps> = ({ users, currentUser, salesGoals, onUpdateGoa
         isSalesperson ? 'tasks' : 'members'
     );
 
+    // --- COLLAPSIBLE SECTIONS STATE ---
+    const [openSections, setOpenSections] = useState<Record<string, boolean>>({ vendedoras: true, motoboy: false, admin: false });
+    const toggleSection = (key: string) => setOpenSections(prev => ({ ...prev, [key]: !prev[key] }));
+
     // --- GOALS STATE ---
     const [selectedDate, setSelectedDate] = useState(new Date());
     const [salesBySeller, setSalesBySeller] = useState<Record<string, number>>({});
-    const [, setLoadingGoals] = useState(false);
     const currentMonth = selectedDate.getMonth();
     const currentYear = selectedDate.getFullYear();
 
@@ -68,24 +72,24 @@ const Team: React.FC<TeamProps> = ({ users, currentUser, salesGoals, onUpdateGoa
         return acc + (type === 'daily' ? goalVal * 30 : goalVal);
     }, 0);
 
-    const currentStoreSales = Object.values(salesBySeller).reduce((acc: number, curr: number) => acc + curr, 0);
+    const currentStoreSales: number = Object.values(salesBySeller).reduce<number>((acc, curr) => acc + (curr as number), 0);
     const storeProgress = totalTeamGoal > 0 ? (currentStoreSales / totalTeamGoal) * 100 : 0;
+
+    // --- SUPABASE HOOKS ---
+    const { transactions } = useTransactions();
 
     // --- EFFECTS ---
     useEffect(() => {
-        // Simulate fetching sales data for selected month
-        setLoadingGoals(true);
-        setTimeout(() => {
-            const mockSales: Record<string, number> = {};
-            // Generate mock data for ALL sales users to ensure global stats are correct
-            allSalesUsers.forEach(u => {
-                // Zeroed out for clean slate
-                mockSales[u.id] = 0;
-            });
-            setSalesBySeller(mockSales);
-            setLoadingGoals(false);
-        }, 500);
-    }, [currentMonth, currentYear, users.length]);
+        // Calculate real sales per seller from transactions for the selected month
+        const monthPrefix = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}`;
+        const realSales: Record<string, number> = {};
+        allSalesUsers.forEach(u => {
+            realSales[u.id] = transactions
+                .filter(t => t.date.startsWith(monthPrefix) && t.status === 'Completed' && t.sellerId === u.id)
+                .reduce((acc, curr) => acc + curr.total, 0);
+        });
+        setSalesBySeller(realSales);
+    }, [currentMonth, currentYear, transactions, users.length]);
 
     // --- GOAL HANDLERS ---
     const changeMonth = (delta: number) => {
@@ -171,70 +175,229 @@ const Team: React.FC<TeamProps> = ({ users, currentUser, salesGoals, onUpdateGoa
 
             {/* TAB CONTENT: MEMBERS (Only if not Salesperson) */}
             {activeTab === 'members' && !isSalesperson && (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {users.map(user => {
-                        const currentSales = salesBySeller[user.id] || 0;
-                        const goalVal = salesGoals.userGoals[user.id] || 0;
-                        const type = salesGoals.goalTypes[user.id] || 'monthly';
+                <div className="space-y-4">
+                    {/* --- VENDEDORAS SECTION --- */}
+                    <div className="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+                        <button
+                            onClick={() => toggleSection('vendedoras')}
+                            className="w-full flex items-center justify-between px-5 py-4 bg-white dark:bg-gray-800 hover:bg-pink-50 dark:hover:bg-gray-750 transition-colors"
+                        >
+                            <div className="flex items-center gap-3">
+                                <ShoppingBag size={20} className="text-pink-600 dark:text-pink-400" />
+                                <h3 className="text-lg font-bold text-gray-800 dark:text-white">Vendedoras</h3>
+                                <span className="text-xs bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-300 px-2 py-0.5 rounded-full font-bold">
+                                    {users.filter(u => u.role === 'Vendedor').length}
+                                </span>
+                            </div>
+                            <ChevronDown size={20} className={`text-gray-400 transition-transform duration-200 ${openSections.vendedoras ? 'rotate-180' : ''}`} />
+                        </button>
+                        {openSections.vendedoras && (
+                            <div className="p-5 pt-2 bg-gray-50 dark:bg-gray-900/30 border-t border-gray-100 dark:border-gray-700">
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                    {users.filter(u => u.role === 'Vendedor').map(user => {
+                                        const currentSales = salesBySeller[user.id] || 0;
+                                        const goalVal = salesGoals.userGoals[user.id] || 0;
+                                        const type = salesGoals.goalTypes[user.id] || 'monthly';
+                                        const monthlyTarget = type === 'daily' ? goalVal * 30 : goalVal;
+                                        const progress = monthlyTarget > 0 ? (currentSales / monthlyTarget) * 100 : 0;
+                                        const pendingTasks = tasks.filter(t => t.assignedTo === user.id && t.status === 'pending').length;
+                                        const COMMISSION_THRESHOLD = 3000;
+                                        const commRate = currentSales > COMMISSION_THRESHOLD ? 0.02 : 0.01;
+                                        const commValue = currentSales * commRate;
+                                        const tierLabel = currentSales > COMMISSION_THRESHOLD ? 'Tier 2 (2%)' : 'Tier 1 (1%)';
 
-                        // For progress bar visualization, project daily goal to monthly if needed
-                        const monthlyTarget = type === 'daily' ? goalVal * 30 : goalVal;
-                        const progress = monthlyTarget > 0 ? (currentSales / monthlyTarget) * 100 : 0;
-                        const pendingTasks = tasks.filter(t => t.assignedTo === user.id && t.status === 'pending').length;
-
-                        return (
-                            <div
-                                key={user.id}
-                                onClick={() => handleMemberClick(user)}
-                                className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden flex flex-col hover:border-pink-300 transition-all cursor-pointer group"
-                            >
-                                <div className="p-6 flex items-start justify-between">
-                                    <div className="flex gap-4">
-                                        <div className="w-14 h-14 rounded-full bg-gray-100 dark:bg-gray-700 overflow-hidden border-2 border-white dark:border-gray-600 shadow-sm group-hover:scale-105 transition-transform">
-                                            {user.avatarUrl ? (
-                                                <img src={user.avatarUrl} alt={user.name} className="w-full h-full object-cover" />
-                                            ) : (
-                                                <div className="w-full h-full flex items-center justify-center text-gray-400"><UserIcon size={24} /></div>
-                                            )}
-                                        </div>
-                                        <div>
-                                            <h3 className="font-bold text-gray-900 dark:text-white group-hover:text-pink-600 transition-colors">{user.name}</h3>
-                                            <span className="inline-block px-2 py-0.5 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded text-xs uppercase font-bold mt-1">
-                                                {user.role}
-                                            </span>
-                                        </div>
-                                    </div>
-                                    <div className={`flex flex-col items-end ${user.active ? 'text-emerald-500' : 'text-gray-400'}`}>
-                                        <CheckCircle2 size={18} />
-                                        <span className="text-[10px] uppercase font-bold">{user.active ? 'Ativo' : 'Inativo'}</span>
-                                    </div>
-                                </div>
-
-                                <div className="px-6 py-4 bg-gray-50 dark:bg-gray-900/50 border-t border-gray-100 dark:border-gray-700 flex-1 space-y-4">
-                                    <div>
-                                        <div className="flex justify-between text-xs mb-1">
-                                            <span className="text-gray-500">Desempenho (Mês)</span>
-                                            <span className="font-bold text-gray-800 dark:text-white">{Math.round(progress)}% da Meta</span>
-                                        </div>
-                                        <div className="w-full bg-gray-200 dark:bg-gray-700 h-2 rounded-full overflow-hidden">
-                                            <div className={`h-full rounded-full ${progress >= 100 ? 'bg-emerald-500' : 'bg-pink-500'}`} style={{ width: `${Math.min(progress, 100)}%` }}></div>
-                                        </div>
-                                        <div className="flex justify-between text-xs mt-1 text-gray-400">
-                                            <span>R$ {currentSales.toLocaleString('pt-BR')}</span>
-                                            <span>
-                                                {type === 'daily' ? 'Meta Dia: ' : 'Meta Mês: '}
-                                                R$ {goalVal.toLocaleString('pt-BR')}
-                                            </span>
-                                        </div>
-                                    </div>
-                                    <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300 bg-white dark:bg-gray-800 p-2 rounded border border-gray-100 dark:border-gray-700">
-                                        <CheckSquare size={16} className="text-indigo-500" />
-                                        <span>{pendingTasks} tarefas pendentes</span>
-                                    </div>
+                                        return (
+                                            <div
+                                                key={user.id}
+                                                onClick={() => handleMemberClick(user)}
+                                                className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden flex flex-col hover:border-pink-300 transition-all cursor-pointer group"
+                                            >
+                                                <div className="p-6 flex items-start justify-between">
+                                                    <div className="flex gap-4">
+                                                        <div className="w-14 h-14 rounded-full bg-gray-100 dark:bg-gray-700 overflow-hidden border-2 border-white dark:border-gray-600 shadow-sm group-hover:scale-105 transition-transform">
+                                                            {user.avatarUrl ? (
+                                                                <img src={user.avatarUrl} alt={user.name} className="w-full h-full object-cover" />
+                                                            ) : (
+                                                                <div className="w-full h-full flex items-center justify-center text-gray-400"><UserIcon size={24} /></div>
+                                                            )}
+                                                        </div>
+                                                        <div>
+                                                            <h3 className="font-bold text-gray-900 dark:text-white group-hover:text-pink-600 transition-colors">{user.name}</h3>
+                                                            <span className="inline-block px-2 py-0.5 bg-pink-100 dark:bg-pink-900/30 text-pink-700 dark:text-pink-300 rounded text-xs uppercase font-bold mt-1">{user.role}</span>
+                                                        </div>
+                                                    </div>
+                                                    <div className={`flex flex-col items-end ${user.active ? 'text-emerald-500' : 'text-gray-400'}`}>
+                                                        <CheckCircle2 size={18} />
+                                                        <span className="text-[10px] uppercase font-bold">{user.active ? 'Ativo' : 'Inativo'}</span>
+                                                    </div>
+                                                </div>
+                                                <div className="px-6 py-4 bg-gray-50 dark:bg-gray-900/50 border-t border-gray-100 dark:border-gray-700 flex-1 space-y-4">
+                                                    <div>
+                                                        <div className="flex justify-between text-xs mb-1">
+                                                            <span className="text-gray-500">Desempenho (Mês)</span>
+                                                            <span className="font-bold text-gray-800 dark:text-white">{Math.round(progress)}% da Meta</span>
+                                                        </div>
+                                                        <div className="w-full bg-gray-200 dark:bg-gray-700 h-2 rounded-full overflow-hidden">
+                                                            <div className={`h-full rounded-full ${progress >= 100 ? 'bg-emerald-500' : 'bg-pink-500'}`} style={{ width: `${Math.min(progress, 100)}%` }}></div>
+                                                        </div>
+                                                        <div className="flex justify-between text-xs mt-1 text-gray-400">
+                                                            <span>R$ {currentSales.toLocaleString('pt-BR')}</span>
+                                                            <span>{type === 'daily' ? 'Meta Dia: ' : 'Meta Mês: '}R$ {goalVal.toLocaleString('pt-BR')}</span>
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex items-center justify-between p-2.5 rounded-lg bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800">
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="text-purple-600 dark:text-purple-400 text-sm font-bold">💰 Comissão:</span>
+                                                            <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${currentSales > COMMISSION_THRESHOLD ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' : 'bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400'}`}>
+                                                                {tierLabel}
+                                                            </span>
+                                                        </div>
+                                                        <span className="text-sm font-black text-purple-700 dark:text-purple-300">
+                                                            R$ {commValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                                        </span>
+                                                    </div>
+                                                    <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300 bg-white dark:bg-gray-800 p-2 rounded border border-gray-100 dark:border-gray-700">
+                                                        <CheckSquare size={16} className="text-indigo-500" />
+                                                        <span>{pendingTasks} tarefas pendentes</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )
+                                    })}
+                                    {users.filter(u => u.role === 'Vendedor').length === 0 && (
+                                        <div className="col-span-full text-center py-8 text-gray-400 text-sm">Nenhuma vendedora cadastrada.</div>
+                                    )}
                                 </div>
                             </div>
-                        )
-                    })}
+                        )}
+                    </div>
+
+                    {/* --- MOTOBOY SECTION --- */}
+                    <div className="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+                        <button
+                            onClick={() => toggleSection('motoboy')}
+                            className="w-full flex items-center justify-between px-5 py-4 bg-white dark:bg-gray-800 hover:bg-cyan-50 dark:hover:bg-gray-750 transition-colors"
+                        >
+                            <div className="flex items-center gap-3">
+                                <Bike size={20} className="text-cyan-600 dark:text-cyan-400" />
+                                <h3 className="text-lg font-bold text-gray-800 dark:text-white">Motoboys</h3>
+                                <span className="text-xs bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-300 px-2 py-0.5 rounded-full font-bold">
+                                    {users.filter(u => u.role === 'Motoboy').length}
+                                </span>
+                            </div>
+                            <ChevronDown size={20} className={`text-gray-400 transition-transform duration-200 ${openSections.motoboy ? 'rotate-180' : ''}`} />
+                        </button>
+                        {openSections.motoboy && (
+                            <div className="p-5 pt-2 bg-gray-50 dark:bg-gray-900/30 border-t border-gray-100 dark:border-gray-700">
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                    {users.filter(u => u.role === 'Motoboy').map(user => {
+                                        const pendingTasks = tasks.filter(t => t.assignedTo === user.id && t.status === 'pending').length;
+                                        return (
+                                            <div
+                                                key={user.id}
+                                                onClick={() => handleMemberClick(user)}
+                                                className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden flex flex-col hover:border-cyan-300 transition-all cursor-pointer group"
+                                            >
+                                                <div className="p-6 flex items-start justify-between">
+                                                    <div className="flex gap-4">
+                                                        <div className="w-14 h-14 rounded-full bg-gray-100 dark:bg-gray-700 overflow-hidden border-2 border-white dark:border-gray-600 shadow-sm group-hover:scale-105 transition-transform">
+                                                            {user.avatarUrl ? (
+                                                                <img src={user.avatarUrl} alt={user.name} className="w-full h-full object-cover" />
+                                                            ) : (
+                                                                <div className="w-full h-full flex items-center justify-center text-cyan-400"><Bike size={24} /></div>
+                                                            )}
+                                                        </div>
+                                                        <div>
+                                                            <h3 className="font-bold text-gray-900 dark:text-white group-hover:text-cyan-600 transition-colors">{user.name}</h3>
+                                                            <span className="inline-block px-2 py-0.5 bg-cyan-100 dark:bg-cyan-900/30 text-cyan-700 dark:text-cyan-300 rounded text-xs uppercase font-bold mt-1">{user.role}</span>
+                                                        </div>
+                                                    </div>
+                                                    <div className={`flex flex-col items-end ${user.active ? 'text-emerald-500' : 'text-gray-400'}`}>
+                                                        <CheckCircle2 size={18} />
+                                                        <span className="text-[10px] uppercase font-bold">{user.active ? 'Ativo' : 'Inativo'}</span>
+                                                    </div>
+                                                </div>
+                                                <div className="px-6 py-4 bg-gray-50 dark:bg-gray-900/50 border-t border-gray-100 dark:border-gray-700 flex-1 space-y-3">
+                                                    <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+                                                        <span className="text-xs">{user.email}</span>
+                                                    </div>
+                                                    <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300 bg-white dark:bg-gray-800 p-2 rounded border border-gray-100 dark:border-gray-700">
+                                                        <CheckSquare size={16} className="text-indigo-500" />
+                                                        <span>{pendingTasks} tarefas pendentes</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )
+                                    })}
+                                    {users.filter(u => u.role === 'Motoboy').length === 0 && (
+                                        <div className="col-span-full text-center py-8 text-gray-400 text-sm">Nenhum motoboy cadastrado.</div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* --- ADMINISTRAÇÃO SECTION --- */}
+                    <div className="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+                        <button
+                            onClick={() => toggleSection('admin')}
+                            className="w-full flex items-center justify-between px-5 py-4 bg-white dark:bg-gray-800 hover:bg-indigo-50 dark:hover:bg-gray-750 transition-colors"
+                        >
+                            <div className="flex items-center gap-3">
+                                <UserIcon size={20} className="text-indigo-600 dark:text-indigo-400" />
+                                <h3 className="text-lg font-bold text-gray-800 dark:text-white">Administração</h3>
+                                <span className="text-xs bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300 px-2 py-0.5 rounded-full font-bold">
+                                    {users.filter(u => u.role !== 'Vendedor' && u.role !== 'Motoboy').length}
+                                </span>
+                            </div>
+                            <ChevronDown size={20} className={`text-gray-400 transition-transform duration-200 ${openSections.admin ? 'rotate-180' : ''}`} />
+                        </button>
+                        {openSections.admin && (
+                            <div className="p-5 pt-2 bg-gray-50 dark:bg-gray-900/30 border-t border-gray-100 dark:border-gray-700">
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                    {users.filter(u => u.role !== 'Vendedor' && u.role !== 'Motoboy').map(user => {
+                                        const pendingTasks = tasks.filter(t => t.assignedTo === user.id && t.status === 'pending').length;
+                                        return (
+                                            <div
+                                                key={user.id}
+                                                onClick={() => handleMemberClick(user)}
+                                                className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden flex flex-col hover:border-indigo-300 transition-all cursor-pointer group"
+                                            >
+                                                <div className="p-6 flex items-start justify-between">
+                                                    <div className="flex gap-4">
+                                                        <div className="w-14 h-14 rounded-full bg-gray-100 dark:bg-gray-700 overflow-hidden border-2 border-white dark:border-gray-600 shadow-sm group-hover:scale-105 transition-transform">
+                                                            {user.avatarUrl ? (
+                                                                <img src={user.avatarUrl} alt={user.name} className="w-full h-full object-cover" />
+                                                            ) : (
+                                                                <div className="w-full h-full flex items-center justify-center text-gray-400"><UserIcon size={24} /></div>
+                                                            )}
+                                                        </div>
+                                                        <div>
+                                                            <h3 className="font-bold text-gray-900 dark:text-white group-hover:text-indigo-600 transition-colors">{user.name}</h3>
+                                                            <span className="inline-block px-2 py-0.5 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 rounded text-xs uppercase font-bold mt-1">{user.role}</span>
+                                                        </div>
+                                                    </div>
+                                                    <div className={`flex flex-col items-end ${user.active ? 'text-emerald-500' : 'text-gray-400'}`}>
+                                                        <CheckCircle2 size={18} />
+                                                        <span className="text-[10px] uppercase font-bold">{user.active ? 'Ativo' : 'Inativo'}</span>
+                                                    </div>
+                                                </div>
+                                                <div className="px-6 py-4 bg-gray-50 dark:bg-gray-900/50 border-t border-gray-100 dark:border-gray-700 flex-1 space-y-3">
+                                                    <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+                                                        <span className="text-xs">{user.email}</span>
+                                                    </div>
+                                                    <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300 bg-white dark:bg-gray-800 p-2 rounded border border-gray-100 dark:border-gray-700">
+                                                        <CheckSquare size={16} className="text-indigo-500" />
+                                                        <span>{pendingTasks} tarefas pendentes</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )
+                                    })}
+                                </div>
+                            </div>
+                        )}
+                    </div>
                 </div>
             )}
 
@@ -314,7 +477,7 @@ const Team: React.FC<TeamProps> = ({ users, currentUser, salesGoals, onUpdateGoa
 
                                 <div className="mt-8 space-y-3">
                                     <div className="flex justify-between text-sm font-medium">
-                                        <span>Atingido (Simulado)</span>
+                                        <span>Atingido</span>
                                         <span>{storeProgress.toFixed(1)}%</span>
                                     </div>
                                     <div className="w-full bg-gray-700/50 rounded-full h-3 overflow-hidden backdrop-blur-sm border border-white/5">
@@ -467,8 +630,26 @@ const Team: React.FC<TeamProps> = ({ users, currentUser, salesGoals, onUpdateGoa
                                 <h4 className="text-sm font-bold text-gray-800 dark:text-white mb-3 flex items-center gap-2">
                                     <ShoppingBag size={16} className="text-indigo-500" /> Histórico Recente de Vendas
                                 </h4>
-                                <div className="space-y-2 overflow-y-auto max-h-[200px] pr-2 text-center text-gray-400 text-sm">
-                                    <p>Nenhuma venda registrada.</p>
+                                <div className="space-y-2 overflow-y-auto max-h-[200px] pr-2">
+                                    {(() => {
+                                        const monthPrefix = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}`;
+                                        const memberSales = transactions
+                                            .filter(t => t.date.startsWith(monthPrefix) && t.status === 'Completed' && t.sellerId === selectedMember.id)
+                                            .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                                            .slice(0, 10);
+                                        if (memberSales.length === 0) {
+                                            return <p className="text-center text-gray-400 text-sm">Nenhuma venda registrada neste mês.</p>;
+                                        }
+                                        return memberSales.map(sale => (
+                                            <div key={sale.id} className="flex justify-between items-center p-2 rounded-lg bg-gray-50 dark:bg-gray-700/50 border border-gray-100 dark:border-gray-600">
+                                                <div>
+                                                    <p className="text-sm font-medium text-gray-800 dark:text-white">{sale.customerName}</p>
+                                                    <p className="text-xs text-gray-400">{new Date(sale.date).toLocaleString('pt-BR')}</p>
+                                                </div>
+                                                <span className="text-sm font-bold text-emerald-600">R$ {sale.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                                            </div>
+                                        ));
+                                    })()}
                                 </div>
                             </div>
                         </div>

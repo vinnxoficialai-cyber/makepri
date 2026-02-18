@@ -133,18 +133,39 @@ const Dashboard: React.FC<DashboardProps> = ({ user, users = [], salesGoals, onN
             .filter(t => t.date.startsWith(currentMonth) && t.status === 'Completed' && t.sellerId === user.id)
             .reduce((acc, curr) => acc + curr.total, 0)
         : 0;
-    const commissionBase = isSalesperson ? myPersonalSalesMonth : currentMonthSales;
 
     const COMMISSION_THRESHOLD = 3000;
 
-    // Logic: 0 to 3000 = 1%, Above 3000 = 2% (on Total)
-    const isHighTier = commissionBase > COMMISSION_THRESHOLD;
-    const currentRate = isHighTier ? 0.02 : 0.01;
-    const commission = commissionBase * currentRate;
+    // Helper: calcular comissão por faixa
+    const calcCommission = (salesTotal: number) => {
+        const rate = salesTotal > COMMISSION_THRESHOLD ? 0.02 : 0.01;
+        return salesTotal * rate;
+    };
 
-    const commissionSubtext = isHighTier
-        ? "Tier 2 (2%) Ativo! Parabéns!"
-        : `Tier 1 (1%). Faltam R$ ${Math.max(0, COMMISSION_THRESHOLD - commissionBase).toFixed(2)} p/ 2%`;
+    // Para vendedor: comissão sobre suas vendas pessoais
+    // Para admin: soma das comissões de todos os vendedores (exclui admin)
+    let commission = 0;
+    let commissionSubtext = '';
+
+    if (isSalesperson) {
+        commission = calcCommission(myPersonalSalesMonth);
+        const isHighTier = myPersonalSalesMonth > COMMISSION_THRESHOLD;
+        commissionSubtext = isHighTier
+            ? "Tier 2 (2%) Ativo! Parabéns!"
+            : `Tier 1 (1%). Faltam R$ ${Math.max(0, COMMISSION_THRESHOLD - myPersonalSalesMonth).toFixed(2)} p/ 2%`;
+    } else {
+        // Admin: somar comissões de cada vendedor individualmente
+        const salespeople = users.filter(u => u.active && u.role === 'Vendedor');
+        let totalOwed = 0;
+        salespeople.forEach(sp => {
+            const spSales = transactions
+                .filter(t => t.date.startsWith(currentMonth) && t.status === 'Completed' && t.sellerId === sp.id)
+                .reduce((acc, curr) => acc + curr.total, 0);
+            totalOwed += calcCommission(spSales);
+        });
+        commission = totalOwed;
+        commissionSubtext = `${salespeople.length} vendedor(as) ativo(as)`;
+    }
 
     // Helper for Stalled Products
     const getDaysSinceUpdate = (dateString?: string) => {
@@ -469,7 +490,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, users = [], salesGoals, onN
                         <StatCard title="Vendas Hoje (Total)" value={`R$ ${salesToday.toFixed(2)}`} subtext="vs. ontem" icon={DollarSign} trend="info" color="bg-emerald-500" />
                         <StatCard title="Vendas no Site" value={`R$ ${onlineSalesToday.toFixed(2)}`} subtext="~0% do total" icon={Globe} trend="info" color="bg-pink-500" onClick={() => onNavigate('ecommerce')} />
                         <StatCard title="Envios Pendentes" value={itemsToShip} subtext={`${ecommercePending} E-commerce / ${itemsToShip - ecommercePending} Loja`} icon={Truck} trend="info" color="bg-indigo-500" onClick={() => onNavigate('delivery')} />
-                        <StatCard title="Comissão (Total)" value={`R$ ${commission.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`} subtext={commissionSubtext} icon={Award} color="bg-purple-500" />
+                        <StatCard title="Comissões a Pagar" value={`R$ ${commission.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`} subtext={commissionSubtext} icon={Award} color="bg-purple-500" />
                         <StatCard title="Produtos Parados" value={stalledCount} subtext="Sem vendas > 30d" icon={Clock} color="bg-amber-500" onClick={() => onViewStalled && onViewStalled()} action={<div className="text-xs bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200 px-2 py-1 rounded font-bold">Ver Estoque</div>} />
                         <StatCard title="Estoque Crítico" value={lowStockCount} subtext="Itens para repor" icon={AlertTriangle} trend={lowStockCount > 0 ? "down" : "info"} color="bg-rose-500" onClick={() => onViewLowStock && onViewLowStock()} action={<div className="text-xs bg-rose-100 text-rose-800 dark:bg-rose-900 dark:text-rose-200 px-2 py-1 rounded font-bold">Ver Estoque</div>} />
                     </>

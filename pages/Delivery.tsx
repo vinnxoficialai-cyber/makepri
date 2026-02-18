@@ -213,7 +213,7 @@ const Delivery: React.FC<DeliveryProps> = ({ user }) => {
                     body { 
                         font-family: 'Courier New', monospace; 
                         font-size: 11px;
-                        width: 75mm; 
+                        width: 80mm; 
                         padding: 3mm;
                         color: #000; 
                     }
@@ -231,7 +231,7 @@ const Delivery: React.FC<DeliveryProps> = ({ user }) => {
                     .signature-line { border-top: 1px solid #000; width: 90%; margin: 0 auto; padding-top: 4px; font-size: 9px; }
                     .footer { margin-top: 20px; text-align: center; font-size: 9px; color: #666; }
                     @media print {
-                        body { width: 75mm; }
+                        body { width: 80mm; }
                     }
                 </style>
             </head>
@@ -277,7 +277,8 @@ const Delivery: React.FC<DeliveryProps> = ({ user }) => {
                 </div>
 
                 <div class="footer">
-                    Sistema PriMAKE • Gerado automaticamente
+                    Sistema PriMAKE • Gerado automaticamente<br/>
+                    Impresso em: ${new Date().toLocaleString('pt-BR')}
                 </div>
             </body>
             </html>
@@ -863,7 +864,7 @@ const Delivery: React.FC<DeliveryProps> = ({ user }) => {
                                                         .text-gray-700 { color: #374151; }
                                                         .text-gray-900 { color: #111827; }
                                                         @media print {
-                                                            body { width: 75mm; }
+                                                            body { width: 80mm; }
                                                             .dark\\:bg-gray-700\\/50 { background: white; }
                                                         }
                                                     </style>

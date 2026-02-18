@@ -23,6 +23,7 @@ import { MOCK_USERS, MOCK_DELIVERIES } from './constants';
 import { User, ModuleType, CompanySettings, SalesGoal, DeliveryOrder } from './types';
 import { testarIntegracaoCompleta } from './test-supabase';
 import { useSettings, useUsers, useSalesGoals, useProducts } from './lib/hooks';
+import { useCashRegister } from './lib/useCashRegister';
 
 // --- MOBILE BOTTOM NAVIGATION COMPONENT ---
 interface MobileBottomNavProps {
@@ -260,6 +261,32 @@ const App: React.FC = () => {
     const aiEnabledTabs = ['dashboard', 'ecommerce', 'bundles', 'finance', 'inventory', 'reports'];
     const showAiButton = aiEnabledTabs.includes(activeTab);
 
+    // Global Products for Notifications (MUST be before any early return to respect Rules of Hooks)
+    const { products } = useProducts();
+    const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+
+    // --- STALE CASH REGISTER DETECTION ---
+    const { currentRegister: staleCashCheck, loading: cashLoading } = useCashRegister();
+    const [staleDismissed, setStaleDismissed] = useState(false);
+
+    const isStaleCash = (() => {
+        if (cashLoading || !staleCashCheck || staleCashCheck.status !== 'open' || staleDismissed) return false;
+        const openedDate = new Date(staleCashCheck.openedAt);
+        const today = new Date();
+        // Compare only dates (ignore time)
+        return openedDate.toDateString() !== today.toDateString();
+    })();
+
+    const staleCashDaysAgo = (() => {
+        if (!staleCashCheck) return 0;
+        const opened = new Date(staleCashCheck.openedAt);
+        const now = new Date();
+        return Math.floor((now.getTime() - opened.getTime()) / (1000 * 60 * 60 * 24));
+    })();
+
+    const lowStockItems = products.filter(p => p.stock <= p.minStock);
+    const hasNotifications = lowStockItems.length > 0;
+
     const renderContent = () => {
         // Security check: If user tries to render a component they don't have permission for
         if (!currentUser.permissions.includes(activeTab as ModuleType)) {
@@ -362,13 +389,6 @@ const App: React.FC = () => {
     }
 
     const accessibleMenuItems = menuItems.filter(item => currentUser.permissions.includes(item.id as ModuleType));
-
-    // Global Products for Notifications
-    const { products } = useProducts();
-    const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
-
-    const lowStockItems = products.filter(p => p.stock <= p.minStock);
-    const hasNotifications = lowStockItems.length > 0;
 
     return (
         <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex font-sans transition-colors duration-200">
@@ -477,6 +497,41 @@ const App: React.FC = () => {
                         </button>
                     </div>
                 </header>
+
+                {/* --- STALE CASH REGISTER ALERT BANNER --- */}
+                {isStaleCash && (
+                    <div className="bg-amber-50 dark:bg-amber-900/30 border-b border-amber-200 dark:border-amber-700 px-4 py-3 flex items-center justify-between gap-3 animate-in fade-in slide-in-from-top-2 duration-300">
+                        <div className="flex items-center gap-3 min-w-0">
+                            <div className="flex-shrink-0 w-10 h-10 rounded-full bg-amber-100 dark:bg-amber-800/50 flex items-center justify-center">
+                                <AlertTriangle size={20} className="text-amber-600 dark:text-amber-400" />
+                            </div>
+                            <div className="min-w-0">
+                                <p className="text-sm font-bold text-amber-800 dark:text-amber-200">
+                                    ⚠️ Caixa aberto desde {new Date(staleCashCheck!.openedAt).toLocaleDateString('pt-BR')}
+                                    {staleCashDaysAgo === 1 ? ' (ontem)' : staleCashDaysAgo > 1 ? ` (há ${staleCashDaysAgo} dias)` : ''}
+                                </p>
+                                <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">
+                                    O caixa ficou aberto do dia anterior. Feche-o para manter o controle financeiro correto.
+                                </p>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                            <button
+                                onClick={() => { handleNavigate('cash'); setStaleDismissed(true); }}
+                                className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-lg shadow-sm transition-colors whitespace-nowrap"
+                            >
+                                Ir ao Caixa
+                            </button>
+                            <button
+                                onClick={() => setStaleDismissed(true)}
+                                className="p-1.5 text-amber-400 hover:text-amber-600 dark:hover:text-amber-300 transition-colors"
+                                title="Dispensar"
+                            >
+                                <X size={16} />
+                            </button>
+                        </div>
+                    </div>
+                )}
 
                 {/* Content Scroll Area */}
                 <div className="flex-1 overflow-auto p-4 lg:p-8 relative pb-24 lg:pb-8">

@@ -365,7 +365,8 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
                 changeAmount: calculatedChange,
                 date: new Date().toLocaleString('pt-BR'),
                 isDelivery: saleType === 'delivery',
-                motoboy: selectedMotoboy
+                motoboy: selectedMotoboy,
+                sellerName: user?.name || 'N/A'
             };
             setCompletedSale(currentSaleData);
 
@@ -569,9 +570,10 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
             paymentMethod: transaction.paymentMethod || 'money',
             installments: transaction.installments || 1,
             changeAmount: transaction.changeAmount || 0,
-            date: new Date(transaction.date).toLocaleString('pt-BR'), // Format date for display
+            date: new Date(transaction.date).toLocaleString('pt-BR'),
             isDelivery: transaction.isDelivery || false,
-            motoboy: transaction.motoboy
+            motoboy: transaction.motoboy,
+            sellerName: transaction.sellerName || 'N/A'
         };
 
         setCompletedSale(historySaleData);
@@ -1418,6 +1420,7 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
                                 <div className="w-full border-b border-gray-100 my-2"></div>
 
                                 <p className="text-gray-500 text-xs">{completedSale.date}</p>
+                                {completedSale.sellerName && <p className="text-gray-600 text-xs mt-1">Vendedor(a): <strong>{completedSale.sellerName}</strong></p>}
                                 {completedSale.isDelivery && <p className="text-xs font-bold mt-1 uppercase bg-black text-white px-2 py-0.5 rounded">PEDIDO PARA ENTREGA</p>}
                             </div>
 
@@ -1503,6 +1506,7 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
                             <div className="text-center pt-6 text-xs text-gray-400">
                                 <p>Obrigado pela preferência!</p>
                                 <p className="mt-1">Volte sempre.</p>
+                                <p className="mt-2 text-gray-300" style={{ fontSize: '9px' }}>Impresso em: {new Date().toLocaleString('pt-BR')}</p>
                             </div>
                         </div>
 
