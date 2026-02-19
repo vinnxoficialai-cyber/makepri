@@ -50,43 +50,58 @@
       background: #a8a8a8;
     }
 
-    /* ===== 80mm Thermal Print Styles ===== */
+    /* ===== 80mm Thermal Receipt Print Styles ===== */
     @media print {
       @page {
         size: 80mm auto;
         margin: 0;
       }
 
-      html,
-      body {
+      /* Hard reset EVERYTHING */
+      * {
+        color: #000 !important;
+        background: #fff !important;
+        box-shadow: none !important;
+        text-shadow: none !important;
+        border-color: #000 !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+      }
+
+      html, body {
         width: 80mm !important;
         height: auto !important;
         min-height: 0 !important;
         max-height: none !important;
         margin: 0 !important;
         padding: 0 !important;
-        background: white !important;
-        color: #000 !important;
-        font-family: 'Courier New', monospace !important;
-        font-size: 11px !important;
+        background: #fff !important;
         overflow: visible !important;
-        -webkit-print-color-adjust: exact;
-        print-color-adjust: exact;
+        font-family: 'Courier New', 'Courier', monospace !important;
+        font-size: 13px !important;
+        font-weight: 700 !important;
+        line-height: 1.3 !important;
+        letter-spacing: 0 !important;
       }
 
-      /* Hide everything by default */
-      body>* {
+      /* Hide EVERYTHING */
+      body > * {
         display: none !important;
+        height: 0 !important;
+        overflow: hidden !important;
       }
 
-      /* Show the receipt and all its ancestors up to body */
-      #receipt-content,
-      #receipt-content * {
+      /* Show receipt and ancestors */
+      #thermal-receipt,
+      #thermal-receipt * {
         display: revert !important;
+        visibility: visible !important;
+        height: auto !important;
+        overflow: visible !important;
       }
 
-      /* Reset ALL ancestors of receipt-content: kill fixed/absolute positioning, heights, overlays */
-      div:has(#receipt-content) {
+      /* Force all receipt ancestors to be static blocks */
+      div:has(#thermal-receipt) {
         display: block !important;
         position: static !important;
         width: 80mm !important;
@@ -96,47 +111,82 @@
         max-height: none !important;
         padding: 0 !important;
         margin: 0 !important;
-        background: white !important;
-        box-shadow: none !important;
+        background: #fff !important;
         border: none !important;
         border-radius: 0 !important;
         overflow: visible !important;
         inset: unset !important;
         backdrop-filter: none !important;
         -webkit-backdrop-filter: none !important;
+        opacity: 1 !important;
       }
 
-      #receipt-content {
-        width: 80mm !important;
-        max-width: 80mm !important;
+      /* The receipt itself */
+      #thermal-receipt {
+        display: block !important;
+        width: 76mm !important;
+        max-width: 76mm !important;
         height: auto !important;
         padding: 2mm !important;
         margin: 0 !important;
-        background: white !important;
+        background: #fff !important;
         color: #000 !important;
-        font-family: 'Courier New', monospace !important;
-        font-size: 11px !important;
-        box-shadow: none !important;
+        font-family: 'Courier New', 'Courier', monospace !important;
+        font-size: 13px !important;
+        font-weight: 700 !important;
+        line-height: 1.3 !important;
+        border: none !important;
         border-radius: 0 !important;
+        box-shadow: none !important;
         overflow: visible !important;
       }
 
-      #receipt-content p,
-      #receipt-content span,
-      #receipt-content div {
+      /* Force ALL text black and bold */
+      #thermal-receipt p,
+      #thermal-receipt span,
+      #thermal-receipt div,
+      #thermal-receipt strong,
+      #thermal-receipt h2,
+      #thermal-receipt h3,
+      #thermal-receipt td,
+      #thermal-receipt th {
         color: #000 !important;
+        font-family: 'Courier New', 'Courier', monospace !important;
+        font-weight: 700 !important;
         word-wrap: break-word !important;
         overflow-wrap: break-word !important;
       }
 
-      #receipt-content .truncate {
+      /* Receipt title bigger */
+      #thermal-receipt .receipt-title {
+        font-size: 18px !important;
+        font-weight: 900 !important;
+        letter-spacing: 1px !important;
+      }
+
+      /* Receipt separator lines */
+      #thermal-receipt .receipt-sep {
+        border: none !important;
+        border-top: 2px dashed #000 !important;
+        margin: 3mm 0 !important;
+      }
+
+      /* Bold total line */
+      #thermal-receipt .receipt-total {
+        font-size: 16px !important;
+        font-weight: 900 !important;
+      }
+
+      /* Truncate fix */
+      #thermal-receipt .truncate {
         overflow: visible !important;
         text-overflow: unset !important;
         white-space: normal !important;
         word-wrap: break-word !important;
       }
 
-      /* Hide print:hidden elements */
+      /* Hide non-print elements */
+      .no-print,
       .print\\:hidden,
       [class*="print:hidden"] {
         display: none !important;

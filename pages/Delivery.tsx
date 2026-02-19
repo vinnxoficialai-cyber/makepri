@@ -38,6 +38,7 @@ const Delivery: React.FC<DeliveryProps> = ({ user }) => {
     const [selectedDelivery, setSelectedDelivery] = useState<DeliveryOrder | null>(null);
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
     const [isPayoutModalOpen, setIsPayoutModalOpen] = useState(false);
+    const [payoutTab, setPayoutTab] = useState<'pending' | 'paid'>('pending');
 
     // --- EDIT STATES (Inside Details Modal) ---
     const [isEditing, setIsEditing] = useState(false);
@@ -181,11 +182,16 @@ const Delivery: React.FC<DeliveryProps> = ({ user }) => {
 
     // --- PAYOUT REPORT LOGIC ---
     const [payoutData, setPayoutData] = useState<Record<string, { count: number, totalFee: number }>>({});
+    const [paidPayoutData, setPaidPayoutData] = useState<Record<string, { count: number, totalFee: number }>>({});
 
     const loadPayoutData = async () => {
         try {
-            const data = await DeliveryService.getPayoutReport();
-            setPayoutData(data);
+            const [pending, paid] = await Promise.all([
+                DeliveryService.getPayoutReport(),
+                DeliveryService.getPaidPayoutReport()
+            ]);
+            setPayoutData(pending);
+            setPaidPayoutData(paid);
         } catch (err) {
             console.error('Erro ao carregar repasses:', err);
         }
@@ -193,6 +199,7 @@ const Delivery: React.FC<DeliveryProps> = ({ user }) => {
 
     useEffect(() => {
         if (isPayoutModalOpen) {
+            setPayoutTab('pending');
             loadPayoutData();
         }
     }, [isPayoutModalOpen]);
@@ -211,25 +218,27 @@ const Delivery: React.FC<DeliveryProps> = ({ user }) => {
                 <style>
                     * { box-sizing: border-box; margin: 0; padding: 0; }
                     body { 
-                        font-family: 'Courier New', monospace; 
-                        font-size: 11px;
+                        font-family: 'Courier New', Courier, monospace; 
+                        font-size: 13px;
+                        font-weight: 700;
                         width: 80mm; 
                         padding: 3mm;
                         color: #000; 
+                        line-height: 1.3;
                     }
                     .header { text-align: center; margin-bottom: 15px; border-bottom: 2px dashed #000; padding-bottom: 10px; }
-                    .title { font-size: 14px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; }
-                    .subtitle { font-size: 10px; margin-top: 4px; }
-                    .datetime { font-size: 10px; margin-top: 8px; padding: 4px; background: #f0f0f0; border-radius: 4px; }
-                    .section-title { font-size: 10px; font-weight: bold; margin: 12px 0 8px; text-transform: uppercase; border-bottom: 1px dotted #999; padding-bottom: 4px; }
-                    .item { margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px dotted #ccc; }
-                    .item-name { font-weight: bold; font-size: 11px; margin-bottom: 2px; }
-                    .item-row { display: flex; justify-content: space-between; font-size: 10px; }
-                    .total { margin-top: 12px; border-top: 2px dashed #000; padding-top: 10px; font-size: 14px; font-weight: bold; text-align: center; }
+                    .title { font-size: 16px; font-weight: 900; text-transform: uppercase; letter-spacing: 1px; }
+                    .subtitle { font-size: 11px; margin-top: 4px; font-weight: 700; }
+                    .datetime { font-size: 11px; margin-top: 8px; padding: 4px; font-weight: 700; }
+                    .section-title { font-size: 12px; font-weight: 900; margin: 12px 0 8px; text-transform: uppercase; border-bottom: 1px dotted #000; padding-bottom: 4px; }
+                    .item { margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px dotted #000; }
+                    .item-name { font-weight: 900; font-size: 13px; margin-bottom: 2px; }
+                    .item-row { display: flex; justify-content: space-between; font-size: 12px; font-weight: 700; }
+                    .total { margin-top: 12px; border-top: 2px dashed #000; padding-top: 10px; font-size: 16px; font-weight: 900; text-align: center; }
                     .signature-block { margin-top: 30px; }
                     .signature { text-align: center; margin-top: 25px; }
-                    .signature-line { border-top: 1px solid #000; width: 90%; margin: 0 auto; padding-top: 4px; font-size: 9px; }
-                    .footer { margin-top: 20px; text-align: center; font-size: 9px; color: #666; }
+                    .signature-line { border-top: 1px solid #000; width: 90%; margin: 0 auto; padding-top: 4px; font-size: 10px; font-weight: 700; }
+                    .footer { margin-top: 20px; text-align: center; font-size: 10px; color: #000; font-weight: 700; }
                     @media print {
                         body { width: 80mm; }
                     }
@@ -566,7 +575,8 @@ const Delivery: React.FC<DeliveryProps> = ({ user }) => {
             {isPayoutModalOpen && (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
                     <div className="absolute inset-0 bg-gray-900/60 backdrop-blur-sm" onClick={() => setIsPayoutModalOpen(false)}></div>
-                    <div className="bg-white dark:bg-gray-800 w-full max-w-lg rounded-xl shadow-2xl relative flex flex-col animate-in fade-in zoom-in-95 duration-200">
+                    <div className="bg-white dark:bg-gray-800 w-full max-w-lg rounded-xl shadow-2xl relative flex flex-col max-h-[85vh] animate-in fade-in zoom-in-95 duration-200">
+                        {/* Header */}
                         <div className="p-5 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center bg-emerald-50 dark:bg-emerald-900/20">
                             <h3 className="font-bold text-lg text-emerald-900 dark:text-emerald-300 flex items-center gap-2">
                                 <DollarSign size={20} /> Relatório de Repasse
@@ -575,41 +585,112 @@ const Delivery: React.FC<DeliveryProps> = ({ user }) => {
                                 <X size={20} />
                             </button>
                         </div>
-                        <div className="p-6">
-                            <p className="text-sm text-gray-500 mb-4">Resumo de taxas de entrega concluídas.</p>
-                            <div className="space-y-4">
-                                {Object.entries(payoutData).map(([motoboy, data]: [string, { count: number, totalFee: number }]) => (
-                                    <div key={motoboy} className="flex justify-between items-center p-4 bg-gray-50 dark:bg-gray-700/50 rounded-xl border border-gray-200 dark:border-gray-600">
-                                        <div>
-                                            <p className="font-bold text-gray-800 dark:text-white">{motoboy}</p>
-                                            <p className="text-xs text-gray-500">{data.count} entregas pendentes</p>
-                                        </div>
-                                        <div className="text-right flex items-center gap-3">
-                                            <div>
-                                                <p className="text-sm text-gray-500 uppercase font-bold text-[10px]">A Pagar</p>
-                                                <p className="text-xl font-bold text-emerald-600 dark:text-emerald-400">R$ {data.totalFee.toFixed(2)}</p>
-                                            </div>
-                                            <button
-                                                onClick={async () => {
-                                                    if (window.confirm(`Confirma o pagamento de R$ ${data.totalFee.toFixed(2)} para ${motoboy}?`)) {
-                                                        await DeliveryService.markAsPaid(motoboy);
-                                                        loadPayoutData(); // Refresh modal
-                                                        refresh(); // Refresh list background
-                                                    }
-                                                }}
-                                                className="bg-emerald-600 hover:bg-emerald-700 text-white p-2 rounded-lg shadow-sm"
-                                                title="Confirmar Pagamento"
-                                            >
-                                                <CheckCircle size={20} />
-                                            </button>
-                                        </div>
-                                    </div>
-                                ))}
-                                {Object.keys(payoutData).length === 0 && (
-                                    <p className="text-center text-gray-400 italic">Nenhuma entrega concluída para repasse.</p>
-                                )}
+
+                        {/* Tab Switcher */}
+                        <div className="px-5 pt-4 pb-2">
+                            <div className="bg-gray-100 dark:bg-gray-700 p-1 rounded-lg flex">
+                                <button
+                                    onClick={() => setPayoutTab('pending')}
+                                    className={`flex-1 px-3 py-2 rounded-md text-sm font-bold transition-all flex items-center justify-center gap-2 ${payoutTab === 'pending' ? 'bg-white dark:bg-gray-600 shadow text-amber-600 dark:text-amber-400' : 'text-gray-500 dark:text-gray-400'}`}
+                                >
+                                    <DollarSign size={16} /> Pendente
+                                    {Object.keys(payoutData).length > 0 && (
+                                        <span className="bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-300 text-[10px] font-black px-1.5 py-0.5 rounded-full">
+                                            {Object.keys(payoutData).length}
+                                        </span>
+                                    )}
+                                </button>
+                                <button
+                                    onClick={() => setPayoutTab('paid')}
+                                    className={`flex-1 px-3 py-2 rounded-md text-sm font-bold transition-all flex items-center justify-center gap-2 ${payoutTab === 'paid' ? 'bg-white dark:bg-gray-600 shadow text-emerald-600 dark:text-emerald-400' : 'text-gray-500 dark:text-gray-400'}`}
+                                >
+                                    <Archive size={16} /> Pagos
+                                    {Object.keys(paidPayoutData).length > 0 && (
+                                        <span className="bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 text-[10px] font-black px-1.5 py-0.5 rounded-full">
+                                            {Object.keys(paidPayoutData).length}
+                                        </span>
+                                    )}
+                                </button>
                             </div>
                         </div>
+
+                        {/* Content */}
+                        <div className="p-5 overflow-y-auto flex-1">
+                            {payoutTab === 'pending' ? (
+                                /* --- PENDING TAB --- */
+                                <div className="space-y-3">
+                                    <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">Taxas de entrega aguardando pagamento ao motoboy.</p>
+                                    {Object.entries(payoutData).map(([motoboy, data]: [string, { count: number, totalFee: number }]) => (
+                                        <div key={motoboy} className="flex justify-between items-center p-4 bg-amber-50 dark:bg-amber-900/10 rounded-xl border border-amber-200 dark:border-amber-800">
+                                            <div>
+                                                <p className="font-bold text-gray-800 dark:text-white flex items-center gap-2">
+                                                    <Bike size={16} className="text-amber-600" /> {motoboy}
+                                                </p>
+                                                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{data.count} entrega{data.count !== 1 ? 's' : ''} pendente{data.count !== 1 ? 's' : ''}</p>
+                                            </div>
+                                            <div className="text-right flex items-center gap-3">
+                                                <div>
+                                                    <p className="text-[10px] text-amber-600 dark:text-amber-400 uppercase font-bold">A Pagar</p>
+                                                    <p className="text-xl font-bold text-amber-700 dark:text-amber-300">R$ {data.totalFee.toFixed(2)}</p>
+                                                </div>
+                                                <button
+                                                    onClick={async () => {
+                                                        if (window.confirm(`Confirma o pagamento de R$ ${data.totalFee.toFixed(2)} para ${motoboy}?\n\nAo confirmar, as entregas deste motoboy irão para a aba "Pagos".`)) {
+                                                            await DeliveryService.markAsPaid(motoboy);
+                                                            loadPayoutData();
+                                                            refresh();
+                                                        }
+                                                    }}
+                                                    className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-lg shadow-sm font-bold text-xs flex items-center gap-1.5 transition-colors"
+                                                    title="Confirmar Pagamento"
+                                                >
+                                                    <CheckCircle size={16} /> Pagar
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                    {Object.keys(payoutData).length === 0 && (
+                                        <div className="text-center py-8">
+                                            <CheckCircle size={40} className="mx-auto mb-2 text-emerald-300 dark:text-emerald-700" />
+                                            <p className="text-gray-400 dark:text-gray-500 italic">Nenhum repasse pendente!</p>
+                                            <p className="text-xs text-gray-300 dark:text-gray-600 mt-1">Todos os motoboys foram pagos.</p>
+                                        </div>
+                                    )}
+                                </div>
+                            ) : (
+                                /* --- PAID TAB --- */
+                                <div className="space-y-3">
+                                    <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">Histórico de pagamentos realizados aos motoboys.</p>
+                                    {Object.entries(paidPayoutData).map(([motoboy, data]: [string, { count: number, totalFee: number }]) => (
+                                        <div key={motoboy} className="flex justify-between items-center p-4 bg-emerald-50 dark:bg-emerald-900/10 rounded-xl border border-emerald-200 dark:border-emerald-800">
+                                            <div>
+                                                <p className="font-bold text-gray-800 dark:text-white flex items-center gap-2">
+                                                    <Bike size={16} className="text-emerald-600" /> {motoboy}
+                                                </p>
+                                                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{data.count} entrega{data.count !== 1 ? 's' : ''} paga{data.count !== 1 ? 's' : ''}</p>
+                                            </div>
+                                            <div className="text-right flex items-center gap-2">
+                                                <div>
+                                                    <p className="text-[10px] text-emerald-600 dark:text-emerald-400 uppercase font-bold">Pago</p>
+                                                    <p className="text-xl font-bold text-emerald-600 dark:text-emerald-400">R$ {data.totalFee.toFixed(2)}</p>
+                                                </div>
+                                                <span className="bg-emerald-100 dark:bg-emerald-900/50 p-2 rounded-lg">
+                                                    <CheckCircle size={20} className="text-emerald-600 dark:text-emerald-400" />
+                                                </span>
+                                            </div>
+                                        </div>
+                                    ))}
+                                    {Object.keys(paidPayoutData).length === 0 && (
+                                        <div className="text-center py-8">
+                                            <Archive size={40} className="mx-auto mb-2 text-gray-300 dark:text-gray-700" />
+                                            <p className="text-gray-400 dark:text-gray-500 italic">Nenhum repasse pago ainda.</p>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Footer */}
                         <div className="p-4 bg-gray-50 dark:bg-gray-900/30 text-center border-t border-gray-100 dark:border-gray-700">
                             <button onClick={handlePrintPayoutReport} className="text-emerald-600 text-sm font-bold hover:underline flex items-center justify-center gap-2 w-full">
                                 <Printer size={16} /> Imprimir Comprovante
@@ -815,13 +896,15 @@ const Delivery: React.FC<DeliveryProps> = ({ user }) => {
                                                 <head>
                                                     <title>Rota de Entrega</title>
                                                     <style>
-                                                        * { box-sizing: border-box; margin: 0; padding: 0; }
+                                                        * { box-sizing: border-box; margin: 0; padding: 0; color: #000; }
                                                         body { 
-                                                            font-family: 'Courier New', monospace; 
-                                                            font-size: 11px;
-                                                            width: 75mm; 
+                                                            font-family: 'Courier New', Courier, monospace; 
+                                                            font-size: 13px;
+                                                            font-weight: 700;
+                                                            width: 80mm; 
                                                             padding: 3mm;
                                                             color: #000;
+                                                            line-height: 1.3;
                                                         }
                                                         .mb-4 { margin-bottom: 12px; }
                                                         .mb-2 { margin-bottom: 8px; }
@@ -833,20 +916,20 @@ const Delivery: React.FC<DeliveryProps> = ({ user }) => {
                                                         .p-3 { padding: 10px; }
                                                         .p-1\\.5 { padding: 4px; }
                                                         .space-y-3 > * + * { margin-top: 10px; }
-                                                        .border { border: 1px solid #ccc; }
+                                                        .border { border: 1px solid #000; }
                                                         .border-dashed { border-style: dashed; }
-                                                        .border-t { border-top: 1px solid #ccc; }
-                                                        .border-t-2 { border-top: 2px dashed #666; }
-                                                        .border-b { border-bottom: 1px solid #ccc; }
-                                                        .border-b-2 { border-bottom: 2px dashed #666; }
+                                                        .border-t { border-top: 1px solid #000; }
+                                                        .border-t-2 { border-top: 2px dashed #000; }
+                                                        .border-b { border-bottom: 1px solid #000; }
+                                                        .border-b-2 { border-bottom: 2px dashed #000; }
                                                         .rounded { border-radius: 4px; }
                                                         .rounded-lg { border-radius: 6px; }
                                                         .text-center { text-align: center; }
-                                                        .text-xs { font-size: 10px; }
-                                                        .text-sm { font-size: 11px; }
-                                                        .text-base { font-size: 13px; }
-                                                        .text-lg { font-size: 14px; }
-                                                        .font-bold { font-weight: bold; }
+                                                        .text-xs { font-size: 11px; font-weight: 700; }
+                                                        .text-sm { font-size: 12px; font-weight: 700; }
+                                                        .text-base { font-size: 13px; font-weight: 700; }
+                                                        .text-lg { font-size: 15px; font-weight: 900; }
+                                                        .font-bold { font-weight: 900; }
                                                         .uppercase { text-transform: uppercase; }
                                                         .tracking-wide { letter-spacing: 1px; }
                                                         .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -856,16 +939,16 @@ const Delivery: React.FC<DeliveryProps> = ({ user }) => {
                                                         .justify-between { justify-content: space-between; }
                                                         .items-center { align-items: center; }
                                                         .gap-3 { gap: 10px; }
-                                                        .bg-gray-900 { background: #111; color: #fff; }
-                                                        .bg-yellow-100 { background: #fef3c7; }
-                                                        .text-yellow-800 { color: #92400e; }
-                                                        .text-gray-400 { color: #9ca3af; }
-                                                        .text-gray-500 { color: #6b7280; }
-                                                        .text-gray-700 { color: #374151; }
-                                                        .text-gray-900 { color: #111827; }
+                                                        .bg-gray-900 { background: #000; color: #fff; font-weight: 900; }
+                                                        .bg-yellow-100 { background: #fff; border: 1px solid #000; }
+                                                        .text-yellow-800 { color: #000; font-weight: 900; }
+                                                        .text-gray-400 { color: #000; }
+                                                        .text-gray-500 { color: #000; }
+                                                        .text-gray-700 { color: #000; }
+                                                        .text-gray-900 { color: #000; }
                                                         @media print {
                                                             body { width: 80mm; }
-                                                            .dark\\:bg-gray-700\\/50 { background: white; }
+                                                            * { color: #000 !important; }
                                                         }
                                                     </style>
                                                 </head>

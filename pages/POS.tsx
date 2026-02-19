@@ -577,12 +577,126 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
         };
 
         setCompletedSale(historySaleData);
+        setIsMobileHistoryOpen(false); // Close history modal first on mobile
         setIsReceiptOpen(true);
     };
-
     const handlePrint = () => {
-        window.print();
-        // Just close, state is already cleared
+        if (!completedSale) return;
+
+        const printWindow = window.open('', 'RECEIPT', 'height=600,width=400');
+        if (!printWindow) return;
+
+        const sale = completedSale;
+        const payLabel =
+            sale.paymentMethod === 'credit' ? `CARTAO CRED ${sale.installments}x` :
+                sale.paymentMethod === 'debit' ? 'CARTAO DEB' :
+                    sale.paymentMethod === 'money' ? 'DINHEIRO' : 'PIX';
+
+        const itemsHtml = sale.items.map((item: any) => `
+            <div style="display:flex;justify-content:space-between;margin-bottom:2px;">
+                <span style="flex:1;word-break:break-word;padding-right:6px;">${item.quantity}x ${item.name}${item.variationName ? ' (' + item.variationName + ')' : ''}</span>
+                <span style="white-space:nowrap;font-weight:900;">${(item.priceSale * item.quantity).toFixed(2)}</span>
+            </div>
+        `).join('');
+
+        const customerHtml = sale.customer ? `
+            <div>Nome: ${sale.customer.name}</div>
+            <div>Tel: ${sale.customer.phone || '-'}</div>
+            ${sale.customer.address ? `<div style="font-weight:900;margin-top:3px;border-top:1px dashed #000;padding-top:3px;">End: ${sale.customer.address}${sale.customer.city ? ', ' + sale.customer.city : ''}</div>` : ''}
+            ${sale.isDelivery && sale.motoboy ? `<div style="font-weight:900;margin-top:3px;">Entregador: ${sale.motoboy}</div>` : ''}
+        ` : `<div style="font-style:italic;">Cliente nao identificado</div>`;
+
+        printWindow.document.write(`
+            <html>
+            <head>
+                <title>Recibo PriMake</title>
+                <style>
+                    * { box-sizing: border-box; margin: 0; padding: 0; }
+                    body {
+                        font-family: 'Courier New', Courier, monospace;
+                        font-size: 13px;
+                        font-weight: 700;
+                        color: #000;
+                        width: 80mm;
+                        padding: 3mm;
+                        line-height: 1.4;
+                    }
+                    .sep { border: none; border-top: 2px dashed #000; margin: 6px 0; }
+                    @media print {
+                        body { width: 80mm; }
+                        * { color: #000 !important; font-weight: 700 !important; }
+                    }
+                </style>
+            </head>
+            <body>
+                <!-- HEADER -->
+                <div style="text-align:center;margin-bottom:4px;">
+                    <div style="font-size:18px;font-weight:900;letter-spacing:1px;">PriMake</div>
+                    <div style="font-size:10px;font-weight:700;letter-spacing:2px;">STORE & E-COMMERCE</div>
+                </div>
+                <hr class="sep"/>
+
+                <!-- DATE & SELLER -->
+                <div style="text-align:center;font-size:12px;">
+                    <div>${sale.date}</div>
+                    ${sale.sellerName ? `<div style="margin-top:2px;">Vendedor(a): ${sale.sellerName}</div>` : ''}
+                    ${sale.isDelivery ? `<div style="margin-top:4px;font-weight:900;font-size:14px;border:2px solid #000;padding:2px 8px;display:inline-block;">PEDIDO P/ ENTREGA</div>` : ''}
+                </div>
+                <hr class="sep"/>
+
+                <!-- CUSTOMER -->
+                <div style="font-size:12px;">
+                    <div style="font-weight:900;margin-bottom:3px;">DADOS DO CLIENTE</div>
+                    ${customerHtml}
+                </div>
+                <hr class="sep"/>
+
+                <!-- ITEMS -->
+                <div style="font-size:12px;">
+                    <div style="display:flex;justify-content:space-between;font-weight:900;margin-bottom:4px;">
+                        <span>ITEM</span><span>VALOR</span>
+                    </div>
+                    ${itemsHtml}
+                </div>
+                <hr class="sep"/>
+
+                <!-- TOTALS -->
+                <div style="font-size:12px;">
+                    <div style="display:flex;justify-content:space-between;">
+                        <span>Subtotal</span><span>R$ ${sale.subTotal.toFixed(2)}</span>
+                    </div>
+                    ${sale.discountValue > 0 ? `<div style="display:flex;justify-content:space-between;"><span>Desconto</span><span>- R$ ${sale.discountValue.toFixed(2)}</span></div>` : ''}
+                    ${sale.isDelivery ? `<div style="display:flex;justify-content:space-between;"><span>Taxa Entrega</span><span>R$ ${sale.deliveryFee.toFixed(2)}</span></div>` : ''}
+
+                    <div style="display:flex;justify-content:space-between;font-size:16px;font-weight:900;margin-top:6px;padding-top:4px;border-top:2px solid #000;">
+                        <span>TOTAL</span><span>R$ ${sale.finalTotal.toFixed(2)}</span>
+                    </div>
+
+                    <div style="display:flex;justify-content:space-between;margin-top:6px;border-top:1px dotted #000;padding-top:4px;">
+                        <span>Forma Pagto.</span><span style="font-weight:900;">${payLabel}</span>
+                    </div>
+                    ${sale.paymentMethod === 'money' ? `<div style="display:flex;justify-content:space-between;"><span>Troco</span><span style="font-weight:900;">R$ ${sale.changeAmount.toFixed(2)}</span></div>` : ''}
+                </div>
+                <hr class="sep"/>
+
+                <!-- FOOTER -->
+                <div style="text-align:center;font-size:11px;">
+                    <div>Obrigado pela preferencia!</div>
+                    <div>Volte sempre.</div>
+                    <div style="margin-top:4px;font-size:10px;">Impresso: ${new Date().toLocaleString('pt-BR')}</div>
+                </div>
+            </body>
+            </html>
+        `);
+
+        printWindow.document.close();
+        printWindow.focus();
+        setTimeout(() => {
+            printWindow.print();
+            printWindow.close();
+        }, 400);
+
+        // Close modal
         setIsReceiptOpen(false);
         setCompletedSale(null);
     };
@@ -1402,116 +1516,161 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
 
             {/* RECEIPT MODAL */}
             {isReceiptOpen && completedSale && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm print:bg-white print:p-0">
-                    <div className="bg-white dark:bg-gray-800 w-full max-w-sm rounded-xl shadow-2xl overflow-hidden print:shadow-none print:w-full print:max-w-none">
-                        <div className="p-4 bg-gray-800 text-white flex justify-between items-center print:hidden">
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+                    <div className="bg-white dark:bg-gray-800 w-full max-w-sm rounded-xl shadow-2xl overflow-hidden">
+                        <div className="p-4 bg-gray-800 text-white flex justify-between items-center no-print">
                             <h3 className="font-bold">Venda Realizada!</h3>
                             <button onClick={() => { setIsReceiptOpen(false); setCompletedSale(null); }} className="text-gray-400 hover:text-white">
                                 <X size={20} />
                             </button>
                         </div>
 
-                        <div id="receipt-content" className="p-6 text-sm font-mono space-y-4 bg-white text-gray-900">
-                            {/* Header */}
-                            <div className="text-center border-b border-dashed border-gray-300 pb-4 flex flex-col items-center">
-                                {/* Branding PriMake */}
-                                <h2 className="text-3xl font-black text-gray-900 tracking-tight mb-1" style={{ fontFamily: 'Inter, sans-serif' }}>PriMake</h2>
-                                <p className="text-gray-500 text-xs tracking-wider">STORE & E-COMMERCE</p>
-                                <div className="w-full border-b border-gray-100 my-2"></div>
-
-                                <p className="text-gray-500 text-xs">{completedSale.date}</p>
-                                {completedSale.sellerName && <p className="text-gray-600 text-xs mt-1">Vendedor(a): <strong>{completedSale.sellerName}</strong></p>}
-                                {completedSale.isDelivery && <p className="text-xs font-bold mt-1 uppercase bg-black text-white px-2 py-0.5 rounded">PEDIDO PARA ENTREGA</p>}
+                        {/* ======= THERMAL RECEIPT CONTENT ======= */}
+                        <div
+                            id="thermal-receipt"
+                            style={{
+                                fontFamily: "'Courier New', Courier, monospace",
+                                fontSize: '13px',
+                                fontWeight: 700,
+                                color: '#000',
+                                background: '#fff',
+                                padding: '8px',
+                                lineHeight: '1.4',
+                                width: '100%',
+                                maxWidth: '80mm',
+                            }}
+                        >
+                            {/* === HEADER === */}
+                            <div style={{ textAlign: 'center', marginBottom: '4px' }}>
+                                <div className="receipt-title" style={{ fontSize: '18px', fontWeight: 900, color: '#000', letterSpacing: '1px' }}>
+                                    PriMake
+                                </div>
+                                <div style={{ fontSize: '10px', fontWeight: 700, color: '#000', letterSpacing: '2px' }}>
+                                    STORE & E-COMMERCE
+                                </div>
                             </div>
 
-                            {/* Customer Info */}
-                            <div className="border-b border-dashed border-gray-300 pb-4">
-                                <p className="font-bold text-gray-700 mb-1">DADOS DO CLIENTE</p>
-                                {completedSale.customer ? (
-                                    <div className="space-y-0.5">
-                                        <p>Nome: {completedSale.customer.name}</p>
-                                        <p>Tel: {completedSale.customer.phone}</p>
+                            <hr className="receipt-sep" style={{ border: 'none', borderTop: '2px dashed #000', margin: '6px 0' }} />
 
-                                        {/* Show address if available, regardless of delivery status */}
-                                        {completedSale.customer.address && (
-                                            <p className="mt-1 font-bold border-t border-dashed border-gray-300 pt-1">
-                                                End: {completedSale.customer.address}, {completedSale.customer.city}
-                                            </p>
-                                        )}
-
-                                        {completedSale.isDelivery && completedSale.motoboy && (
-                                            <p className="mt-1 font-bold">Entregador: {completedSale.motoboy}</p>
-                                        )}
+                            {/* === DATE & SELLER === */}
+                            <div style={{ textAlign: 'center', fontSize: '12px', color: '#000', fontWeight: 700 }}>
+                                <div>{completedSale.date}</div>
+                                {completedSale.sellerName && (
+                                    <div style={{ marginTop: '2px' }}>Vendedor(a): {completedSale.sellerName}</div>
+                                )}
+                                {completedSale.isDelivery && (
+                                    <div style={{ marginTop: '4px', fontWeight: 900, fontSize: '14px', border: '2px solid #000', padding: '2px 8px', display: 'inline-block' }}>
+                                        PEDIDO P/ ENTREGA
                                     </div>
-                                ) : (
-                                    <p className="text-gray-500 italic">Cliente não identificado</p>
                                 )}
                             </div>
 
-                            {/* Items */}
-                            <div className="border-b border-dashed border-gray-300 pb-4">
-                                <div className="flex justify-between font-bold text-gray-700 mb-2">
+                            <hr className="receipt-sep" style={{ border: 'none', borderTop: '2px dashed #000', margin: '6px 0' }} />
+
+                            {/* === CUSTOMER === */}
+                            <div style={{ fontSize: '12px', color: '#000', fontWeight: 700 }}>
+                                <div style={{ fontWeight: 900, marginBottom: '3px' }}>DADOS DO CLIENTE</div>
+                                {completedSale.customer ? (
+                                    <>
+                                        <div>Nome: {completedSale.customer.name}</div>
+                                        <div>Tel: {completedSale.customer.phone}</div>
+                                        {completedSale.customer.address && (
+                                            <div style={{ fontWeight: 900, marginTop: '3px', borderTop: '1px dashed #000', paddingTop: '3px' }}>
+                                                End: {completedSale.customer.address}, {completedSale.customer.city}
+                                            </div>
+                                        )}
+                                        {completedSale.isDelivery && completedSale.motoboy && (
+                                            <div style={{ fontWeight: 900, marginTop: '3px' }}>Entregador: {completedSale.motoboy}</div>
+                                        )}
+                                    </>
+                                ) : (
+                                    <div style={{ fontStyle: 'italic' }}>Cliente nao identificado</div>
+                                )}
+                            </div>
+
+                            <hr className="receipt-sep" style={{ border: 'none', borderTop: '2px dashed #000', margin: '6px 0' }} />
+
+                            {/* === ITEMS === */}
+                            <div style={{ fontSize: '12px', color: '#000', fontWeight: 700 }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 900, marginBottom: '4px' }}>
                                     <span>ITEM</span>
                                     <span>VALOR</span>
                                 </div>
-                                <div className="space-y-1">
-                                    {completedSale.items.map((item: CartItem, idx: number) => (
-                                        <div key={idx} className="flex justify-between">
-                                            <span className="truncate pr-4">{item.quantity}x {item.name}</span>
-                                            <span className="whitespace-nowrap">{(item.priceSale * item.quantity).toFixed(2)}</span>
-                                        </div>
-                                    ))}
-                                </div>
+                                {completedSale.items.map((item: CartItem, idx: number) => (
+                                    <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px', color: '#000', fontWeight: 700 }}>
+                                        <span style={{ flex: 1, wordBreak: 'break-word', paddingRight: '8px' }}>
+                                            {item.quantity}x {item.name}
+                                        </span>
+                                        <span style={{ whiteSpace: 'nowrap', fontWeight: 900 }}>
+                                            {(item.priceSale * item.quantity).toFixed(2)}
+                                        </span>
+                                    </div>
+                                ))}
                             </div>
 
-                            {/* Totals */}
-                            <div className="text-right space-y-1 pt-2">
-                                <div className="flex justify-between text-gray-600 text-xs">
+                            <hr className="receipt-sep" style={{ border: 'none', borderTop: '2px dashed #000', margin: '6px 0' }} />
+
+                            {/* === TOTALS === */}
+                            <div style={{ fontSize: '12px', color: '#000', fontWeight: 700 }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                                     <span>Subtotal</span>
                                     <span>R$ {completedSale.subTotal.toFixed(2)}</span>
                                 </div>
                                 {completedSale.discountValue > 0 && (
-                                    <div className="flex justify-between text-gray-600 text-xs">
+                                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                                         <span>Desconto</span>
                                         <span>- R$ {completedSale.discountValue.toFixed(2)}</span>
                                     </div>
                                 )}
                                 {completedSale.isDelivery && (
-                                    <div className="flex justify-between text-gray-600 text-xs">
+                                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                                         <span>Taxa Entrega</span>
                                         <span>R$ {completedSale.deliveryFee.toFixed(2)}</span>
                                     </div>
                                 )}
-                                <div className="flex justify-between text-lg font-bold mt-2">
+
+                                {/* TOTAL LINE */}
+                                <div className="receipt-total" style={{
+                                    display: 'flex', justifyContent: 'space-between',
+                                    fontSize: '16px', fontWeight: 900, color: '#000',
+                                    marginTop: '6px', paddingTop: '4px',
+                                    borderTop: '2px solid #000'
+                                }}>
                                     <span>TOTAL</span>
                                     <span>R$ {completedSale.finalTotal.toFixed(2)}</span>
                                 </div>
-                                <div className="flex justify-between text-xs text-gray-500 border-t border-dotted pt-2 mt-2">
+
+                                {/* Payment Method */}
+                                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '6px', borderTop: '1px dotted #000', paddingTop: '4px', fontSize: '12px' }}>
                                     <span>Forma Pagto.</span>
-                                    <span className="uppercase font-bold">
-                                        {completedSale.paymentMethod === 'credit' ? `Cartão Crédito (${completedSale.installments}x)` :
-                                            completedSale.paymentMethod === 'debit' ? 'Cartão Débito' :
-                                                completedSale.paymentMethod === 'money' ? 'Dinheiro' : 'Pix'}
+                                    <span style={{ fontWeight: 900 }}>
+                                        {completedSale.paymentMethod === 'credit' ? `CARTAO CRED ${completedSale.installments}x` :
+                                            completedSale.paymentMethod === 'debit' ? 'CARTAO DEB' :
+                                                completedSale.paymentMethod === 'money' ? 'DINHEIRO' : 'PIX'}
                                     </span>
                                 </div>
                                 {completedSale.paymentMethod === 'money' && (
-                                    <div className="flex justify-between text-xs text-gray-500">
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
                                         <span>Troco</span>
-                                        <span>R$ {completedSale.changeAmount.toFixed(2)}</span>
+                                        <span style={{ fontWeight: 900 }}>R$ {completedSale.changeAmount.toFixed(2)}</span>
                                     </div>
                                 )}
                             </div>
 
-                            {/* Footer */}
-                            <div className="text-center pt-6 text-xs text-gray-400">
-                                <p>Obrigado pela preferência!</p>
-                                <p className="mt-1">Volte sempre.</p>
-                                <p className="mt-2 text-gray-300" style={{ fontSize: '9px' }}>Impresso em: {new Date().toLocaleString('pt-BR')}</p>
+                            <hr className="receipt-sep" style={{ border: 'none', borderTop: '2px dashed #000', margin: '6px 0' }} />
+
+                            {/* === FOOTER === */}
+                            <div style={{ textAlign: 'center', fontSize: '11px', color: '#000', fontWeight: 700 }}>
+                                <div>Obrigado pela preferencia!</div>
+                                <div>Volte sempre.</div>
+                                <div style={{ marginTop: '4px', fontSize: '10px' }}>
+                                    Impresso: {new Date().toLocaleString('pt-BR')}
+                                </div>
                             </div>
                         </div>
 
-                        {/* Actions */}
-                        <div className="p-4 border-t border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/30 flex gap-3 print:hidden">
+                        {/* Actions - hidden during print */}
+                        <div className="p-4 border-t border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/30 flex gap-3 no-print">
                             <button
                                 onClick={() => { setIsReceiptOpen(false); setCompletedSale(null); }}
                                 className="flex-1 py-2 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg text-sm font-medium transition-colors"

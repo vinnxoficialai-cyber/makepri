@@ -444,15 +444,40 @@ export const UserService = {
 // =====================================================
 
 export const TransactionService = {
-    // Buscar todas as transações
+    // Helper: map Supabase transaction_items back to CartItem-like shape
+    _mapTransactionWithItems(raw: any): any {
+        const mapped = { ...raw };
+        // Supabase returns joined table as 'transaction_items' array
+        if (raw.transaction_items && Array.isArray(raw.transaction_items)) {
+            mapped.items = raw.transaction_items.map((ti: any) => ({
+                id: ti.product_id,
+                name: ti.product_name,
+                sku: ti.product_sku || '---',
+                category: ti.product_category || '',
+                quantity: ti.quantity,
+                priceSale: ti.unit_price,
+                priceCost: 0,
+                stock: 0,
+                minStock: 0,
+                unit: 'un',
+                variationId: ti.variation_id,
+                variationName: ti.variation_name
+            }));
+            delete mapped.transaction_items;
+        }
+        return mapped;
+    },
+
+    // Buscar todas as transações COM itens
     async getAll(): Promise<Transaction[]> {
         const { data, error } = await supabase
             .from('transactions')
-            .select('*')
+            .select('*, transaction_items(*)')
             .order('date', { ascending: false });
 
         if (error) throw error;
-        return toCamelCase(data) as Transaction[];
+        const withItems = (data || []).map((row: any) => this._mapTransactionWithItems(row));
+        return toCamelCase(withItems) as Transaction[];
     },
 
     // Buscar transação por ID
@@ -467,7 +492,8 @@ export const TransactionService = {
             .single();
 
         if (error) throw error;
-        return toCamelCase(data) as Transaction;
+        const withItems = this._mapTransactionWithItems(data);
+        return toCamelCase(withItems) as Transaction;
     },
 
     // Criar transação com itens
@@ -512,29 +538,31 @@ export const TransactionService = {
         return toCamelCase(newTransaction) as Transaction;
     },
 
-    // Buscar transações por período
+    // Buscar transações por período COM itens
     async getByDateRange(startDate: string, endDate: string): Promise<Transaction[]> {
         const { data, error } = await supabase
             .from('transactions')
-            .select('*')
+            .select('*, transaction_items(*)')
             .gte('date', startDate)
             .lte('date', endDate)
             .order('date', { ascending: false });
 
         if (error) throw error;
-        return toCamelCase(data) as Transaction[];
+        const withItems = (data || []).map((row: any) => this._mapTransactionWithItems(row));
+        return toCamelCase(withItems) as Transaction[];
     },
 
     // Buscar transações por Cliente
     async getByCustomerId(customerId: string): Promise<Transaction[]> {
         const { data, error } = await supabase
             .from('transactions')
-            .select('*')
+            .select('*, transaction_items(*)')
             .eq('customer_id', customerId)
             .order('date', { ascending: false });
 
         if (error) throw error;
-        return toCamelCase(data) as Transaction[];
+        const withItems = (data || []).map((row: any) => this._mapTransactionWithItems(row));
+        return toCamelCase(withItems) as Transaction[];
     },
 
     // Buscar vendas do dia
@@ -843,6 +871,26 @@ export const DeliveryService = {
             .eq('payout_status', 'Pending');
 
         if (error) throw error;
+    },
+
+    async getPaidPayoutReport(): Promise<Record<string, { count: number, totalFee: number }>> {
+        const { data, error } = await supabase
+            .from('deliveries')
+            .select('motoboy_name, fee')
+            .eq('status', 'Entregue')
+            .eq('method', 'Motoboy')
+            .eq('payout_status', 'Paid');
+
+        if (error) throw error;
+
+        const payoutByMotoboy: Record<string, { count: number, totalFee: number }> = {};
+        (data || []).forEach(d => {
+            const name = d.motoboy_name || 'Não Atribuído';
+            if (!payoutByMotoboy[name]) payoutByMotoboy[name] = { count: 0, totalFee: 0 };
+            payoutByMotoboy[name].count += 1;
+            payoutByMotoboy[name].totalFee += Number(d.fee) || 0;
+        });
+        return payoutByMotoboy;
     }
 };
 
