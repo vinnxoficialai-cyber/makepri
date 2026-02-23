@@ -526,8 +526,8 @@ const Team: React.FC<TeamProps> = ({ users, currentUser, salesGoals, onUpdateGoa
                             </div>
                         </div>
 
-                        <div className="p-6 space-y-4 flex-1 overflow-y-auto max-h-[500px]">
-                            {visibleSalesUsers.map(member => {
+                        <div className="p-6 space-y-4 flex-1">
+                            {visibleSalesUsers.filter((m: any) => m.role === 'Vendedor').map(member => {
                                 const currentMeta = salesGoals.userGoals[member.id] || 0;
                                 const goalType = salesGoals.goalTypes[member.id] || 'monthly';
                                 const currentSales = salesBySeller[member.id] || 0;
