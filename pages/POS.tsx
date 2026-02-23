@@ -263,19 +263,19 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
 
         try {
             const savedCustomer = await addCustomer({
-                name: newCustomerForm.name,
-                cpf: '',
-                phone: newCustomerForm.phone,
-                email: '',
-                birthDate: '',
-                address: newCustomerForm.address,
-                city: newCustomerForm.city,
-                state: newCustomerForm.state,
+                name: newCustomerForm.name.trim(),
+                cpf: newCustomerForm.cpf || null,
+                phone: newCustomerForm.phone || '',
+                email: newCustomerForm.email || null,
+                birthDate: newCustomerForm.birthDate || null,
+                address: newCustomerForm.address || null,
+                city: newCustomerForm.city || null,
+                state: newCustomerForm.state || null,
                 totalSpent: 0,
-                lastPurchase: new Date().toISOString().split('T')[0],
+                lastPurchase: null,
                 status: 'Active' as const,
                 notes: newCustomerForm.notes || 'Cadastro Rápido via PDV'
-            });
+            } as any);
             if (savedCustomer) {
                 setSelectedCustomer(savedCustomer);
                 setIsAddCustomerModalOpen(false);
@@ -287,7 +287,23 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
             }
         } catch (error: any) {
             console.error('Erro ao cadastrar cliente:', error);
-            alert('❌ Erro ao cadastrar cliente: ' + error.message);
+            const msg = error?.message || '';
+            if (msg.includes('customers_phone_key') && newCustomerForm.phone) {
+                // Telefone já existe — oferecer usar o cliente existente
+                const existing = customers.find(c => c.phone === newCustomerForm.phone);
+                if (existing && window.confirm(`⚠️ Já existe "${existing.name}" com esse telefone.\n\nDeseja usar este cliente para a venda?`)) {
+                    setSelectedCustomer(existing);
+                    setIsAddCustomerModalOpen(false);
+                    setNewCustomerForm({
+                        name: '', cpf: '', phone: '', email: '', birthDate: '',
+                        address: '', number: '', neighborhood: '', city: '', state: '', notes: ''
+                    });
+                } else {
+                    alert('⚠️ Já existe um cliente com esse telefone. Use um número diferente ou selecione o cliente existente.');
+                }
+            } else {
+                alert('❌ Erro ao cadastrar: ' + msg);
+            }
         }
     };
     // --- PAYMENT FLOW HANDLERS ---
