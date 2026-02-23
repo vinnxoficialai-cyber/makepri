@@ -86,17 +86,43 @@ const CRM: React.FC = () => {
 
     const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (!formData.name?.trim()) {
+            alert('⚠️ Nome é obrigatório!');
+            return;
+        }
+        if (!formData.address?.trim()) {
+            alert('⚠️ Endereço é obrigatório!');
+            return;
+        }
         try {
             if (editingCustomer) {
                 await updateCustomer(editingCustomer.id, formData);
             } else {
-                await addCustomer(formData as any); // Cast as any to bypass Omit check for now, or construct properly
+                await addCustomer({
+                    name: formData.name.trim(),
+                    email: formData.email || null,
+                    phone: formData.phone || '',
+                    cpf: formData.cpf || null,
+                    address: formData.address.trim(),
+                    city: formData.city || null,
+                    state: formData.state || null,
+                    birthDate: formData.birthDate || null,
+                    notes: formData.notes || null,
+                    status: 'Active' as const,
+                    totalSpent: 0,
+                    lastPurchase: null
+                } as any);
             }
             setIsFormModalOpen(false);
             refresh();
-        } catch (error) {
+        } catch (error: any) {
             console.error('Save error:', error);
-            alert('Erro ao salvar cliente');
+            const msg = error?.message || '';
+            if (msg.includes('customers_phone_key')) {
+                alert('⚠️ Já existe um cliente cadastrado com esse telefone!');
+            } else {
+                alert('❌ Erro ao salvar: ' + msg);
+            }
         }
     };
 
@@ -390,9 +416,11 @@ const CRM: React.FC = () => {
                                     />
                                 </div>
                                 <div>
+                                    <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Telefone</label>
                                     <input
                                         type="text"
                                         className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 outline-none bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                                        placeholder="(00) 00000-0000"
                                         value={formData.phone || ''}
                                         onChange={e => setFormData({ ...formData, phone: e.target.value })}
                                     />
@@ -422,8 +450,9 @@ const CRM: React.FC = () => {
                             <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 mt-4">Endereço</h4>
                             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                                 <div className="md:col-span-3">
-                                    <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Logradouro, Número e Bairro</label>
+                                    <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Logradouro, Número e Bairro <span className="text-rose-500">*</span></label>
                                     <input
+                                        required
                                         type="text"
                                         className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 outline-none bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                                         placeholder="Rua Exemplo, 123 - Centro"
