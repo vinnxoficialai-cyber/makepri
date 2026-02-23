@@ -547,19 +547,57 @@ const Dashboard: React.FC<DashboardProps> = ({ user, users = [], salesGoals, onN
                             </div>
                         ) : (
                             <div className="space-y-4">
-                                <div className="grid grid-cols-12 gap-4 text-xs font-bold text-gray-400 uppercase border-b border-gray-100 dark:border-gray-700 pb-2">
-                                    <div className="col-span-4">Colaborador</div><div className="col-span-4 text-center">Meta Dia</div><div className="col-span-4 text-center">Meta Mês</div>
-                                </div>
-                                <div className="space-y-4 max-h-[200px] overflow-y-auto pr-2 custom-scrollbar">
-                                    {sellersPerformance.map((seller) => (
-                                        <div key={seller.id} className="grid grid-cols-12 gap-4 items-center">
-                                            <div className="col-span-4 flex items-center gap-2"><img src={seller.avatar} alt="" className="w-8 h-8 rounded-full bg-gray-200 object-cover border border-gray-200 dark:border-gray-600" /><span className="text-sm font-bold text-gray-700 dark:text-gray-300 truncate">{seller.name}</span></div>
-                                            <div className="col-span-4 px-2"><GoalProgressBar label="" current={seller.salesToday} target={seller.dailyTarget} barColor="bg-indigo-500" textColor="text-indigo-600 dark:text-indigo-400" /></div>
-                                            <div className="col-span-4 px-2"><GoalProgressBar label="" current={seller.salesMonth} target={seller.monthlyTarget} barColor="bg-pink-500" textColor="text-pink-600 dark:text-pink-400" /></div>
+                                {(() => {
+                                    const vendedoras = sellersPerformance.filter(s => {
+                                        const u = users.find(usr => usr.id === s.id);
+                                        return u && u.role === 'Vendedor';
+                                    });
+                                    if (vendedoras.length === 0) return <p className="text-center text-gray-400 text-sm py-4">Nenhuma vendedora com meta definida.</p>;
+                                    return (
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            {vendedoras.map((seller) => (
+                                                <div key={seller.id} className="bg-gradient-to-br from-gray-50 to-white dark:from-gray-700/50 dark:to-gray-800 p-5 rounded-xl border border-gray-200 dark:border-gray-600 shadow-sm">
+                                                    {/* Seller Header */}
+                                                    <div className="flex items-center gap-3 mb-4 pb-3 border-b border-gray-100 dark:border-gray-600">
+                                                        <img src={seller.avatar} alt="" className="w-10 h-10 rounded-full bg-gray-200 object-cover border-2 border-pink-300 dark:border-pink-600" />
+                                                        <div>
+                                                            <p className="font-bold text-sm text-gray-800 dark:text-white">{seller.name}</p>
+                                                            <p className="text-[10px] text-gray-400">Vendedora</p>
+                                                        </div>
+                                                    </div>
+                                                    {/* Daily */}
+                                                    <div className="mb-3">
+                                                        <div className="flex justify-between items-center mb-1">
+                                                            <span className="text-xs font-bold text-indigo-600 dark:text-indigo-400 flex items-center gap-1">☀️ Meta Diária</span>
+                                                            <span className="text-xs font-black text-gray-700 dark:text-gray-200">{Math.round((seller.salesToday / Math.max(1, seller.dailyTarget)) * 100)}%</span>
+                                                        </div>
+                                                        <div className="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-2.5 overflow-hidden">
+                                                            <div className="bg-indigo-500 h-full rounded-full transition-all duration-700" style={{ width: `${Math.min(100, (seller.salesToday / Math.max(1, seller.dailyTarget)) * 100)}%` }}></div>
+                                                        </div>
+                                                        <div className="flex justify-between mt-1 text-[10px] text-gray-400">
+                                                            <span>R$ {seller.salesToday.toLocaleString('pt-BR')}</span>
+                                                            <span>Meta: R$ {seller.dailyTarget.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</span>
+                                                        </div>
+                                                    </div>
+                                                    {/* Monthly */}
+                                                    <div>
+                                                        <div className="flex justify-between items-center mb-1">
+                                                            <span className="text-xs font-bold text-pink-600 dark:text-pink-400 flex items-center gap-1">📅 Meta Mensal</span>
+                                                            <span className="text-xs font-black text-gray-700 dark:text-gray-200">{Math.round((seller.salesMonth / Math.max(1, seller.monthlyTarget)) * 100)}%</span>
+                                                        </div>
+                                                        <div className="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-2.5 overflow-hidden">
+                                                            <div className="bg-pink-500 h-full rounded-full transition-all duration-700" style={{ width: `${Math.min(100, (seller.salesMonth / Math.max(1, seller.monthlyTarget)) * 100)}%` }}></div>
+                                                        </div>
+                                                        <div className="flex justify-between mt-1 text-[10px] text-gray-400">
+                                                            <span>R$ {seller.salesMonth.toLocaleString('pt-BR')}</span>
+                                                            <span>Meta: R$ {seller.monthlyTarget.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            ))}
                                         </div>
-                                    ))}
-                                    {sellersPerformance.length === 0 && <p className="text-center text-gray-400 text-sm py-4">Nenhum vendedor com meta definida.</p>}
-                                </div>
+                                    );
+                                })()}
                                 <div className="pt-4 mt-2 border-t border-gray-100 dark:border-gray-700 flex justify-between items-center text-xs text-gray-500"><span>Progresso Global da Loja</span><div className="flex gap-4"><span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-indigo-500"></div> Dia</span><span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-pink-500"></div> Mês: {Math.round(globalMonthlyProgress)}%</span></div></div>
                             </div>
                         )}

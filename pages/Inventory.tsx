@@ -32,6 +32,7 @@ const Inventory: React.FC<InventoryProps> = ({ user, autoFilterStalled, resetAut
     const [showStalledOnly, setShowStalledOnly] = useState(false);
     const [showLowStockOnly, setShowLowStockOnly] = useState(false);
     const [showPromotionOnly, setShowPromotionOnly] = useState(false);
+    const [previewImage, setPreviewImage] = useState<string | null>(null);
 
     // Supabase hooks
     const {
@@ -989,28 +990,36 @@ const Inventory: React.FC<InventoryProps> = ({ user, autoFilterStalled, resetAut
                                                 <span className="text-[10px] text-gray-500 font-medium ml-1">Principal</span>
                                                 <div className="relative w-28 h-28 rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-600 flex items-center justify-center bg-gray-50 dark:bg-gray-700 overflow-hidden group hover:border-[#ffc8cb] transition-colors shadow-sm">
                                                     {newProduct.imageUrl ? (
-                                                        <>
-                                                            <img src={newProduct.imageUrl} alt="Principal" className="w-full h-full object-cover" />
-                                                            <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                                                <button type="button" onClick={() => removeImage(0)} className="text-white hover:text-red-400 p-1 bg-black/20 rounded-full transition-transform hover:scale-110">
-                                                                    <Trash2 size={20} />
-                                                                </button>
-                                                            </div>
-                                                        </>
+                                                        <img
+                                                            src={newProduct.imageUrl}
+                                                            alt="Principal"
+                                                            className="w-full h-full object-cover cursor-pointer"
+                                                            onClick={() => setPreviewImage(newProduct.imageUrl)}
+                                                        />
                                                     ) : (
-                                                        <div className="text-gray-400 flex flex-col items-center">
-                                                            <Image size={24} />
-                                                            <span className="text-[10px] mt-1 font-medium">Capa</span>
-                                                        </div>
+                                                        <>
+                                                            <div className="text-gray-400 flex flex-col items-center">
+                                                                <Image size={24} />
+                                                                <span className="text-[10px] mt-1 font-medium">Capa</span>
+                                                            </div>
+                                                            <input
+                                                                type="file"
+                                                                className="absolute inset-0 opacity-0 cursor-pointer"
+                                                                accept="image/jpeg, image/jpg, image/png"
+                                                                onChange={(e) => handleImageUpload(e, 0)}
+                                                            />
+                                                        </>
                                                     )}
-                                                    <input
-                                                        type="file"
-                                                        className="absolute inset-0 opacity-0 cursor-pointer"
-                                                        accept="image/jpeg, image/jpg, image/png"
-                                                        onChange={(e) => handleImageUpload(e, 0)}
-                                                        disabled={!!newProduct.imageUrl}
-                                                    />
                                                 </div>
+                                                {newProduct.imageUrl && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => removeImage(0)}
+                                                        className="w-28 mt-1 flex items-center justify-center gap-1 py-1.5 bg-red-50 hover:bg-red-100 dark:bg-red-900/20 dark:hover:bg-red-900/40 text-red-600 dark:text-red-400 text-[10px] font-bold rounded-lg border border-red-200 dark:border-red-800 transition-colors"
+                                                    >
+                                                        <Trash2 size={12} /> Remover
+                                                    </button>
+                                                )}
                                             </div>
 
                                             {/* Additional Images */}
@@ -1021,27 +1030,35 @@ const Inventory: React.FC<InventoryProps> = ({ user, autoFilterStalled, resetAut
                                                         <span className="text-[10px] text-gray-500 font-medium ml-1">Extra {slotIndex}</span>
                                                         <div className="relative w-20 h-20 mt-auto rounded-lg border-2 border-dashed border-gray-200 dark:border-gray-600 flex items-center justify-center bg-gray-50 dark:bg-gray-700/50 overflow-hidden group hover:border-[#ffc8cb] transition-colors">
                                                             {imgUrl ? (
-                                                                <>
-                                                                    <img src={imgUrl} alt={`Extra ${slotIndex}`} className="w-full h-full object-cover" />
-                                                                    <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                                                        <button type="button" onClick={() => removeImage(slotIndex)} className="text-white hover:text-red-400 p-1 bg-black/20 rounded-full transition-transform hover:scale-110">
-                                                                            <Trash2 size={16} />
-                                                                        </button>
-                                                                    </div>
-                                                                </>
+                                                                <img
+                                                                    src={imgUrl}
+                                                                    alt={`Extra ${slotIndex}`}
+                                                                    className="w-full h-full object-cover cursor-pointer"
+                                                                    onClick={() => setPreviewImage(imgUrl)}
+                                                                />
                                                             ) : (
-                                                                <div className="text-gray-300 flex flex-col items-center">
-                                                                    <Plus size={20} />
-                                                                </div>
+                                                                <>
+                                                                    <div className="text-gray-300 flex flex-col items-center">
+                                                                        <Plus size={20} />
+                                                                    </div>
+                                                                    <input
+                                                                        type="file"
+                                                                        className="absolute inset-0 opacity-0 cursor-pointer"
+                                                                        accept="image/jpeg, image/jpg, image/png"
+                                                                        onChange={(e) => handleImageUpload(e, slotIndex)}
+                                                                    />
+                                                                </>
                                                             )}
-                                                            <input
-                                                                type="file"
-                                                                className="absolute inset-0 opacity-0 cursor-pointer"
-                                                                accept="image/jpeg, image/jpg, image/png"
-                                                                onChange={(e) => handleImageUpload(e, slotIndex)}
-                                                                disabled={!!imgUrl}
-                                                            />
                                                         </div>
+                                                        {imgUrl && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => removeImage(slotIndex)}
+                                                                className="w-20 mt-1 flex items-center justify-center gap-1 py-1 bg-red-50 hover:bg-red-100 dark:bg-red-900/20 dark:hover:bg-red-900/40 text-red-600 dark:text-red-400 text-[10px] font-bold rounded-lg border border-red-200 dark:border-red-800 transition-colors"
+                                                            >
+                                                                <Trash2 size={10} /> Remover
+                                                            </button>
+                                                        )}
                                                     </div>
                                                 );
                                             })}
@@ -1511,6 +1528,21 @@ const Inventory: React.FC<InventoryProps> = ({ user, autoFilterStalled, resetAut
                     </div>
                 )
             }
+            {/* Image Preview Lightbox */}
+            {previewImage && (
+                <div className="fixed inset-0 z-[200] flex items-center justify-center p-4" onClick={() => setPreviewImage(null)}>
+                    <div className="absolute inset-0 bg-black/80 backdrop-blur-sm"></div>
+                    <div className="relative max-w-3xl max-h-[90vh] animate-in fade-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
+                        <button
+                            onClick={() => setPreviewImage(null)}
+                            className="absolute -top-3 -right-3 bg-white dark:bg-gray-700 text-gray-600 dark:text-gray-200 rounded-full p-1.5 shadow-lg hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/30 dark:hover:text-red-400 transition-colors z-10"
+                        >
+                            <X size={20} />
+                        </button>
+                        <img src={previewImage} alt="Preview" className="max-w-full max-h-[85vh] rounded-xl shadow-2xl object-contain" />
+                    </div>
+                </div>
+            )}
         </div >
     );
 };
