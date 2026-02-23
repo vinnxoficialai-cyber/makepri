@@ -7,8 +7,7 @@ import {
     Sun, Moon, Bike
 } from 'lucide-react';
 import { User, SalesGoal, Task } from '../types';
-import { MOCK_TASKS } from '../constants';
-import { useTransactions } from '../lib/hooks';
+import { useTransactions, useTasks } from '../lib/hooks';
 
 const MONTHS = [
     'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
@@ -42,9 +41,9 @@ const Team: React.FC<TeamProps> = ({ users, currentUser, salesGoals, onUpdateGoa
     const currentMonth = selectedDate.getMonth();
     const currentYear = selectedDate.getFullYear();
 
-    // --- TASKS STATE ---
-    const [tasks, setTasks] = useState<Task[]>(MOCK_TASKS);
-    const [taskFilter, setTaskFilter] = useState<'all' | 'mine'>('all');
+    // --- TASKS STATE (SUPABASE) ---
+    const { tasks, addTask, toggleStatus: toggleTaskDB, deleteTask: deleteTaskDB } = useTasks();
+    const [taskFilter, setTaskFilter] = useState<'all' | 'mine'>(isSalesperson ? 'mine' : 'all');
     const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
     const [newTask, setNewTask] = useState<Partial<Task>>({
         title: '', description: '', assignedTo: currentUser.id,
@@ -111,26 +110,39 @@ const Team: React.FC<TeamProps> = ({ users, currentUser, salesGoals, onUpdateGoa
     };
 
     // --- TASK HANDLERS ---
-    const filteredTasks = tasks.filter(t => {
+    // Vendedor: only sees tasks assigned to them. Admin/Gerente: sees all or can filter.
+    const filteredTasks = tasks.filter((t: any) => {
+        if (isSalesperson) return t.assignedTo === currentUser.id;
         if (taskFilter === 'mine') return t.assignedTo === currentUser.id;
         return true;
-    }).sort((a, b) => (a.status === b.status ? new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime() : a.status === 'pending' ? -1 : 1));
+    }).sort((a: any, b: any) => (a.status === b.status ? new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime() : a.status === 'pending' ? -1 : 1));
 
-    const handleSaveTask = (e: React.FormEvent) => {
+    const handleSaveTask = async (e: React.FormEvent) => {
         e.preventDefault();
-        const task: Task = {
-            ...newTask as Task,
-            id: `task_${Date.now()}`,
-            createdBy: currentUser.id,
-            status: 'pending'
-        };
-        setTasks([...tasks, task]);
-        setIsTaskModalOpen(false);
-        setNewTask({ title: '', description: '', assignedTo: currentUser.id, dueDate: new Date().toISOString().split('T')[0], priority: 'medium', status: 'pending' });
+        try {
+            await addTask({
+                title: newTask.title || '',
+                description: newTask.description || '',
+                assignedTo: newTask.assignedTo || currentUser.id,
+                createdBy: currentUser.id,
+                dueDate: newTask.dueDate || new Date().toISOString().split('T')[0],
+                priority: newTask.priority || 'medium'
+            });
+            setIsTaskModalOpen(false);
+            setNewTask({ title: '', description: '', assignedTo: currentUser.id, dueDate: new Date().toISOString().split('T')[0], priority: 'medium', status: 'pending' });
+        } catch (err) {
+            alert('Erro ao salvar tarefa.');
+        }
     };
 
-    const toggleTaskStatus = (taskId: string) => {
-        setTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: t.status === 'pending' ? 'completed' : 'pending' } : t));
+    const toggleTaskStatus = async (taskId: string) => {
+        await toggleTaskDB(taskId);
+    };
+
+    const handleDeleteTask = async (taskId: string) => {
+        if (confirm('Excluir esta tarefa?')) {
+            await deleteTaskDB(taskId);
+        }
     };
 
     // --- MEMBER HANDLERS ---
@@ -405,26 +417,34 @@ const Team: React.FC<TeamProps> = ({ users, currentUser, salesGoals, onUpdateGoa
             {activeTab === 'tasks' && (
                 <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
                     <div className="p-4 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center bg-gray-50 dark:bg-gray-700/30">
-                        <div className="flex gap-2">
+                        {/* Vendedor: no filter buttons, only sees own tasks */}
+                        {!isSalesperson ? (
+                            <div className="flex gap-2">
+                                <button
+                                    onClick={() => setTaskFilter('all')}
+                                    className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${taskFilter === 'all' ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300' : 'text-gray-500 hover:text-gray-700'}`}
+                                >
+                                    Todas
+                                </button>
+                                <button
+                                    onClick={() => setTaskFilter('mine')}
+                                    className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${taskFilter === 'mine' ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300' : 'text-gray-500 hover:text-gray-700'}`}
+                                >
+                                    Minhas
+                                </button>
+                            </div>
+                        ) : (
+                            <span className="text-sm font-medium text-gray-500 dark:text-gray-400">Minhas Tarefas</span>
+                        )}
+                        {/* Only Admin/Gerente can create tasks */}
+                        {!isSalesperson && (
                             <button
-                                onClick={() => setTaskFilter('all')}
-                                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${taskFilter === 'all' ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300' : 'text-gray-500 hover:text-gray-700'}`}
+                                onClick={() => setIsTaskModalOpen(true)}
+                                className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg text-sm font-bold flex items-center gap-1 shadow-sm"
                             >
-                                Todas
+                                <Plus size={16} /> Nova Tarefa
                             </button>
-                            <button
-                                onClick={() => setTaskFilter('mine')}
-                                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${taskFilter === 'mine' ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300' : 'text-gray-500 hover:text-gray-700'}`}
-                            >
-                                Minhas
-                            </button>
-                        </div>
-                        <button
-                            onClick={() => setIsTaskModalOpen(true)}
-                            className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg text-sm font-bold flex items-center gap-1 shadow-sm"
-                        >
-                            <Plus size={16} /> Nova Tarefa
-                        </button>
+                        )}
                     </div>
 
                     <div className="p-4 grid gap-3">
@@ -442,7 +462,7 @@ const Team: React.FC<TeamProps> = ({ users, currentUser, salesGoals, onUpdateGoa
                                         <div className="flex items-center gap-1 text-gray-500 bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded-full"><UserIcon size={12} /> {users.find(u => u.id === task.assignedTo)?.name.split(' ')[0]}</div>
                                     </div>
                                 </div>
-                                <button onClick={() => setTasks(prev => prev.filter(t => t.id !== task.id))} className="text-gray-400 hover:text-rose-500"><Trash2 size={18} /></button>
+                                {!isSalesperson && <button onClick={() => handleDeleteTask(task.id)} className="text-gray-400 hover:text-rose-500"><Trash2 size={18} /></button>}
                             </div>
                         ))}
                     </div>
