@@ -3,7 +3,7 @@
     "short_name": "PriMake",
     "start_url": "/",
     "display": "standalone",
-    "background_color": "#db2777",
+    "background_color": "#ffc8cb",
     "theme_color": "#db2777",
     "description": "Sistema de Gestão PriMake",
     "icons": [
