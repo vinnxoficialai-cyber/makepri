@@ -895,6 +895,79 @@ export const DeliveryService = {
 };
 
 // =====================================================
+// SERVICE DE TAREFAS (TASKS)
+// =====================================================
+
+export const TaskService = {
+    async getAll(): Promise<any[]> {
+        const { data, error } = await supabase
+            .from('tasks')
+            .select('*')
+            .order('created_at', { ascending: false });
+
+        if (error) throw error;
+        return (data || []).map(d => ({
+            id: d.id,
+            title: d.title,
+            description: d.description || '',
+            assignedTo: d.assigned_to,
+            createdBy: d.created_by,
+            dueDate: d.due_date,
+            priority: d.priority,
+            status: d.status,
+            createdAt: d.created_at
+        }));
+    },
+
+    async create(task: { title: string, description: string, assignedTo: string, createdBy: string, dueDate: string, priority: string }): Promise<any> {
+        const { data, error } = await supabase
+            .from('tasks')
+            .insert({
+                title: task.title,
+                description: task.description,
+                assigned_to: task.assignedTo,
+                created_by: task.createdBy,
+                due_date: task.dueDate,
+                priority: task.priority,
+                status: 'pending'
+            })
+            .select()
+            .single();
+
+        if (error) throw error;
+        return {
+            id: data.id,
+            title: data.title,
+            description: data.description || '',
+            assignedTo: data.assigned_to,
+            createdBy: data.created_by,
+            dueDate: data.due_date,
+            priority: data.priority,
+            status: data.status,
+            createdAt: data.created_at
+        };
+    },
+
+    async updateStatus(id: string, status: 'pending' | 'completed'): Promise<void> {
+        const { error } = await supabase
+            .from('tasks')
+            .update({ status, updated_at: new Date().toISOString() })
+            .eq('id', id);
+
+        if (error) throw error;
+    },
+
+    async delete(id: string): Promise<void> {
+        const { error } = await supabase
+            .from('tasks')
+            .delete()
+            .eq('id', id);
+
+        if (error) throw error;
+    }
+};
+
+// =====================================================
 // SERVICE DE METAS DE VENDAS (SALES GOALS)
 // =====================================================
 

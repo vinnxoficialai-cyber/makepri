@@ -6,7 +6,8 @@ import {
     TransactionService,
     SettingsService,
     DeliveryService,
-    SalesGoalService
+    SalesGoalService,
+    TaskService
 } from './database';
 import type {
     Product,
@@ -470,5 +471,75 @@ export function useSalesGoals() {
         error,
         refresh: loadGoals,
         saveUserGoal
+    };
+}
+
+// =====================================================
+// HOOK: useTasks
+// =====================================================
+
+export function useTasks() {
+    const [tasks, setTasks] = useState<any[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+
+    const loadTasks = async () => {
+        try {
+            setLoading(true);
+            setError(null);
+            const data = await TaskService.getAll();
+            setTasks(data);
+        } catch (err: any) {
+            setError(err.message || 'Erro ao carregar tarefas');
+            console.error('Erro ao carregar tarefas:', err);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        loadTasks();
+    }, []);
+
+    const addTask = async (task: { title: string, description: string, assignedTo: string, createdBy: string, dueDate: string, priority: string }) => {
+        try {
+            const newTask = await TaskService.create(task);
+            setTasks(prev => [newTask, ...prev]);
+            return newTask;
+        } catch (err: any) {
+            console.error('Erro ao criar tarefa:', err);
+            throw err;
+        }
+    };
+
+    const toggleStatus = async (id: string) => {
+        try {
+            const task = tasks.find(t => t.id === id);
+            if (!task) return;
+            const newStatus = task.status === 'pending' ? 'completed' : 'pending';
+            await TaskService.updateStatus(id, newStatus);
+            setTasks(prev => prev.map(t => t.id === id ? { ...t, status: newStatus } : t));
+        } catch (err: any) {
+            console.error('Erro ao atualizar tarefa:', err);
+        }
+    };
+
+    const deleteTask = async (id: string) => {
+        try {
+            await TaskService.delete(id);
+            setTasks(prev => prev.filter(t => t.id !== id));
+        } catch (err: any) {
+            console.error('Erro ao excluir tarefa:', err);
+        }
+    };
+
+    return {
+        tasks,
+        loading,
+        error,
+        refresh: loadTasks,
+        addTask,
+        toggleStatus,
+        deleteTask
     };
 }
