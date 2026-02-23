@@ -617,6 +617,8 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
         printWindow.document.write(`
             <html>
             <head>
+                <meta charset="UTF-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
                 <title>Recibo PriMake</title>
                 <style>
                     @page {
@@ -624,25 +626,27 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
                         margin: 0;
                     }
                     * { box-sizing: border-box; margin: 0; padding: 0; color: #000 !important; }
-                    html { height: auto; min-height: 0; }
+                    html, body {
+                        width: 100%;
+                        max-width: 80mm;
+                        height: auto;
+                        min-height: 0;
+                        margin: 0;
+                        padding: 2mm;
+                    }
                     body {
                         font-family: 'Courier New', Courier, monospace;
                         font-size: 14px;
                         font-weight: 900;
                         color: #000;
-                        width: 80mm;
-                        max-width: 80mm;
-                        padding: 2mm;
-                        margin: 0;
                         line-height: 1.5;
-                        height: auto;
-                        min-height: 0;
                         -webkit-print-color-adjust: exact;
                         -webkit-text-stroke: 0.3px #000;
+                        -webkit-text-size-adjust: 100%;
                     }
                     .sep { border: none; border-top: 2px dashed #000; margin: 6px 0; }
                     @media print {
-                        html, body { width: 80mm; max-width: 80mm; margin: 0; padding: 1mm; height: auto !important; min-height: 0 !important; }
+                        html, body { width: 80mm; max-width: 80mm; margin: 0; padding: 1mm; height: auto !important; }
                         * { color: #000 !important; font-weight: 900 !important; -webkit-text-stroke: 0.3px #000; }
                     }
                 </style>
