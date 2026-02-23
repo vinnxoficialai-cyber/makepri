@@ -383,7 +383,7 @@ const CRM: React.FC = () => {
                                 <div>
                                     <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">E-mail</label>
                                     <input
-                                        type="email"
+                                        type="text"
                                         className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 outline-none bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                                         value={formData.email || ''}
                                         onChange={e => setFormData({ ...formData, email: e.target.value })}
