@@ -159,10 +159,27 @@ const Settings: React.FC<SettingsProps> = ({
             const imageUrl = await uploadImage(file, 'avatars');
 
             if (imageUrl) {
+                // Atualizar formulário local
                 setUserForm(prev => ({
                     ...prev,
                     avatarUrl: imageUrl
                 }));
+
+                // Salvar imediatamente no banco de dados
+                if (editingUserId) {
+                    try {
+                        const updatedUser = await UserService.update(editingUserId, { avatarUrl: imageUrl });
+                        // Atualizar estado local dos usuários
+                        setUsers(users.map(u => u.id === editingUserId ? { ...u, avatarUrl: imageUrl } : u));
+                        // Se for o usuário logado, atualizar currentUser também
+                        if (editingUserId === currentUser.id) {
+                            setCurrentUser({ ...currentUser, avatarUrl: imageUrl });
+                        }
+                    } catch (dbErr: any) {
+                        console.error('Erro ao salvar avatar no banco:', dbErr);
+                    }
+                }
+
                 alert('✅ Avatar atualizado!');
             }
         } catch (error: any) {
