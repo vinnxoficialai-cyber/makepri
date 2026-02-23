@@ -56,7 +56,8 @@ const Delivery: React.FC<DeliveryProps> = ({ user }) => {
         itemsSummary: '',
         totalValue: 0,
         fee: 0,
-        motoboyName: '' // Added motoboy selection
+        motoboyName: '', // Added motoboy selection
+        paymentMethod: '' // Payment method
     });
 
     const isSalesperson = user?.role === 'Vendedor';
@@ -137,7 +138,8 @@ const Delivery: React.FC<DeliveryProps> = ({ user }) => {
                 totalValue: Number(newDeliveryForm.totalValue),
                 fee: Number(newDeliveryForm.fee),
                 motoboyName: newDeliveryForm.motoboyName,
-                trackingCode: newDeliveryForm.trackingCode
+                trackingCode: newDeliveryForm.trackingCode,
+                paymentMethod: newDeliveryForm.paymentMethod || ''
             };
 
             await DeliveryService.create(newOrder);
@@ -145,7 +147,7 @@ const Delivery: React.FC<DeliveryProps> = ({ user }) => {
             setIsCreateModalOpen(false);
             setNewDeliveryForm({
                 customerName: '', phone: '', address: '', city: '',
-                source: 'WhatsApp', method: 'Motoboy', itemsSummary: '', totalValue: 0, fee: 0, motoboyName: ''
+                source: 'WhatsApp', method: 'Motoboy', itemsSummary: '', totalValue: 0, fee: 0, motoboyName: '', paymentMethod: ''
             });
         } catch (err) {
             console.error('Erro ao criar entrega:', err);
@@ -867,6 +869,7 @@ const Delivery: React.FC<DeliveryProps> = ({ user }) => {
                                             <div className="mb-2">
                                                 <p className="font-bold text-sm text-gray-900 dark:text-white truncate">{d.customerName}</p>
                                                 <p className="text-xs text-gray-500">{d.phone}</p>
+                                                {d.paymentMethod && <p className="text-xs font-bold text-gray-700 dark:text-gray-300 mt-1">💳 {d.paymentMethod}</p>}
                                             </div>
 
                                             {/* Address */}
@@ -895,7 +898,7 @@ const Delivery: React.FC<DeliveryProps> = ({ user }) => {
                             {/* Footer */}
                             <div className="mt-6 pt-4 border-t-2 border-dashed border-gray-400 space-y-3 text-xs text-gray-600 dark:text-gray-400">
                                 <div className="flex justify-between">
-                                    <span>Saída: ____:____</span>
+                                    <span>Saída: {new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
                                     <span>Retorno: ____:____</span>
                                 </div>
                                 <div className="pt-4 border-t border-gray-200 dark:border-gray-600">
@@ -987,19 +990,21 @@ const Delivery: React.FC<DeliveryProps> = ({ user }) => {
                                         printWindow.print();
                                         printWindow.close();
 
-                                        // Ask to batch set selected deliveries to 'Em Rota'
-                                        const pendingIds = selectedRouteIds.filter(id => {
-                                            const d = deliveries.find(del => del.id === id);
-                                            return d && d.status !== 'Em Rota' && d.status !== 'Entregue' && d.status !== 'Cancelado';
-                                        });
-                                        if (pendingIds.length > 0 && window.confirm(`Deseja colocar ${pendingIds.length === 1 ? 'esta entrega' : 'todas as ' + pendingIds.length + ' entregas'} em rota agora?`)) {
-                                            for (const id of pendingIds) {
-                                                await updateStatus(id, 'Em Rota');
+                                        // Delay to wait for print dialog to close (especially on mobile)
+                                        setTimeout(async () => {
+                                            const pendingIds = selectedRouteIds.filter(id => {
+                                                const d = deliveries.find(del => del.id === id);
+                                                return d && d.status !== 'Em Rota' && d.status !== 'Entregue' && d.status !== 'Cancelado';
+                                            });
+                                            if (pendingIds.length > 0 && window.confirm(`Deseja colocar ${pendingIds.length === 1 ? 'esta entrega' : 'todas as ' + pendingIds.length + ' entregas'} em rota agora?`)) {
+                                                for (const id of pendingIds) {
+                                                    await updateStatus(id, 'Em Rota');
+                                                }
+                                                setSelectedRouteIds([]);
+                                                setIsRouteModalOpen(false);
+                                                refresh();
                                             }
-                                            setSelectedRouteIds([]);
-                                            setIsRouteModalOpen(false);
-                                            refresh();
-                                        }
+                                        }, 1000);
                                     } else {
                                         window.print();
                                     }
@@ -1112,6 +1117,23 @@ const Delivery: React.FC<DeliveryProps> = ({ user }) => {
                                         placeholder="Para repasse"
                                     />
                                 </div>
+                            </div>
+
+                            {/* Payment Method */}
+                            <div>
+                                <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Forma de Pagamento</label>
+                                <select
+                                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                                    value={newDeliveryForm.paymentMethod}
+                                    onChange={e => setNewDeliveryForm({ ...newDeliveryForm, paymentMethod: e.target.value })}
+                                >
+                                    <option value="">Selecione...</option>
+                                    <option value="PIX">PIX</option>
+                                    <option value="Dinheiro">Dinheiro</option>
+                                    <option value="Cartão Crédito">Cartão Crédito</option>
+                                    <option value="Cartão Débito">Cartão Débito</option>
+                                    <option value="Já Pago">Já Pago</option>
+                                </select>
                             </div>
 
                             <button

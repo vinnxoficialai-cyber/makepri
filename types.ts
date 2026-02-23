@@ -121,6 +121,7 @@ export interface DeliveryOrder {
     date: string;
     itemsSummary: string; // Ex: "2x Batom, 1x Base"
     payoutStatus?: 'Pending' | 'Paid'; // Status do repasse para o motoboy
+    paymentMethod?: string; // Forma de pagamento (PIX, Dinheiro, Cartão, etc)
 }
 
 export interface CartItem extends Product {
