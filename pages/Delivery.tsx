@@ -28,6 +28,7 @@ const Delivery: React.FC<DeliveryProps> = ({ user }) => {
 
     // Filter State
     const [filterMethod, setFilterMethod] = useState<'All' | 'Local' | 'Dispatch'>('All');
+    const [filterMotoboy, setFilterMotoboy] = useState<string>('Todos');
     const [searchTerm, setSearchTerm] = useState('');
 
     // --- ROUTE SELECTION STATE ---
@@ -83,9 +84,11 @@ const Delivery: React.FC<DeliveryProps> = ({ user }) => {
         // If Admin/Sales, show all.
         let isAuthorized = true;
         if (isMotoboy) {
-            // Match exactly the name or if the delivery has no specific motoboy assigned yet (optional)
             isAuthorized = d.motoboyName === user?.name;
         }
+
+        // 5. Motoboy Filter (Admin only)
+        const matchesMotoboy = filterMotoboy === 'Todos' || d.motoboyName === filterMotoboy;
 
         // 4. Archive vs Active Filter
         const isFinished = d.status === 'Entregue' || d.status === 'Cancelado';
@@ -102,7 +105,7 @@ const Delivery: React.FC<DeliveryProps> = ({ user }) => {
             }
         }
 
-        return matchesSearch && matchesMethod && isAuthorized && matchesView;
+        return matchesSearch && matchesMethod && isAuthorized && matchesMotoboy && matchesView;
     });
 
     const updateStatus = async (id: string, newStatus: DeliveryOrder['status']) => {
@@ -443,6 +446,20 @@ const Delivery: React.FC<DeliveryProps> = ({ user }) => {
                             <Package size={14} /> Levar Correios
                         </button>
                     </div>
+
+                    {/* Motoboy Filter (Admin only) */}
+                    {!isMotoboy && availableMotoboys.length > 0 && (
+                        <select
+                            value={filterMotoboy}
+                            onChange={e => setFilterMotoboy(e.target.value)}
+                            className="px-3 py-1.5 rounded-lg text-xs font-bold border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-pink-200"
+                        >
+                            <option value="Todos">🏍️ Todos Motoboys</option>
+                            {availableMotoboys.map(m => (
+                                <option key={m.id} value={m.name}>{m.name}</option>
+                            ))}
+                        </select>
+                    )}
                 </div>
             </div>
 
@@ -890,7 +907,7 @@ const Delivery: React.FC<DeliveryProps> = ({ user }) => {
 
                         <div className="p-4 border-t border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/30 flex justify-end gap-3">
                             <button
-                                onClick={() => {
+                                onClick={async () => {
                                     const printContent = document.getElementById('printable-route');
                                     const windowUrl = 'about:blank';
                                     const uniqueName = new Date().getTime();
@@ -969,8 +986,21 @@ const Delivery: React.FC<DeliveryProps> = ({ user }) => {
                                         printWindow.focus();
                                         printWindow.print();
                                         printWindow.close();
+
+                                        // Ask to batch set selected deliveries to 'Em Rota'
+                                        const pendingIds = selectedRouteIds.filter(id => {
+                                            const d = deliveries.find(del => del.id === id);
+                                            return d && d.status !== 'Em Rota' && d.status !== 'Entregue' && d.status !== 'Cancelado';
+                                        });
+                                        if (pendingIds.length > 0 && window.confirm(`Deseja colocar ${pendingIds.length === 1 ? 'esta entrega' : 'todas as ' + pendingIds.length + ' entregas'} em rota agora?`)) {
+                                            for (const id of pendingIds) {
+                                                await updateStatus(id, 'Em Rota');
+                                            }
+                                            setSelectedRouteIds([]);
+                                            setIsRouteModalOpen(false);
+                                            refresh();
+                                        }
                                     } else {
-                                        // Fallback simpler print
                                         window.print();
                                     }
                                 }}
