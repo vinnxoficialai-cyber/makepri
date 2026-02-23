@@ -353,9 +353,13 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
 
         try {
             // 1. Capture Sale Data for Receipt
+            // Merge deliveryAddress into customer so it appears on receipt
+            const receiptCustomer = selectedCustomer
+                ? { ...selectedCustomer, address: deliveryAddress || selectedCustomer.address || '' }
+                : null;
             const currentSaleData = {
                 items: [...cart],
-                customer: selectedCustomer,
+                customer: receiptCustomer,
                 subTotal,
                 discountValue,
                 deliveryFee: parseFloat(deliveryFee) || 0,
@@ -389,7 +393,7 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
                 isDelivery: saleType === 'delivery',
                 motoboy: selectedMotoboy,
                 customerId: selectedCustomer?.id,
-                customerSnapshot: selectedCustomer,
+                customerSnapshot: receiptCustomer,
                 sellerId: user?.id,
                 sellerName: user?.name
             };
@@ -411,7 +415,7 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
                 isDelivery: saleType === 'delivery',
                 motoboy: selectedMotoboy,
                 customerId: selectedCustomer?.id,
-                customerSnapshot: selectedCustomer,
+                customerSnapshot: receiptCustomer,
                 sellerId: user?.id,
                 sellerName: user?.name
             });
@@ -532,12 +536,16 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
         // Map transaction data back to the format used by the Receipt Modal
 
         // Tentar recuperar cliente atualizado para ter endereço completo (caso o snapshot antigo esteja incompleto)
-        const currentCustomer = customers.find(c => c.id === transaction.customerSnapshot?.id);
+        const currentCustomer = customers.find(c => c.id === transaction.customerId)
+            || customers.find(c => c.id === transaction.customerSnapshot?.id)
+            || customers.find(c => c.name === transaction.customerName);
         // Prioridade: Cliente Atual (com endereço) > Snapshot da Venda > Mock
         const customerDisplay = currentCustomer || transaction.customerSnapshot || {
             name: transaction.customerName,
             phone: '',
             email: '',
+            address: '',
+            city: '',
             id: '0',
             totalSpent: 0,
             lastPurchase: '',
@@ -611,20 +619,31 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
             <head>
                 <title>Recibo PriMake</title>
                 <style>
-                    * { box-sizing: border-box; margin: 0; padding: 0; }
+                    @page {
+                        size: 80mm auto;
+                        margin: 0;
+                    }
+                    * { box-sizing: border-box; margin: 0; padding: 0; color: #000 !important; }
+                    html { height: auto; min-height: 0; }
                     body {
                         font-family: 'Courier New', Courier, monospace;
-                        font-size: 13px;
-                        font-weight: 700;
+                        font-size: 14px;
+                        font-weight: 900;
                         color: #000;
                         width: 80mm;
-                        padding: 3mm;
-                        line-height: 1.4;
+                        max-width: 80mm;
+                        padding: 2mm;
+                        margin: 0;
+                        line-height: 1.5;
+                        height: auto;
+                        min-height: 0;
+                        -webkit-print-color-adjust: exact;
+                        -webkit-text-stroke: 0.3px #000;
                     }
                     .sep { border: none; border-top: 2px dashed #000; margin: 6px 0; }
                     @media print {
-                        body { width: 80mm; }
-                        * { color: #000 !important; font-weight: 700 !important; }
+                        html, body { width: 80mm; max-width: 80mm; margin: 0; padding: 1mm; height: auto !important; min-height: 0 !important; }
+                        * { color: #000 !important; font-weight: 900 !important; -webkit-text-stroke: 0.3px #000; }
                     }
                 </style>
             </head>

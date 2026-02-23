@@ -216,15 +216,22 @@ const Delivery: React.FC<DeliveryProps> = ({ user }) => {
             <head>
                 <title>Comprovante de Repasse</title>
                 <style>
+                    @page {
+                        size: 80mm auto;
+                        margin: 0;
+                    }
                     * { box-sizing: border-box; margin: 0; padding: 0; }
                     body { 
                         font-family: 'Courier New', Courier, monospace; 
                         font-size: 13px;
                         font-weight: 700;
-                        width: 80mm; 
-                        padding: 3mm;
+                        width: 80mm;
+                        max-width: 80mm;
+                        padding: 2mm;
+                        margin: 0 auto;
                         color: #000; 
                         line-height: 1.3;
+                        -webkit-print-color-adjust: exact;
                     }
                     .header { text-align: center; margin-bottom: 15px; border-bottom: 2px dashed #000; padding-bottom: 10px; }
                     .title { font-size: 16px; font-weight: 900; text-transform: uppercase; letter-spacing: 1px; }
@@ -947,8 +954,9 @@ const Delivery: React.FC<DeliveryProps> = ({ user }) => {
                                                         .text-gray-700 { color: #000; }
                                                         .text-gray-900 { color: #000; }
                                                         @media print {
-                                                            body { width: 80mm; }
-                                                            * { color: #000 !important; }
+                                                            @page { size: 80mm auto; margin: 0; }
+                                                            html, body { width: 80mm; max-width: 80mm; margin: 0; padding: 1mm; }
+                                                            * { color: #000 !important; -webkit-print-color-adjust: exact; }
                                                         }
                                                     </style>
                                                 </head>
