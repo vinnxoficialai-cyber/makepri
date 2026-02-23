@@ -113,6 +113,16 @@ const App: React.FC = () => {
     useEffect(() => {
         if (supabaseUsers.length > 0) {
             setUsers(supabaseUsers);
+            // Sincronizar currentUser com dados frescos do Supabase (ex: avatarUrl atualizado)
+            setCurrentUser(prev => {
+                const freshUser = supabaseUsers.find(u => u.id === prev.id);
+                if (freshUser) {
+                    const updated = { ...prev, ...freshUser };
+                    localStorage.setItem('currentUser', JSON.stringify(updated));
+                    return updated;
+                }
+                return prev;
+            });
         }
     }, [supabaseUsers]);
 
