@@ -54,7 +54,7 @@ const Reports: React.FC = () => {
     const filteredTransactions = getFilteredTransactions();
 
     // KPI Calculations
-    const totalRevenue = filteredTransactions.reduce((sum, t) => sum + t.total, 0);
+    const totalRevenue = filteredTransactions.reduce((sum, t) => sum + (t.total - (t.deliveryFee || 0)), 0);
     const totalOrders = filteredTransactions.length;
     const averageTicket = totalOrders > 0 ? totalRevenue / totalOrders : 0;
 
@@ -90,7 +90,7 @@ const Reports: React.FC = () => {
                         const tHour = dateObj.getHours();
                         return tHour >= hour && tHour < hour + 2;
                     })
-                    .reduce((sum, t) => sum + t.total, 0);
+                    .reduce((sum, t) => sum + (t.total - (t.deliveryFee || 0)), 0);
 
                 return { name: `${hourStr}:00`, total };
             });
@@ -108,7 +108,7 @@ const Reports: React.FC = () => {
 
                 const total = transactions
                     .filter(t => t.status === 'Completed' && t.date.startsWith(dayStr))
-                    .reduce((sum, t) => sum + t.total, 0);
+                    .reduce((sum, t) => sum + (t.total - (t.deliveryFee || 0)), 0);
 
                 data.push({ name: dayName, total });
             }

@@ -600,12 +600,11 @@ export const TransactionService = {
         if (error) throw error;
     },
 
-    // Deletar uma transação permanentemente (admin only - validado no front)
+    // Deletar transação e seus itens (admin only)
     async delete(id: string): Promise<void> {
-        const { error } = await supabase
-            .from('transactions')
-            .delete()
-            .eq('id', id);
+        // Delete items first (if no cascade FK)
+        await supabase.from('transaction_items').delete().eq('transaction_id', id);
+        const { error } = await supabase.from('transactions').delete().eq('id', id);
         if (error) throw error;
     }
 };

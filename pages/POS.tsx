@@ -120,8 +120,9 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
     // --- HISTORY MOBILE MODAL ---
     const [isMobileHistoryOpen, setIsMobileHistoryOpen] = useState(false);
 
-    // --- ADMIN EDIT SALE ---
+    // --- ADMIN EDIT / DELETE SALE ---
     const [editSaleTarget, setEditSaleTarget] = useState<Transaction | null>(null);
+    const [adminAction, setAdminAction] = useState<'edit' | 'delete'>('edit');
     const [isAdminPasswordModalOpen, setIsAdminPasswordModalOpen] = useState(false);
     const [adminPasswordInput, setAdminPasswordInput] = useState('');
     const [adminPasswordError, setAdminPasswordError] = useState('');
@@ -129,6 +130,9 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
     const [editSaleForm, setEditSaleForm] = useState({ customerName: '', paymentMethod: '', status: '', notes: '' });
     const [isSavingEditSale, setIsSavingEditSale] = useState(false);
     const [isValidatingAdmin, setIsValidatingAdmin] = useState(false);
+    const [isDeletingSale, setIsDeletingSale] = useState(false);
+    const [historySearchTerm, setHistorySearchTerm] = useState('');
+    const [historyDate, setHistoryDate] = useState<string>(new Date().toISOString().split('T')[0]);
 
     const skuInputRef = useRef<HTMLInputElement>(null);
 
@@ -828,31 +832,41 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
     };
 
 
-    // --- ADMIN EDIT SALE HANDLERS ---
-    const openEditSaleFlow = (transaction: Transaction) => {
+    // --- ADMIN EDIT / DELETE SALE HANDLERS ---
+    const openAdminFlow = (transaction: Transaction, action: 'edit' | 'delete') => {
         setEditSaleTarget(transaction);
+        setAdminAction(action);
         setAdminPasswordInput('');
         setAdminPasswordError('');
 
         // If already logged-in as admin/gerente, skip password prompt
         if (user?.role === 'Administrador' || user?.role === 'Gerente') {
-            setEditSaleForm({
-                customerName: transaction.customerName || '',
-                paymentMethod: transaction.paymentMethod || '',
-                status: transaction.status || 'Completed',
-                notes: (transaction as any).notes || ''
-            });
-            setIsEditSaleModalOpen(true);
+            if (action === 'edit') {
+                setEditSaleForm({
+                    customerName: transaction.customerName || '',
+                    paymentMethod: transaction.paymentMethod || '',
+                    status: transaction.status || 'Completed',
+                    notes: (transaction as any).notes || ''
+                });
+                setIsEditSaleModalOpen(true);
+            } else {
+                // Delete: confirm then execute
+                if (window.confirm(`Deletar venda de "${transaction.customerName}" (R$ ${transaction.total.toFixed(2)})? Esta ação é irreversível.`)) {
+                    handleDeleteSale(transaction.id);
+                }
+            }
         } else {
             setIsAdminPasswordModalOpen(true);
         }
     };
 
+    // Shortcut aliases for clarity
+    const openEditSaleFlow = (t: Transaction) => openAdminFlow(t, 'edit');
+    const openDeleteSaleFlow = (t: Transaction) => openAdminFlow(t, 'delete');
+
     const handleAdminPasswordSubmit = async () => {
         setIsValidatingAdmin(true);
         try {
-            // Validate against users already loaded in memory
-            // Accepts: user's name, email, or password/pin if set in DB
             const inputLower = adminPasswordInput.trim().toLowerCase();
             const adminUsers = users.filter(u =>
                 (u.role === 'Administrador' || u.role === 'Gerente') && u.active
@@ -863,14 +877,12 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
                 return;
             }
 
-            // Try DB validation first (password/pin columns if they exist)
             let isValid = false;
             try {
                 const result = await validateAdminPassword(adminPasswordInput.trim());
                 isValid = result.ok;
             } catch { /* ignore */ }
 
-            // Fallback: accept admin's name or email (always available)
             if (!isValid) {
                 isValid = adminUsers.some(u =>
                     u.name.toLowerCase() === inputLower ||
@@ -883,18 +895,38 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
                 setAdminPasswordInput('');
                 setAdminPasswordError('');
                 const t = editSaleTarget!;
-                setEditSaleForm({
-                    customerName: t.customerName || '',
-                    paymentMethod: t.paymentMethod || '',
-                    status: t.status || 'Completed',
-                    notes: (t as any).notes || ''
-                });
-                setIsEditSaleModalOpen(true);
+                if (adminAction === 'edit') {
+                    setEditSaleForm({
+                        customerName: t.customerName || '',
+                        paymentMethod: t.paymentMethod || '',
+                        status: t.status || 'Completed',
+                        notes: (t as any).notes || ''
+                    });
+                    setIsEditSaleModalOpen(true);
+                } else {
+                    // Delete action
+                    if (window.confirm(`Deletar venda de "${t.customerName}" (R$ ${t.total.toFixed(2)})? Esta ação é irreversível.`)) {
+                        handleDeleteSale(t.id);
+                    }
+                }
             } else {
                 setAdminPasswordError(`Não autorizado. Digite o nome, e-mail ou senha de um administrador.`);
             }
         } finally {
             setIsValidatingAdmin(false);
+        }
+    };
+
+    const handleDeleteSale = async (id: string) => {
+        setIsDeletingSale(true);
+        try {
+            await TransactionService.delete(id);
+            window.location.reload();
+        } catch (err) {
+            console.error('Erro ao deletar venda:', err);
+            alert('Erro ao deletar venda. Tente novamente.');
+        } finally {
+            setIsDeletingSale(false);
         }
     };
 
@@ -921,58 +953,129 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
         }
     };
 
-    const renderHistoryList = () => (
-        <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-gray-50/50 dark:bg-gray-900/50 h-full">
-            {supabaseTransactions.length > 0 ? (
-                supabaseTransactions.map((transaction) => (
-                    <div key={transaction.id} className="bg-white dark:bg-gray-700 p-4 rounded-xl shadow-sm border border-gray-100 dark:border-gray-600 flex justify-between items-center hover:border-[#ffc8cb] transition-colors cursor-pointer group">
-                        <div className="flex flex-col gap-1">
-                            <div className="flex items-center gap-2">
-                                <span className="font-mono text-xs font-bold text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded">{transaction.id}</span>
-                                <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${transaction.status === 'Completed' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' :
-                                    transaction.status === 'Cancelled' ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400' : 'bg-amber-100 text-amber-700'
-                                    }`}>
-                                    {transaction.status === 'Completed' ? 'Concluído' : transaction.status === 'Cancelled' ? 'Cancelado' : 'Pendente'}
-                                </span>
-                            </div>
-                            <p className="font-bold text-gray-800 dark:text-white line-clamp-1">{transaction.customerName}</p>
-                            <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
-                                <Calendar size={12} /> {new Date(transaction.date).toLocaleDateString('pt-BR')}
-                            </div>
-                        </div>
-                        <div className="text-right flex flex-col items-end gap-1">
-                            <p className="text-lg font-black text-gray-900 dark:text-white">R$ {transaction.total.toFixed(2)}</p>
+    const renderHistoryList = () => {
+        const q = historySearchTerm.trim().toLowerCase();
+        // Filter by selected date first
+        const dateFiltered = historyDate
+            ? supabaseTransactions.filter(t => {
+                const txDate = new Date(t.date).toISOString().split('T')[0];
+                return txDate === historyDate;
+            })
+            : supabaseTransactions;
+        const visibleTransactions = q
+            ? dateFiltered.filter(t =>
+                t.customerName.toLowerCase().includes(q) ||
+                ((t as any).phone || '').toLowerCase().includes(q) ||
+                t.id.toLowerCase().includes(q)
+            )
+            : dateFiltered;
+        const today = new Date().toISOString().split('T')[0];
+        const isToday = historyDate === today;
+        return (
+            <div className="flex-1 overflow-y-auto bg-gray-50/50 dark:bg-gray-900/50 h-full flex flex-col">
+                {/* Search + Date bar */}
+                <div className="p-3 border-b border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800 space-y-2">
+                    {/* Date row */}
+                    <div className="flex items-center gap-2">
+                        <Calendar size={14} className="text-indigo-400 flex-shrink-0" />
+                        <input
+                            type="date"
+                            value={historyDate}
+                            onChange={e => setHistoryDate(e.target.value)}
+                            className="flex-1 text-sm border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-300/50 focus:border-indigo-400 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white"
+                        />
+                        {!isToday && (
                             <button
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleViewHistoryReceipt(transaction);
-                                }}
-                                className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline flex items-center justify-end gap-1 bg-indigo-50 dark:bg-indigo-900/20 px-2 py-1 rounded transition-colors"
+                                onClick={() => setHistoryDate(today)}
+                                className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20 px-2 py-1 rounded-lg hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition-colors whitespace-nowrap"
                             >
-                                <FileText size={12} /> Ver Recibo
+                                Hoje
                             </button>
-                            <button
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    openEditSaleFlow(transaction);
-                                }}
-                                className="text-xs text-amber-600 dark:text-amber-400 hover:underline flex items-center justify-end gap-1 bg-amber-50 dark:bg-amber-900/20 px-2 py-1 rounded transition-colors"
-                            >
-                                <Save size={12} /> Editar
-                            </button>
-                        </div>
+                        )}
                     </div>
-                ))
-            ) : (
-                <div className="h-full flex flex-col items-center justify-center text-gray-400">
-                    <History size={48} className="mb-2 opacity-20" />
-                    <p>Nenhuma venda registrada.</p>
+                    {/* Text search row */}
+                    <div className="relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={15} />
+                        <input
+                            type="text"
+                            placeholder="Pesquisar por nome ou telefone..."
+                            value={historySearchTerm}
+                            onChange={e => setHistorySearchTerm(e.target.value)}
+                            className="w-full pl-9 pr-4 py-2 text-sm border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-300/50 focus:border-indigo-400 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400"
+                        />
+                        {historySearchTerm && (
+                            <button onClick={() => setHistorySearchTerm('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                                <X size={14} />
+                            </button>
+                        )}
+                    </div>
+                    <p className="text-[11px] text-gray-400 ml-1">
+                        {visibleTransactions.length} venda(s) em {isToday ? 'hoje' : new Date(historyDate + 'T12:00:00').toLocaleDateString('pt-BR')}
+                    </p>
                 </div>
-            )}
-        </div>
-    );
+                <div className="p-4 space-y-3 overflow-y-auto flex-1">
+                    {visibleTransactions.length > 0 ? (
+                        visibleTransactions.map((transaction) => (
+                            <div key={transaction.id} className="bg-white dark:bg-gray-700 p-4 rounded-xl shadow-sm border border-gray-100 dark:border-gray-600 flex justify-between items-center hover:border-[#ffc8cb] transition-colors cursor-pointer group">
+                                <div className="flex flex-col gap-1">
+                                    <div className="flex items-center gap-2">
+                                        <span className="font-mono text-xs font-bold text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded">{transaction.id}</span>
+                                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${transaction.status === 'Completed' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' :
+                                            transaction.status === 'Cancelled' ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400' : 'bg-amber-100 text-amber-700'
+                                            }`}>
+                                            {transaction.status === 'Completed' ? 'Concluído' : transaction.status === 'Cancelled' ? 'Cancelado' : 'Pendente'}
+                                        </span>
+                                    </div>
+                                    <p className="font-bold text-gray-800 dark:text-white line-clamp-1">{transaction.customerName}</p>
+                                    <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                                        <Calendar size={12} /> {new Date(transaction.date).toLocaleDateString('pt-BR')}
+                                    </div>
+                                </div>
+                                <div className="text-right flex flex-col items-end gap-1">
+                                    <p className="text-lg font-black text-gray-900 dark:text-white">R$ {transaction.total.toFixed(2)}</p>
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleViewHistoryReceipt(transaction);
+                                        }}
+                                        className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline flex items-center justify-end gap-1 bg-indigo-50 dark:bg-indigo-900/20 px-2 py-1 rounded transition-colors"
+                                    >
+                                        <FileText size={12} /> Ver Recibo
+                                    </button>
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            openEditSaleFlow(transaction);
+                                        }}
+                                        className="text-xs text-amber-600 dark:text-amber-400 hover:underline flex items-center justify-end gap-1 bg-amber-50 dark:bg-amber-900/20 px-2 py-1 rounded transition-colors"
+                                    >
+                                        <Save size={12} /> Editar
+                                    </button>
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            openDeleteSaleFlow(transaction);
+                                        }}
+                                        className="text-xs text-rose-600 dark:text-rose-400 hover:underline flex items-center justify-end gap-1 bg-rose-50 dark:bg-rose-900/20 px-2 py-1 rounded transition-colors"
+                                    >
+                                        <Trash2 size={12} /> Deletar
+                                    </button>
+                                </div>
+                            </div>
+                        ))
+                    ) : (
+                        <div className="h-full flex flex-col items-center justify-center text-gray-400">
+                            <History size={48} className="mb-2 opacity-20" />
+                            <p>{q ? 'Nenhum resultado encontrado.' : 'Nenhuma venda registrada.'}</p>
+                        </div>
+                    )}
+                </div>
+            </div>
+        );
+    };
 
     return (
+
         <div className="h-[calc(100vh-6rem)] flex flex-col lg:flex-row gap-6 animate-in fade-in duration-500">
             {/* Left Side: Product Grid / History (HIDDEN ON MOBILE) */}
             <div className="hidden lg:flex flex-1 flex-col bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden transition-colors h-full">

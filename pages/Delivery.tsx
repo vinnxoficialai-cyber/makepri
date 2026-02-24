@@ -40,8 +40,12 @@ const Delivery: React.FC<DeliveryProps> = ({ user }) => {
     // --- STATUS SUB-FILTER (active view) ---
     const [filterStatus, setFilterStatus] = useState<'Todos' | 'Iniciar' | 'Em Rota' | 'Problema'>('Todos');
 
+    // --- CARD INLINE FINALIZE MENU ---
+    const [finalizeMenuId, setFinalizeMenuId] = useState<string | null>(null);
+
     // --- MODAL STATES ---
     const [selectedDelivery, setSelectedDelivery] = useState<DeliveryOrder | null>(null);
+    const [receiptDelivery, setReceiptDelivery] = useState<DeliveryOrder | null>(null);
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
     const [isPayoutModalOpen, setIsPayoutModalOpen] = useState(false);
     const [payoutTab, setPayoutTab] = useState<'pending' | 'paid'>('pending');
@@ -292,7 +296,7 @@ const Delivery: React.FC<DeliveryProps> = ({ user }) => {
                 `).join('')}
 
                 <div class="total">
-                    TOTAL: R$ ${totalGeneral.toFixed(2)}
+                    TOTAL: R$ ${(Number(totalGeneral)).toFixed(2)}
                 </div>
 
                 <div class="signature-block">
@@ -682,80 +686,113 @@ const Delivery: React.FC<DeliveryProps> = ({ user }) => {
                                 )}
 
                                 {/* Card Header */}
-                                <div className={`p-4 border-b border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-700/20 flex justify-between items-start pointer-events-none ${isSelectable && viewMode === 'active' ? 'pl-12' : ''}`}>
-                                    <div>
-                                        <div className="flex items-center gap-2 mb-1">
-                                            <span className="text-xs font-mono font-bold text-gray-500 dark:text-gray-400">{delivery.id}</span>
-                                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${getStatusColor(delivery.status)}`}>
+                                <div className={`px-3 py-2 border-b border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-700/20 flex justify-between items-start ${isSelectable && viewMode === 'active' ? 'pl-12' : ''}`}>
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex items-center gap-1.5 mb-0.5">
+                                            <span className="text-[10px] font-mono font-bold text-gray-400 dark:text-gray-500 truncate max-w-[80px]">{delivery.id}</span>
+                                            <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold border ${getStatusColor(delivery.status)}`}>
                                                 {delivery.status.toUpperCase()}
                                             </span>
+                                            {/* Receipt icon — opens comprovante modal */}
+                                            <button
+                                                onClick={(e) => { e.stopPropagation(); setReceiptDelivery(delivery); }}
+                                                className="text-gray-400 hover:text-indigo-500 transition-colors"
+                                                title="Ver comprovante do pedido"
+                                            >
+                                                <FileText size={13} />
+                                            </button>
                                         </div>
-                                        <h3 className="font-bold text-gray-800 dark:text-white text-lg line-clamp-1">{delivery.customerName}</h3>
+                                        <h3 className="font-bold text-gray-800 dark:text-white text-sm leading-tight line-clamp-1">{delivery.customerName}</h3>
                                     </div>
-                                    <div className="flex flex-col items-end">
-                                        <span className="text-xs text-gray-400 mt-1">{new Date(delivery.date).toLocaleDateString('pt-BR')}</span>
-                                        {/* Show assigned motoboy if admin */}
+                                    <div className="flex flex-col items-end ml-2 flex-shrink-0">
+                                        <span className="text-[10px] text-gray-400">{new Date(delivery.date).toLocaleDateString('pt-BR')}</span>
                                         {!isMotoboy && delivery.motoboyName && (
-                                            <span className="text-[9px] bg-gray-200 dark:bg-gray-600 text-gray-600 dark:text-gray-300 px-1.5 py-0.5 rounded mt-1 flex items-center gap-1">
-                                                <Bike size={10} /> {delivery.motoboyName}
+                                            <span className="text-[9px] bg-gray-200 dark:bg-gray-600 text-gray-600 dark:text-gray-300 px-1.5 py-0.5 rounded mt-0.5 flex items-center gap-1">
+                                                <Bike size={9} /> {delivery.motoboyName}
                                             </span>
                                         )}
                                     </div>
                                 </div>
 
                                 {/* Card Body */}
-                                <div className="p-4 flex-1 flex flex-col gap-3 pointer-events-none">
-                                    <div className={`flex items-start gap-2 text-sm p-2 rounded-lg ${delivery.method === 'Motoboy' ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-800 dark:text-emerald-300' : 'bg-purple-50 dark:bg-purple-900/20 text-purple-800 dark:text-purple-300'}`}>
-                                        <MapPin size={16} className="mt-0.5 flex-shrink-0" />
-                                        <div className="flex-1">
+                                <div className="px-3 py-2 flex-1 flex flex-col gap-1.5 pointer-events-none">
+                                    <div className={`flex items-start gap-1.5 text-xs p-1.5 rounded-lg ${delivery.method === 'Motoboy' ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-800 dark:text-emerald-300' : 'bg-purple-50 dark:bg-purple-900/20 text-purple-800 dark:text-purple-300'}`}>
+                                        <MapPin size={13} className="mt-0.5 flex-shrink-0" />
+                                        <div className="flex-1 min-w-0">
                                             <div className="flex justify-between items-start">
-                                                <p className="text-[10px] font-bold uppercase opacity-70">
-                                                    {delivery.method === 'Motoboy' ? 'Entregar para Cliente:' : 'Levar para Despacho:'}
+                                                <p className="text-[9px] font-bold uppercase opacity-70">
+                                                    {delivery.method === 'Motoboy' ? 'Entregar:' : 'Despacho:'}
                                                 </p>
-
-                                                {/* PAGO Badge */}
                                                 {delivery.payoutStatus === 'Paid' && (
-                                                    <span className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300 text-[10px] font-black px-1.5 py-0.5 rounded border border-emerald-200 dark:border-emerald-700 flex items-center gap-1">
-                                                        <DollarSign size={10} /> PAGO
+                                                    <span className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300 text-[9px] font-black px-1 py-0.5 rounded border border-emerald-200 dark:border-emerald-700 flex items-center gap-0.5">
+                                                        <DollarSign size={8} /> PAGO
                                                     </span>
                                                 )}
                                             </div>
-                                            <p className="font-medium leading-tight">{delivery.address}</p>
-                                            <p className="text-xs opacity-80">{delivery.city}</p>
+                                            <p className="font-medium leading-snug text-xs">{delivery.address}</p>
+                                            <p className="text-[10px] opacity-80">{delivery.city}</p>
                                         </div>
                                     </div>
                                     {delivery.notes && (
-                                        <div className="bg-yellow-50 dark:bg-yellow-900/10 p-2 rounded border border-yellow-100 dark:border-yellow-800 text-xs text-yellow-800 dark:text-yellow-200">
+                                        <div className="bg-yellow-50 dark:bg-yellow-900/10 px-2 py-1 rounded border border-yellow-100 dark:border-yellow-800 text-[10px] text-yellow-800 dark:text-yellow-200">
                                             <span className="font-bold">Obs:</span> {delivery.notes}
                                         </div>
                                     )}
                                 </div>
 
                                 {/* Card Footer Actions */}
-                                <div className="p-3 bg-gray-50 dark:bg-gray-900/50 border-t border-gray-100 dark:border-gray-700 flex justify-between items-center" onClick={(e) => e.stopPropagation()}>
-                                    {/* WhatsApp Button (Direct Action) */}
+                                <div className="px-3 py-2 bg-gray-50 dark:bg-gray-900/50 border-t border-gray-100 dark:border-gray-700 flex justify-between items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                                    {/* WhatsApp Button */}
                                     <button
                                         onClick={() => openWhatsApp(delivery.phone, delivery.customerName)}
-                                        className="flex items-center gap-1.5 bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition-colors shadow-sm"
-                                        title="Conversar no WhatsApp"
+                                        className="flex items-center gap-1 bg-emerald-500 hover:bg-emerald-600 text-white text-[11px] font-bold px-2 py-1 rounded-lg transition-colors shadow-sm flex-shrink-0"
+                                        title="WhatsApp"
                                     >
-                                        <MessageCircle size={14} /> WhatsApp
+                                        <MessageCircle size={12} /> WA
                                     </button>
 
-                                    <div className="flex gap-2">
-                                        {delivery.status === 'Pendente' && viewMode === 'active' && (
+                                    <div className="flex gap-1 flex-1 justify-end">
+                                        {/* Iniciar — shown when Pendente or Em Preparo */}
+                                        {(delivery.status === 'Pendente' || delivery.status === 'Em Preparo') && viewMode === 'active' && (
                                             <button
                                                 onClick={() => updateStatus(delivery.id, 'Em Rota')}
-                                                className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1 shadow-sm transition-colors"
+                                                className="bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-bold px-2 py-1 rounded-lg flex items-center gap-1 shadow-sm transition-colors"
                                             >
-                                                <ArrowRight size={14} /> Iniciar
+                                                <ArrowRight size={12} /> Iniciar
                                             </button>
                                         )}
+
+                                        {/* Finalizado — inline dropdown for em-rota and others */}
+                                        {delivery.status !== 'Entregue' && delivery.status !== 'Cancelado' && viewMode === 'active' && (
+                                            <div className="relative">
+                                                <button
+                                                    onClick={() => setFinalizeMenuId(finalizeMenuId === delivery.id ? null : delivery.id)}
+                                                    className="bg-gray-700 hover:bg-gray-900 dark:bg-gray-600 dark:hover:bg-gray-500 text-white text-[11px] font-bold px-2 py-1 rounded-lg flex items-center gap-1 shadow-sm transition-colors"
+                                                >
+                                                    <CheckCircle size={12} /> Finalizar
+                                                </button>
+                                                {finalizeMenuId === delivery.id && (
+                                                    <div className="absolute bottom-full right-0 mb-1 bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 z-30 overflow-hidden w-36 animate-in fade-in zoom-in-95 duration-150">
+                                                        <button onClick={() => { updateStatus(delivery.id, 'Entregue'); setFinalizeMenuId(null); }} className="w-full text-left px-3 py-2 text-xs font-bold text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 flex items-center gap-2">
+                                                            <CheckCircle size={13} /> Entregue
+                                                        </button>
+                                                        <button onClick={() => { updateStatus(delivery.id, 'Problema'); setFinalizeMenuId(null); }} className="w-full text-left px-3 py-2 text-xs font-bold text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 flex items-center gap-2">
+                                                            <AlertCircle size={13} /> Problema
+                                                        </button>
+                                                        <button onClick={() => { updateStatus(delivery.id, 'Cancelado'); setFinalizeMenuId(null); }} className="w-full text-left px-3 py-2 text-xs font-bold text-rose-700 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 flex items-center gap-2">
+                                                            <X size={13} /> Cancelado
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+
+                                        {/* Details button (3-dot) */}
                                         <button onClick={() => {
                                             setSelectedDelivery(delivery);
                                             setEditForm({ status: delivery.status, notes: delivery.notes || '' });
-                                        }} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 p-1.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700">
-                                            <MoreVertical size={16} />
+                                        }} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700">
+                                            <MoreVertical size={14} />
                                         </button>
                                     </div>
                                 </div>
@@ -778,6 +815,143 @@ const Delivery: React.FC<DeliveryProps> = ({ user }) => {
                     </div>
                 )}
             </div>
+
+            {/* --- DELIVERY RECEIPT / COMPROVANTE MODAL --- */}
+            {receiptDelivery && (
+                <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+                    <div className="absolute inset-0 bg-gray-900/70 backdrop-blur-sm" onClick={() => setReceiptDelivery(null)} />
+                    <div className="bg-white dark:bg-gray-800 w-full max-w-sm rounded-2xl shadow-2xl relative flex flex-col max-h-[90vh] animate-in fade-in zoom-in-95 duration-200 overflow-hidden">
+                        {/* Receipt Header */}
+                        <div className="bg-gradient-to-br from-indigo-600 to-purple-600 p-4 text-white">
+                            <div className="flex justify-between items-start">
+                                <div>
+                                    <p className="text-xs font-bold uppercase tracking-widest opacity-70">Comprovante de Pedido</p>
+                                    <h3 className="text-lg font-black mt-0.5">{receiptDelivery.customerName}</h3>
+                                    <p className="text-xs opacity-80 mt-0.5">{receiptDelivery.id}</p>
+                                </div>
+                                <button onClick={() => setReceiptDelivery(null)} className="bg-white/20 hover:bg-white/30 p-1.5 rounded-full transition-colors">
+                                    <X size={16} />
+                                </button>
+                            </div>
+                            {/* Status badge */}
+                            <div className="mt-3">
+                                <span className={`px-2.5 py-1 rounded-full text-[11px] font-black uppercase tracking-wide ${receiptDelivery.status === 'Entregue' ? 'bg-emerald-400/30 text-emerald-100' : receiptDelivery.status === 'Cancelado' ? 'bg-rose-400/30 text-rose-100' : receiptDelivery.status === 'Problema' ? 'bg-amber-400/30 text-amber-100' : receiptDelivery.status === 'Em Rota' ? 'bg-blue-400/30 text-blue-100' : 'bg-white/20 text-white'}`}>
+                                    {receiptDelivery.status}
+                                </span>
+                            </div>
+                        </div>
+
+                        {/* Receipt Body — scrollable */}
+                        <div className="overflow-y-auto flex-1 p-4 space-y-4">
+                            {/* Date + Source */}
+                            <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400">
+                                <span className="flex items-center gap-1"><Calendar size={12} /> {new Date(receiptDelivery.date).toLocaleString('pt-BR')}</span>
+                                <span className="font-medium text-gray-700 dark:text-gray-300">{receiptDelivery.source}</span>
+                            </div>
+
+                            {/* Items */}
+                            <div>
+                                <p className="text-[10px] font-bold uppercase text-gray-400 mb-1">Itens do Pedido</p>
+                                <div className="bg-gray-50 dark:bg-gray-700/50 rounded-xl p-3">
+                                    <p className="text-sm text-gray-800 dark:text-white font-medium whitespace-pre-line">{receiptDelivery.itemsSummary || '—'}</p>
+                                </div>
+                            </div>
+
+                            {/* Delivery Info */}
+                            <div>
+                                <p className="text-[10px] font-bold uppercase text-gray-400 mb-1">Endereço de Entrega</p>
+                                <div className="bg-gray-50 dark:bg-gray-700/50 rounded-xl p-3 flex items-start gap-2">
+                                    <MapPin size={15} className="text-indigo-500 mt-0.5 flex-shrink-0" />
+                                    <div>
+                                        <p className="text-sm font-semibold text-gray-800 dark:text-white">{receiptDelivery.address}</p>
+                                        <p className="text-xs text-gray-500 dark:text-gray-400">{receiptDelivery.city}</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Contact */}
+                            <div className="flex gap-3">
+                                <div className="flex-1 bg-gray-50 dark:bg-gray-700/50 rounded-xl p-3">
+                                    <p className="text-[10px] font-bold uppercase text-gray-400 mb-1">Telefone</p>
+                                    <p className="text-sm font-semibold text-gray-800 dark:text-white flex items-center gap-1">
+                                        <Phone size={12} className="text-emerald-500" /> {receiptDelivery.phone || '—'}
+                                    </p>
+                                </div>
+                                <div className="flex-1 bg-gray-50 dark:bg-gray-700/50 rounded-xl p-3">
+                                    <p className="text-[10px] font-bold uppercase text-gray-400 mb-1">Método</p>
+                                    <p className="text-sm font-semibold text-gray-800 dark:text-white flex items-center gap-1">
+                                        <Truck size={12} className="text-purple-500" /> {receiptDelivery.method}
+                                    </p>
+                                </div>
+                            </div>
+
+                            {/* Motoboy + Payment */}
+                            {(receiptDelivery.motoboyName || receiptDelivery.paymentMethod) && (
+                                <div className="flex gap-3">
+                                    {receiptDelivery.motoboyName && (
+                                        <div className="flex-1 bg-gray-50 dark:bg-gray-700/50 rounded-xl p-3">
+                                            <p className="text-[10px] font-bold uppercase text-gray-400 mb-1">Motoboy</p>
+                                            <p className="text-sm font-semibold text-gray-800 dark:text-white flex items-center gap-1">
+                                                <Bike size={12} className="text-indigo-500" /> {receiptDelivery.motoboyName}
+                                            </p>
+                                        </div>
+                                    )}
+                                    {receiptDelivery.paymentMethod && (
+                                        <div className="flex-1 bg-gray-50 dark:bg-gray-700/50 rounded-xl p-3">
+                                            <p className="text-[10px] font-bold uppercase text-gray-400 mb-1">Pagamento</p>
+                                            <p className="text-sm font-semibold text-gray-800 dark:text-white">{receiptDelivery.paymentMethod}</p>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* Notes */}
+                            {receiptDelivery.notes && (
+                                <div className="bg-yellow-50 dark:bg-yellow-900/20 rounded-xl p-3 border border-yellow-200 dark:border-yellow-800">
+                                    <p className="text-[10px] font-bold uppercase text-yellow-600 dark:text-yellow-400 mb-1">Observações</p>
+                                    <p className="text-xs text-yellow-800 dark:text-yellow-200">{receiptDelivery.notes}</p>
+                                </div>
+                            )}
+
+                            {/* Totals */}
+                            <div className="border-t border-dashed border-gray-200 dark:border-gray-600 pt-3 space-y-1">
+                                {receiptDelivery.fee ? (
+                                    <>
+                                        <div className="flex justify-between text-sm text-gray-600 dark:text-gray-400">
+                                            <span>Subtotal</span>
+                                            <span>R$ {(receiptDelivery.totalValue - receiptDelivery.fee).toFixed(2)}</span>
+                                        </div>
+                                        <div className="flex justify-between text-sm text-gray-600 dark:text-gray-400">
+                                            <span>Taxa de entrega</span>
+                                            <span>R$ {receiptDelivery.fee.toFixed(2)}</span>
+                                        </div>
+                                    </>
+                                ) : null}
+                                <div className="flex justify-between text-base font-black text-gray-900 dark:text-white mt-1">
+                                    <span>TOTAL</span>
+                                    <span className="text-indigo-600 dark:text-indigo-400">R$ {receiptDelivery.totalValue.toFixed(2)}</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Footer actions */}
+                        <div className="p-4 border-t border-gray-100 dark:border-gray-700 flex gap-2">
+                            <button
+                                onClick={() => openWhatsApp(receiptDelivery.phone, receiptDelivery.customerName)}
+                                className="flex-1 flex items-center justify-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-2.5 rounded-xl text-sm transition-colors"
+                            >
+                                <MessageCircle size={15} /> WhatsApp
+                            </button>
+                            <button
+                                onClick={() => { setSelectedDelivery(receiptDelivery); setEditForm({ status: receiptDelivery.status, notes: receiptDelivery.notes || '' }); setIsEditing(false); setReceiptDelivery(null); }}
+                                className="flex items-center justify-center gap-1 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 font-bold py-2.5 px-3 rounded-xl text-sm transition-colors"
+                            >
+                                <Edit size={15} /> Editar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* --- PAYOUT REPORT MODAL --- */}
             {isPayoutModalOpen && (
