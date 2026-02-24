@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import { ArrowUpCircle, ArrowDownCircle, Coins, Lock, Unlock, History, Search, Filter, Calendar, X, CheckCircle, AlertTriangle, Save, QrCode, CreditCard, Wallet, FileText, Banknote } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { ArrowUpCircle, ArrowDownCircle, Coins, Lock, Unlock, History, Search, Filter, Calendar, X, CheckCircle, AlertTriangle, Save, QrCode, CreditCard, Wallet, FileText, Banknote, ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react';
 import { useCashRegister } from '../lib/useCashRegister';
 import { mapCashMovementForDisplay } from '../lib/cash-helpers';
+import { CashService } from '../lib/cash-service';
 
 const Cash: React.FC = () => {
     // --- SUPABASE HOOK ---
@@ -28,8 +29,12 @@ const Cash: React.FC = () => {
     const [historyFilters, setHistoryFilters] = useState({
         search: '',
         method: 'Todos',
-        date: ''
+        date: new Date().toISOString().split('T')[0] // Default: today
     });
+    const [historyMovements, setHistoryMovements] = useState<any[]>([]);
+    const [historyLoading, setHistoryLoading] = useState(false);
+    const [historyPage, setHistoryPage] = useState(1);
+    const PAGE_SIZE = 15;
 
     // Closing/Opening State
     const [openingFloat, setOpeningFloat] = useState<number>(0);
@@ -161,15 +166,45 @@ const Cash: React.FC = () => {
         alert('✅ Suprimento registrado com sucesso!');
     };
 
-    // Filter Logic
-    const filteredMovements = movements.filter(m => {
-        const matchSearch = m.description.toLowerCase().includes(historyFilters.search.toLowerCase()) ||
-            m.type.toLowerCase().includes(historyFilters.search.toLowerCase());
-        const matchMethod = historyFilters.method === 'Todos' || m.paymentMethod === historyFilters.method;
-        const matchDate = !historyFilters.date || m.date === historyFilters.date;
+    // Fetch history from DB when modal opens or date changes
+    useEffect(() => {
+        if (!showHistoryModal) return;
+        const fetchHistory = async () => {
+            setHistoryLoading(true);
+            try {
+                const data = historyFilters.date
+                    ? await CashService.getMovementsForDate(historyFilters.date)
+                    : await CashService.getAllMovements();
+                setHistoryMovements(data);
+            } catch (e) {
+                console.error('Erro ao buscar histórico:', e);
+            } finally {
+                setHistoryLoading(false);
+            }
+        };
+        fetchHistory();
+    }, [showHistoryModal, historyFilters.date]);
 
-        return matchSearch && matchMethod && matchDate;
-    });
+    // Reset page when filters change
+    useEffect(() => { setHistoryPage(1); }, [historyFilters]);
+
+    // Filter + paginate
+    const filteredMovements = useMemo(() => {
+        return historyMovements.filter(m => {
+            const q = historyFilters.search.toLowerCase();
+            const matchSearch = !q ||
+                (m.description || '').toLowerCase().includes(q) ||
+                (m.type || '').toLowerCase().includes(q);
+            const methodMap: Record<string, string> = { cash: 'Dinheiro', credit: 'Cartão Crédito', debit: 'Cartão Débito', pix: 'Pix' };
+            const displayMethod = methodMap[m.paymentMethod] || m.paymentMethod || '';
+            const matchMethod = historyFilters.method === 'Todos' || displayMethod === historyFilters.method;
+            return matchSearch && matchMethod;
+        });
+    }, [historyMovements, historyFilters.search, historyFilters.method]);
+
+    const totalPages = Math.max(1, Math.ceil(filteredMovements.length / PAGE_SIZE));
+    const paginatedMovements = filteredMovements.slice((historyPage - 1) * PAGE_SIZE, historyPage * PAGE_SIZE);
+    const today = new Date().toISOString().split('T')[0];
 
     // Helper for register state since isRegisterOpen was not in destructuring but used in JSX
     // Assuming 'isOpen' from hook equates to 'isRegisterOpen'
@@ -297,8 +332,8 @@ const Cash: React.FC = () => {
                 </div>
             </div>
 
-            {/* Actions */}
-            <div className={`grid grid-cols-2 md:grid-cols-4 gap-4 ${!isRegisterOpen ? 'opacity-50 pointer-events-none' : ''}`}>
+            {/* Actions — excluding Histórico which should always be accessible */}
+            <div className={`grid grid-cols-2 md:grid-cols-3 gap-4 ${!isRegisterOpen ? 'opacity-50 pointer-events-none' : ''}`}>
                 <button
                     onClick={() => setShowSuprimentoModal(true)}
                     className="p-4 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl hover:border-indigo-500 dark:hover:border-indigo-500 hover:shadow-md transition-all flex flex-col items-center gap-2 group"
@@ -323,16 +358,17 @@ const Cash: React.FC = () => {
                     </div>
                     <span className="font-medium text-gray-700 dark:text-gray-300">Conferência</span>
                 </button>
-                <button
-                    onClick={() => setShowHistoryModal(true)}
-                    className="p-4 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl hover:border-indigo-500 dark:hover:border-indigo-500 hover:shadow-md transition-all flex flex-col items-center gap-2 group cursor-pointer pointer-events-auto"
-                >
-                    <div className="p-3 bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 rounded-full group-hover:bg-amber-100 dark:group-hover:bg-amber-900/40 transition-colors">
-                        <History size={24} />
-                    </div>
-                    <span className="font-medium text-gray-700 dark:text-gray-300">Histórico</span>
-                </button>
             </div>
+            {/* Histórico — always enabled */}
+            <button
+                onClick={() => setShowHistoryModal(true)}
+                className="w-full p-4 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl hover:border-amber-400 dark:hover:border-amber-400 hover:shadow-md transition-all flex items-center justify-center gap-3 group"
+            >
+                <div className="p-2 bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 rounded-full group-hover:bg-amber-100 transition-colors">
+                    <History size={20} />
+                </div>
+                <span className="font-medium text-gray-700 dark:text-gray-300">Histórico de Movimentações</span>
+            </button>
 
             {/* Recent Movements Table (Small view) */}
             <div className={`bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden transition-colors ${!isRegisterOpen ? 'opacity-60' : ''}`}>
@@ -389,106 +425,177 @@ const Cash: React.FC = () => {
             {showHistoryModal && (
                 <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
                     <div className="absolute inset-0 bg-gray-900/50 backdrop-blur-sm" onClick={() => setShowHistoryModal(false)}></div>
-                    <div className="bg-white dark:bg-gray-800 w-full max-w-5xl h-[80vh] rounded-xl shadow-2xl relative flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                    <div className="bg-white dark:bg-gray-800 w-full max-w-5xl h-[85vh] rounded-xl shadow-2xl relative flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
                         {/* Modal Header */}
                         <div className="p-5 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center bg-gray-50 dark:bg-gray-700/30">
                             <h3 className="font-bold text-xl text-gray-800 dark:text-white flex items-center gap-2">
                                 <History className="text-[#ffc8cb]" /> Histórico de Movimentações
                             </h3>
-                            <button onClick={() => setShowHistoryModal(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full p-1 transition-colors">
-                                <X size={24} />
-                            </button>
+                            <div className="flex items-center gap-2">
+                                <span className="text-sm text-gray-500 dark:text-gray-400">{filteredMovements.length} registro(s)</span>
+                                <button onClick={() => setShowHistoryModal(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full p-1 transition-colors">
+                                    <X size={24} />
+                                </button>
+                            </div>
                         </div>
 
                         {/* Filters */}
-                        <div className="p-4 border-b border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800 flex flex-col md:flex-row gap-4">
+                        <div className="p-4 border-b border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800 flex flex-col md:flex-row gap-3">
+                            {/* Date picker */}
+                            <div className="flex items-center gap-2">
+                                <div className="relative">
+                                    <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                                    <input
+                                        type="date"
+                                        className="pl-9 pr-3 py-2 border border-gray-200 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-[#ffc8cb]/50 outline-none bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white text-sm"
+                                        value={historyFilters.date}
+                                        onChange={(e) => setHistoryFilters({ ...historyFilters, date: e.target.value })}
+                                    />
+                                </div>
+                                {historyFilters.date !== today && (
+                                    <button
+                                        onClick={() => setHistoryFilters({ ...historyFilters, date: today })}
+                                        className="text-xs font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20 px-2 py-1.5 rounded-lg hover:bg-indigo-100 transition-colors whitespace-nowrap"
+                                    >
+                                        Hoje
+                                    </button>
+                                )}
+                                <button
+                                    onClick={() => setHistoryFilters({ ...historyFilters, date: '' })}
+                                    className="text-xs font-bold text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700 px-2 py-1.5 rounded-lg hover:bg-gray-200 transition-colors whitespace-nowrap"
+                                >
+                                    Todos
+                                </button>
+                            </div>
+                            {/* Search */}
                             <div className="flex-1 relative">
-                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
                                 <input
                                     type="text"
-                                    placeholder="Filtrar por nome ou descrição..."
-                                    className="w-full pl-10 pr-4 py-2 border border-gray-200 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-[#ffc8cb]/50 outline-none bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white"
+                                    placeholder="Filtrar por descrição..."
+                                    className="w-full pl-9 pr-4 py-2 border border-gray-200 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-[#ffc8cb]/50 outline-none bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white text-sm"
                                     value={historyFilters.search}
                                     onChange={(e) => setHistoryFilters({ ...historyFilters, search: e.target.value })}
                                 />
                             </div>
-                            <div className="w-full md:w-48 relative">
-                                <Filter className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                            {/* Method */}
+                            <div className="relative">
+                                <Filter className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
                                 <select
-                                    className="w-full pl-10 pr-4 py-2 border border-gray-200 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-[#ffc8cb]/50 outline-none appearance-none bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white"
+                                    className="pl-9 pr-8 py-2 border border-gray-200 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-[#ffc8cb]/50 outline-none appearance-none bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white text-sm"
                                     value={historyFilters.method}
                                     onChange={(e) => setHistoryFilters({ ...historyFilters, method: e.target.value })}
                                 >
-                                    <option value="Todos">Todos Pagamentos</option>
+                                    <option value="Todos">Todos</option>
                                     <option value="Dinheiro">Dinheiro</option>
                                     <option value="Pix">Pix</option>
                                     <option value="Cartão Crédito">Cartão Crédito</option>
                                     <option value="Cartão Débito">Cartão Débito</option>
                                 </select>
                             </div>
-                            <div className="w-full md:w-48 relative">
-                                <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-                                <input
-                                    type="date"
-                                    className="w-full pl-10 pr-4 py-2 border border-gray-200 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-[#ffc8cb]/50 outline-none bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white"
-                                    value={historyFilters.date}
-                                    onChange={(e) => setHistoryFilters({ ...historyFilters, date: e.target.value })}
-                                />
-                            </div>
                         </div>
 
                         {/* Full Table */}
                         <div className="flex-1 overflow-auto bg-gray-50/50 dark:bg-gray-900/50">
-                            <table className="w-full text-left">
-                                <thead className="bg-white dark:bg-gray-800 text-gray-500 dark:text-gray-400 uppercase text-xs sticky top-0 shadow-sm">
-                                    <tr>
-                                        <th className="p-4 font-semibold">Data/Hora</th>
-                                        <th className="p-4 font-semibold">Tipo</th>
-                                        <th className="p-4 font-semibold">Descrição</th>
-                                        <th className="p-4 font-semibold">Forma Pagto.</th>
-                                        <th className="p-4 font-semibold text-right">Valor</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                                    {filteredMovements.length > 0 ? (
-                                        filteredMovements.map((mov) => {
-                                            const mapped = mapCashMovementForDisplay(mov);
-                                            return (
-                                                <tr key={mov.id} className="hover:bg-white dark:hover:bg-gray-700 transition-colors bg-white/50 dark:bg-gray-800/50">
-                                                    <td className="p-4 text-gray-600 dark:text-gray-300 font-mono text-sm">
-                                                        {mapped.dateStr} <span className="text-gray-400">|</span> {mapped.timeStr}
-                                                    </td>
-                                                    <td className="p-4">
-                                                        <span className={`px-2 py-1 rounded text-xs font-bold ${mapped.displayType === 'Venda' ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400' :
-                                                            mapped.displayType === 'Sangria' ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400' :
-                                                                mapped.displayType === 'Suprimento' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' :
-                                                                    'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
-                                                            }`}>
-                                                            {mapped.displayType}
-                                                        </span>
-                                                    </td>
-                                                    <td className="p-4 text-gray-800 dark:text-white font-medium">{mov.description}</td>
-                                                    <td className="p-4 text-gray-500 dark:text-gray-400 flex items-center gap-1">
-                                                        {mapped.displayMethod === 'Pix' && <QrCode size={14} className="text-teal-500" />}
-                                                        {mapped.displayMethod && mapped.displayMethod.includes('Cartão') && <CreditCard size={14} className="text-indigo-500" />}
-                                                        {mapped.displayMethod || '-'}
-                                                    </td>
-                                                    <td className={`p-4 font-bold text-right ${mapped.displayType === 'Sangria' ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'
-                                                        }`}>
-                                                        {mapped.displayType === 'Sangria' ? '-' : '+'} R$ {mapped.amount.toFixed(2)}
-                                                    </td>
-                                                </tr>
-                                            );
-                                        })
-                                    ) : (
+                            {historyLoading ? (
+                                <div className="flex items-center justify-center h-48">
+                                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500"></div>
+                                </div>
+                            ) : (
+                                <table className="w-full text-left">
+                                    <thead className="bg-white dark:bg-gray-800 text-gray-500 dark:text-gray-400 uppercase text-xs sticky top-0 shadow-sm">
                                         <tr>
-                                            <td colSpan={5} className="p-8 text-center text-gray-400">
-                                                Nenhum registro encontrado com os filtros atuais.
-                                            </td>
+                                            <th className="p-4 font-semibold">Data/Hora</th>
+                                            <th className="p-4 font-semibold">Tipo</th>
+                                            <th className="p-4 font-semibold">Descrição</th>
+                                            <th className="p-4 font-semibold">Pagamento</th>
+                                            <th className="p-4 font-semibold text-right">Valor</th>
                                         </tr>
-                                    )}
-                                </tbody>
-                            </table>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                                        {paginatedMovements.length > 0 ? (
+                                            paginatedMovements.map((mov) => {
+                                                const mapped = mapCashMovementForDisplay(mov);
+                                                const isNeg = mapped.displayType === 'Sangria';
+                                                return (
+                                                    <tr key={mov.id} className="hover:bg-white dark:hover:bg-gray-700 transition-colors bg-white/50 dark:bg-gray-800/50">
+                                                        <td className="p-4 text-gray-600 dark:text-gray-300 font-mono text-sm">
+                                                            {mapped.dateStr} <span className="text-gray-400">|</span> {mapped.timeStr}
+                                                        </td>
+                                                        <td className="p-4">
+                                                            <span className={`px-2 py-1 rounded text-xs font-bold ${mapped.displayType === 'Venda' ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400' :
+                                                                    mapped.displayType === 'Sangria' ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400' :
+                                                                        mapped.displayType === 'Suprimento' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' :
+                                                                            'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
+                                                                }`}>
+                                                                {mapped.displayType}
+                                                            </span>
+                                                        </td>
+                                                        <td className="p-4 text-gray-800 dark:text-white font-medium">{mov.description}</td>
+                                                        <td className="p-4 text-gray-500 dark:text-gray-400">
+                                                            <span className="flex items-center gap-1">
+                                                                {mapped.displayMethod === 'Pix' && <QrCode size={13} className="text-teal-500" />}
+                                                                {mapped.displayMethod?.includes('Cartão') && <CreditCard size={13} className="text-indigo-500" />}
+                                                                {!mapped.displayMethod?.includes('Pix') && !mapped.displayMethod?.includes('Cartão') && mapped.displayMethod === 'Dinheiro' && <Banknote size={13} className="text-emerald-500" />}
+                                                                {mapped.displayMethod || '-'}
+                                                            </span>
+                                                        </td>
+                                                        <td className={`p-4 font-bold text-right ${isNeg ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                                                            {isNeg ? '-' : '+'} R$ {mapped.amount.toFixed(2)}
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })
+                                        ) : (
+                                            <tr>
+                                                <td colSpan={5} className="p-12 text-center">
+                                                    <History size={32} className="mx-auto text-gray-300 dark:text-gray-600 mb-2" />
+                                                    <p className="text-gray-400">Nenhum registro encontrado.</p>
+                                                    {historyFilters.date && <p className="text-xs text-gray-400 mt-1">Tente selecionar outra data ou clique em "Todos".</p>}
+                                                </td>
+                                            </tr>
+                                        )}
+                                    </tbody>
+                                </table>
+                            )}
+                        </div>
+
+                        {/* Pagination Footer */}
+                        <div className="p-3 border-t border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800 flex items-center justify-between">
+                            <p className="text-xs text-gray-500 dark:text-gray-400">
+                                Página {historyPage} de {totalPages} &middot; {filteredMovements.length} movimentação(ões)
+                            </p>
+                            <div className="flex items-center gap-1">
+                                <button
+                                    onClick={() => setHistoryPage(p => Math.max(1, p - 1))}
+                                    disabled={historyPage === 1}
+                                    className="p-1.5 rounded-lg border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                                >
+                                    <ChevronLeft size={16} />
+                                </button>
+                                {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                                    const pageNum = totalPages <= 5 ? i + 1 : Math.max(1, Math.min(historyPage - 2, totalPages - 4)) + i;
+                                    return (
+                                        <button
+                                            key={pageNum}
+                                            onClick={() => setHistoryPage(pageNum)}
+                                            className={`w-8 h-8 rounded-lg text-xs font-bold transition-colors ${historyPage === pageNum
+                                                    ? 'bg-indigo-600 text-white'
+                                                    : 'border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                                                }`}
+                                        >
+                                            {pageNum}
+                                        </button>
+                                    );
+                                })}
+                                <button
+                                    onClick={() => setHistoryPage(p => Math.min(totalPages, p + 1))}
+                                    disabled={historyPage === totalPages}
+                                    className="p-1.5 rounded-lg border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                                >
+                                    <ChevronRight size={16} />
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>

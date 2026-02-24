@@ -126,8 +126,17 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
     const [isAdminPasswordModalOpen, setIsAdminPasswordModalOpen] = useState(false);
     const [adminPasswordInput, setAdminPasswordInput] = useState('');
     const [adminPasswordError, setAdminPasswordError] = useState('');
-    const [isEditSaleModalOpen, setIsEditSaleModalOpen] = useState(false);
-    const [editSaleForm, setEditSaleForm] = useState({ customerName: '', paymentMethod: '', status: '', notes: '' });
+    // Full PDV-style edit modal states
+    const [isFullEditModalOpen, setIsFullEditModalOpen] = useState(false);
+    const [editCart, setEditCart] = useState<CartItem[]>([]);
+    const [editCustomerName, setEditCustomerName] = useState('');
+    const [editPaymentMethod, setEditPaymentMethod] = useState('');
+    const [editDiscount, setEditDiscount] = useState('');
+    const [editDeliveryFee, setEditDeliveryFee] = useState('');
+    const [editStatus, setEditStatus] = useState('Completed');
+    const [editNotes, setEditNotes] = useState('');
+    const [editMotoboy, setEditMotoboy] = useState('');
+    const [editProductSearch, setEditProductSearch] = useState('');
     const [isSavingEditSale, setIsSavingEditSale] = useState(false);
     const [isValidatingAdmin, setIsValidatingAdmin] = useState(false);
     const [isDeletingSale, setIsDeletingSale] = useState(false);
@@ -578,18 +587,41 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
 
             // 💰 REGISTRAR NO CAIXA (após venda)
             try {
+                const mapMethod = (m: string): 'cash' | 'credit' | 'debit' | 'pix' => {
+                    if (m === 'money') return 'cash';
+                    if (m === 'credit') return 'credit';
+                    if (m === 'debit') return 'debit';
+                    if (m === 'pix') return 'pix';
+                    return 'cash';
+                };
+
                 // Re-fetch to ensure we have the ID (validation already passed at start)
                 const currentCash = await CashService.getCurrentRegister();
 
                 if (currentCash) {
-                    await CashService.addMovement({
-                        cashRegisterId: currentCash.id,
-                        type: 'sale',
-                        amount: finalTotal,
-                        paymentMethod: primaryMethod as any,
-                        description: `Venda ${selectedCustomer ? `- ${selectedCustomer.name}` : ''}`,
-                        createdBy: user?.id || ''
-                    });
+                    if (effectiveParts.length > 1) {
+                        // Pagamento dividido: uma movimentação por método
+                        for (const part of effectiveParts) {
+                            await CashService.addMovement({
+                                cashRegisterId: currentCash.id,
+                                type: 'sale',
+                                amount: part.amount,
+                                paymentMethod: mapMethod(part.method),
+                                description: `Venda${selectedCustomer ? ` - ${selectedCustomer.name}` : ''} (${part.method === 'money' ? 'Dinheiro' : part.method})`,
+                                createdBy: user?.id || ''
+                            });
+                        }
+                    } else {
+                        // Pagamento único
+                        await CashService.addMovement({
+                            cashRegisterId: currentCash.id,
+                            type: 'sale',
+                            amount: finalTotal,
+                            paymentMethod: mapMethod(primaryMethod),
+                            description: `Venda${selectedCustomer ? ` - ${selectedCustomer.name}` : ''}`,
+                            createdBy: user?.id || ''
+                        });
+                    }
                     console.log('✅ Movimentação registrada no caixa!');
                 }
             } catch (cashError: any) {
@@ -832,6 +864,21 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
     };
 
 
+    // --- Helper: open full PDV edit modal ---
+    const openFullEditModal = (transaction: Transaction) => {
+        setEditSaleTarget(transaction);
+        setEditCart((transaction.items || []).map(i => ({ ...i })));
+        setEditCustomerName(transaction.customerName || '');
+        setEditPaymentMethod(transaction.paymentMethod || '');
+        setEditDiscount(transaction.discountValue ? String(transaction.discountValue) : '');
+        setEditDeliveryFee(transaction.deliveryFee ? String(transaction.deliveryFee) : '');
+        setEditStatus(transaction.status || 'Completed');
+        setEditNotes((transaction as any).notes || '');
+        setEditMotoboy(transaction.motoboy || '');
+        setEditProductSearch('');
+        setIsFullEditModalOpen(true);
+    };
+
     // --- ADMIN EDIT / DELETE SALE HANDLERS ---
     const openAdminFlow = (transaction: Transaction, action: 'edit' | 'delete') => {
         setEditSaleTarget(transaction);
@@ -842,13 +889,7 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
         // If already logged-in as admin/gerente, skip password prompt
         if (user?.role === 'Administrador' || user?.role === 'Gerente') {
             if (action === 'edit') {
-                setEditSaleForm({
-                    customerName: transaction.customerName || '',
-                    paymentMethod: transaction.paymentMethod || '',
-                    status: transaction.status || 'Completed',
-                    notes: (transaction as any).notes || ''
-                });
-                setIsEditSaleModalOpen(true);
+                openFullEditModal(transaction);
             } else {
                 // Delete: confirm then execute
                 if (window.confirm(`Deletar venda de "${transaction.customerName}" (R$ ${transaction.total.toFixed(2)})? Esta ação é irreversível.`)) {
@@ -896,13 +937,7 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
                 setAdminPasswordError('');
                 const t = editSaleTarget!;
                 if (adminAction === 'edit') {
-                    setEditSaleForm({
-                        customerName: t.customerName || '',
-                        paymentMethod: t.paymentMethod || '',
-                        status: t.status || 'Completed',
-                        notes: (t as any).notes || ''
-                    });
-                    setIsEditSaleModalOpen(true);
+                    openFullEditModal(t);
                 } else {
                     // Delete action
                     if (window.confirm(`Deletar venda de "${t.customerName}" (R$ ${t.total.toFixed(2)})? Esta ação é irreversível.`)) {
@@ -930,20 +965,31 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
         }
     };
 
-    const handleSaveEditSale = async () => {
+    const handleSaveFullEdit = async () => {
         if (!editSaleTarget) return;
         setIsSavingEditSale(true);
         try {
+            const editSubTotal = editCart.reduce((s, i) => s + i.priceSale * i.quantity, 0);
+            const editDiscountVal = parseFloat(editDiscount) || 0;
+            const editFeeVal = parseFloat(editDeliveryFee) || 0;
+            const editTotal = Math.max(0, editSubTotal - editDiscountVal + editFeeVal);
+            const itemsSummary = editCart.map(i => `${i.quantity}x ${i.name}`).join(', ');
             await TransactionService.update(editSaleTarget.id, {
-                customerName: editSaleForm.customerName,
-                paymentMethod: editSaleForm.paymentMethod,
-                status: editSaleForm.status,
-                notes: editSaleForm.notes
-            });
-            setIsEditSaleModalOpen(false);
+                customerName: editCustomerName,
+                paymentMethod: editPaymentMethod,
+                status: editStatus as any,
+                notes: editNotes,
+                items: editCart,
+                subTotal: editSubTotal,
+                discountValue: editDiscountVal,
+                deliveryFee: editFeeVal,
+                total: editTotal,
+                motoboy: editMotoboy || null,
+                isDelivery: editFeeVal > 0 || !!editMotoboy,
+                itemsSummary,
+            } as any);
+            setIsFullEditModalOpen(false);
             setEditSaleTarget(null);
-            // Refresh transactions by re-calling the hook refresh
-            // useTransactions does not expose refresh directly — reload page data
             window.location.reload();
         } catch (err) {
             console.error('Erro ao editar venda:', err);
@@ -2333,101 +2379,334 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
                 </div>
             )}
 
-            {/* ── EDIT SALE MODAL ── */}
-            {isEditSaleModalOpen && editSaleTarget && (
-                <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
-                    <div className="absolute inset-0 bg-gray-900/70 backdrop-blur-sm" onClick={() => setIsEditSaleModalOpen(false)} />
-                    <div className="relative bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-md animate-in fade-in zoom-in-95 duration-200 overflow-hidden">
-                        {/* Header */}
-                        <div className="p-5 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center bg-amber-50 dark:bg-amber-900/10">
-                            <div>
-                                <h3 className="font-black text-gray-900 dark:text-white flex items-center gap-2">
-                                    <Save size={18} className="text-amber-600" /> Editar Venda
-                                </h3>
-                                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 font-mono">{editSaleTarget.id}</p>
-                            </div>
-                            <button onClick={() => setIsEditSaleModalOpen(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
-                                <X size={20} />
-                            </button>
-                        </div>
+            {/* ── FULL PDV EDIT MODAL ── */}
+            {isFullEditModalOpen && editSaleTarget && (() => {
+                const editSubTotal = editCart.reduce((s, i) => s + i.priceSale * i.quantity, 0);
+                const editDiscountVal = parseFloat(editDiscount) || 0;
+                const editFeeVal = parseFloat(editDeliveryFee) || 0;
+                const editTotal = Math.max(0, editSubTotal - editDiscountVal + editFeeVal);
+                const filteredEditProducts = products.filter(p =>
+                    p.name.toLowerCase().includes(editProductSearch.toLowerCase()) ||
+                    p.sku.toLowerCase().includes(editProductSearch.toLowerCase())
+                ).slice(0, 30);
+                return (
+                    <div className="fixed inset-0 z-[200] flex items-center justify-center p-2 md:p-4">
+                        <div className="absolute inset-0 bg-gray-900/70 backdrop-blur-sm" onClick={() => setIsFullEditModalOpen(false)} />
+                        <div className="relative bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-5xl h-[92vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
 
-                        {/* Form */}
-                        <div className="p-5 space-y-4">
-                            <div>
-                                <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1.5 uppercase tracking-wide">Nome do Cliente</label>
-                                <input
-                                    type="text"
-                                    value={editSaleForm.customerName}
-                                    onChange={(e) => setEditSaleForm(f => ({ ...f, customerName: e.target.value }))}
-                                    className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm outline-none focus:border-amber-400 dark:focus:border-amber-500 transition-colors"
-                                />
+                            {/* ─── HEADER – igual ao PDV ─── */}
+                            <div className="flex items-center justify-between px-5 py-3 bg-[#ffc8cb] dark:bg-pink-900/80 flex-shrink-0">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-9 h-9 rounded-xl bg-white/30 flex items-center justify-center">
+                                        <Save size={18} className="text-gray-900 dark:text-white" />
+                                    </div>
+                                    <div>
+                                        <p className="font-black text-gray-900 dark:text-white text-sm">✏️ Editando Venda</p>
+                                        <p className="text-[10px] font-mono text-gray-700 dark:text-gray-300 opacity-80">{editSaleTarget.id}</p>
+                                    </div>
+                                </div>
+                                <button onClick={() => setIsFullEditModalOpen(false)} className="p-2 rounded-xl hover:bg-black/10 dark:hover:bg-white/10 transition-colors text-gray-900 dark:text-white">
+                                    <X size={20} />
+                                </button>
                             </div>
 
-                            <div>
-                                <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1.5 uppercase tracking-wide">Forma de Pagamento</label>
-                                <div className="grid grid-cols-3 gap-2">
-                                    {['Dinheiro', 'PIX', 'Débito', 'Crédito', 'Misto', 'Outro'].map(m => (
+                            {/* ─── BODY – layout idêntico ao PDV ─── */}
+                            <div className="flex flex-col lg:flex-row flex-1 overflow-hidden">
+
+                                {/* ═══ LEFT: GRADE DE PRODUTOS (igual ao PDV) ═══ */}
+                                <div className="hidden lg:flex flex-1 flex-col border-r border-gray-100 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-800">
+                                    {/* busca + categorias */}
+                                    <div className="p-4 border-b border-gray-100 dark:border-gray-700 space-y-3">
+                                        <div className="relative">
+                                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                                            <input
+                                                type="text"
+                                                placeholder="Buscar produto por nome..."
+                                                className="w-full pl-10 pr-4 py-3 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#ffc8cb]/50 focus:border-[#ffc8cb] bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                                                value={editProductSearch}
+                                                onChange={e => setEditProductSearch(e.target.value)}
+                                            />
+                                        </div>
+                                        <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+                                            {['Todos', ...Array.from(new Set(products.map(p => (p as any).category).filter(Boolean)))].map(cat => (
+                                                <button
+                                                    key={cat}
+                                                    onClick={() => setEditProductSearch(cat === 'Todos' ? '' : cat as string)}
+                                                    className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${(cat === 'Todos' && !editProductSearch) || editProductSearch === cat
+                                                        ? 'bg-[#ffc8cb] text-gray-900 shadow-md'
+                                                        : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                                                        }`}
+                                                >
+                                                    {cat}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                    {/* grade de produtos */}
+                                    <div className="flex-1 overflow-y-auto p-4">
+                                        <div className="grid grid-cols-2 xl:grid-cols-3 gap-3">
+                                            {filteredEditProducts.map(p => (
+                                                <div
+                                                    key={p.id}
+                                                    onClick={() => setEditCart(prev => {
+                                                        const ex = prev.find(i => i.id === p.id);
+                                                        if (ex) return prev.map(i => i.id === p.id ? { ...i, quantity: i.quantity + 1 } : i);
+                                                        return [...prev, { ...p, quantity: 1 }];
+                                                    })}
+                                                    className="bg-white dark:bg-gray-700 p-3 rounded-lg shadow-sm border border-gray-100 dark:border-gray-600 cursor-pointer hover:shadow-md hover:border-[#ffc8cb] transition-all group flex flex-col"
+                                                >
+                                                    <div className="aspect-square bg-gray-100 dark:bg-gray-600 rounded-md mb-2 overflow-hidden relative">
+                                                        {p.imageUrl ? (
+                                                            <img src={p.imageUrl} alt={p.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                                                        ) : (
+                                                            <div className="w-full h-full flex items-center justify-center text-gray-300 text-2xl">📦</div>
+                                                        )}
+                                                        <div className="absolute top-1 right-1 bg-white/90 dark:bg-gray-800/90 px-1.5 py-0.5 rounded text-[10px] font-bold text-gray-700 dark:text-gray-200">
+                                                            {p.stock} un
+                                                        </div>
+                                                    </div>
+                                                    <p className="text-xs font-medium text-gray-800 dark:text-white line-clamp-2 flex-1">{p.name}</p>
+                                                    <div className="mt-1.5">
+                                                        <p className="text-pink-600 dark:text-pink-400 font-bold text-sm">R$ {p.priceSale.toFixed(2)}</p>
+                                                        <p className="text-[10px] text-gray-400 font-mono">{p.sku}</p>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                            {filteredEditProducts.length === 0 && (
+                                                <div className="col-span-3 text-center py-16 text-gray-400">
+                                                    <p className="text-4xl mb-2">🔍</p>
+                                                    <p className="text-sm">Nenhum produto encontrado</p>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* ═══ RIGHT: CARRINHO + CAMPOS (igual ao cart do PDV) ═══ */}
+                                <div className="w-full lg:w-[420px] flex-shrink-0 flex flex-col overflow-hidden bg-white dark:bg-gray-800">
+
+                                    {/* Mobile: busca de produto */}
+                                    <div className="lg:hidden border-b border-gray-100 dark:border-gray-700">
+                                        <div className="p-3">
+                                            <div className="relative">
+                                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                                                <input
+                                                    type="text"
+                                                    placeholder="Buscar produto..."
+                                                    className="w-full pl-9 pr-3 py-2.5 border border-gray-200 dark:border-gray-600 rounded-xl text-sm bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#ffc8cb]/50"
+                                                    value={editProductSearch}
+                                                    onChange={e => setEditProductSearch(e.target.value)}
+                                                />
+                                            </div>
+                                        </div>
+                                        {editProductSearch && filteredEditProducts.length > 0 && (
+                                            <div className="max-h-44 overflow-y-auto bg-gray-50 dark:bg-gray-900/50 px-3 pb-3">
+                                                <div className="grid grid-cols-4 gap-2">
+                                                    {filteredEditProducts.slice(0, 8).map(p => (
+                                                        <button
+                                                            key={p.id}
+                                                            onClick={() => {
+                                                                setEditCart(prev => {
+                                                                    const ex = prev.find(i => i.id === p.id);
+                                                                    if (ex) return prev.map(i => i.id === p.id ? { ...i, quantity: i.quantity + 1 } : i);
+                                                                    return [...prev, { ...p, quantity: 1 }];
+                                                                });
+                                                                setEditProductSearch('');
+                                                            }}
+                                                            className="bg-white dark:bg-gray-700 p-2 rounded-lg border border-gray-100 dark:border-gray-600 flex flex-col items-center gap-1 active:scale-95 transition-transform shadow-sm"
+                                                        >
+                                                            <div className="w-10 h-10 bg-gray-100 dark:bg-gray-600 rounded-md overflow-hidden">
+                                                                {p.imageUrl ? <img src={p.imageUrl} alt="" className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-gray-300 text-xs">📦</div>}
+                                                            </div>
+                                                            <span className="text-[9px] text-gray-700 dark:text-gray-200 font-medium text-center line-clamp-2 leading-tight">{p.name}</span>
+                                                            <span className="text-[10px] text-pink-600 dark:text-pink-400 font-bold">R$ {p.priceSale.toFixed(2)}</span>
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Campo cliente – igual ao topo do cart do PDV */}
+                                    <div className="px-4 py-3 border-b border-[#ffc8cb] dark:border-pink-800/30 bg-pink-50/50 dark:bg-pink-900/10">
+                                        <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1 block">Cliente</label>
+                                        <input
+                                            type="text"
+                                            value={editCustomerName}
+                                            onChange={e => setEditCustomerName(e.target.value)}
+                                            placeholder="Nome do cliente..."
+                                            className="w-full px-3 py-2 text-sm border border-[#ffc8cb] dark:border-pink-800 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-[#ffc8cb]"
+                                        />
+                                    </div>
+
+                                    {/* CARRINHO de itens – mesmo layout do carrinho PDV */}
+                                    <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                                        {editCart.length === 0 ? (
+                                            <div className="h-32 flex flex-col items-center justify-center text-gray-400 gap-2 opacity-60">
+                                                <ShoppingCart size={36} />
+                                                <p className="text-sm">Carrinho vazio</p>
+                                                <p className="text-xs text-center">Selecione um produto para adicionar</p>
+                                            </div>
+                                        ) : (
+                                            editCart.map((item, idx) => (
+                                                <div key={item.id + idx} className="flex gap-3 items-start animate-in slide-in-from-right-4 duration-300">
+                                                    <div className="w-12 h-12 bg-gray-100 dark:bg-gray-700 rounded-md overflow-hidden flex-shrink-0">
+                                                        {item.imageUrl && <img src={item.imageUrl} alt="" className="w-full h-full object-cover" />}
+                                                    </div>
+                                                    <div className="flex-1 min-w-0">
+                                                        <p className="text-sm font-medium text-gray-800 dark:text-white line-clamp-1">{item.name}</p>
+                                                        <p className="text-xs text-gray-500 dark:text-gray-400">R$ {item.priceSale.toFixed(2)} un</p>
+                                                        <div className="flex items-center gap-3 mt-1.5">
+                                                            <button onClick={() => setEditCart(prev => prev.map((i, ii) => ii === idx ? { ...i, quantity: Math.max(1, i.quantity - 1) } : i))} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-600 dark:text-gray-300"><Minus size={14} /></button>
+                                                            <span className="text-sm font-semibold w-6 text-center text-gray-800 dark:text-white">{item.quantity}</span>
+                                                            <button onClick={() => setEditCart(prev => prev.map((i, ii) => ii === idx ? { ...i, quantity: i.quantity + 1 } : i))} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-600 dark:text-gray-300"><Plus size={14} /></button>
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex flex-col items-end gap-2 flex-shrink-0">
+                                                        <span className="text-sm font-bold text-gray-800 dark:text-white">R$ {(item.priceSale * item.quantity).toFixed(2)}</span>
+                                                        <button onClick={() => setEditCart(prev => prev.filter((_, ii) => ii !== idx))} className="text-gray-400 hover:text-red-500 dark:hover:text-red-400 transition-colors"><Trash2 size={15} /></button>
+                                                    </div>
+                                                </div>
+                                            ))
+                                        )}
+                                    </div>
+
+                                    {/* PAINEL INFERIOR – igual ao fundo do cart do PDV */}
+                                    <div className="border-t border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50 p-4 space-y-4 overflow-y-auto max-h-[55vh] lg:max-h-none">
+
+                                        {/* Tipo de entrega */}
+                                        <div>
+                                            <p className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-2">Tipo de Entrega</p>
+                                            <div className="grid grid-cols-2 gap-2">
+                                                <button
+                                                    onClick={() => { setEditDeliveryFee(''); setEditMotoboy(''); }}
+                                                    className={`p-2.5 rounded-xl border-2 flex items-center justify-center gap-2 text-sm font-bold transition-all ${!editMotoboy && !(parseFloat(editDeliveryFee) > 0) ? 'border-pink-500 bg-pink-50 dark:bg-pink-900/30 text-pink-700 dark:text-pink-300' : 'border-gray-200 dark:border-gray-600 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800'}`}
+                                                >
+                                                    <Store size={16} /> Loja / Retirada
+                                                </button>
+                                                <button
+                                                    onClick={() => { if (!parseFloat(editDeliveryFee)) setEditDeliveryFee('7.00'); }}
+                                                    className={`p-2.5 rounded-xl border-2 flex items-center justify-center gap-2 text-sm font-bold transition-all ${(editMotoboy || parseFloat(editDeliveryFee) > 0) ? 'border-pink-500 bg-pink-50 dark:bg-pink-900/30 text-pink-700 dark:text-pink-300' : 'border-gray-200 dark:border-gray-600 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800'}`}
+                                                >
+                                                    <Bike size={16} /> Entrega / Motoboy
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        {/* Detalhes de entrega */}
+                                        {(editMotoboy || parseFloat(editDeliveryFee) > 0) && (
+                                            <div className="space-y-3 animate-in fade-in slide-in-from-top-2">
+                                                <div>
+                                                    <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1 flex items-center gap-1"><Bike size={12} /> Motoboy</label>
+                                                    <select value={editMotoboy} onChange={e => setEditMotoboy(e.target.value)}
+                                                        className="w-full p-2.5 rounded-xl border border-gray-300 dark:border-gray-600 focus:border-pink-500 outline-none bg-white dark:bg-gray-800 text-gray-800 dark:text-white font-medium text-sm">
+                                                        <option value="">— Selecione o entregador —</option>
+                                                        {motoboys.map(mb => <option key={mb.id} value={mb.name}>{mb.name}</option>)}
+                                                    </select>
+                                                </div>
+                                                <div>
+                                                    <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">Taxa de Entrega (R$)</label>
+                                                    <div className="flex gap-2 mb-2">
+                                                        {['7.00', '10.00', '15.00'].map(v => (
+                                                            <button key={v} onClick={() => setEditDeliveryFee(v)} className={`flex-1 py-1.5 text-xs font-bold rounded-lg border transition-colors ${editDeliveryFee === v ? 'bg-indigo-500 text-white border-indigo-500' : 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-300 border-indigo-100 dark:border-indigo-800 hover:bg-indigo-100'}`}>
+                                                                R$ {v.replace('.', ',')}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                    <div className="relative">
+                                                        <Truck className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                                                        <input type="number" min="0" step="0.01" value={editDeliveryFee} onChange={e => setEditDeliveryFee(e.target.value)}
+                                                            className="w-full pl-9 pr-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-white font-bold text-sm"
+                                                            placeholder="Outro valor..." />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* Desconto */}
+                                        <div>
+                                            <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">Desconto (R$)</label>
+                                            <input type="number" min="0" step="0.01" value={editDiscount} onChange={e => setEditDiscount(e.target.value)}
+                                                className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-300 bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm font-bold"
+                                                placeholder="0.00" />
+                                        </div>
+
+                                        {/* Pagamento */}
+                                        <div>
+                                            <p className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-2">Forma de Pagamento</p>
+                                            <div className="grid grid-cols-3 gap-2">
+                                                {[{ id: 'Dinheiro', icon: '💵' }, { id: 'PIX', icon: '💠' }, { id: 'Débito', icon: '💳' }, { id: 'Crédito', icon: '🏦' }, { id: 'Misto', icon: '🔀' }, { id: 'Outro', icon: '📋' }].map(m => (
+                                                    <button key={m.id} onClick={() => setEditPaymentMethod(m.id)}
+                                                        className={`py-2 rounded-xl text-xs font-bold border-2 transition-all flex items-center justify-center gap-1 ${editPaymentMethod === m.id ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:border-emerald-300'}`}>
+                                                        {m.icon} {m.id}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+
+                                        {/* Status */}
+                                        <div>
+                                            <p className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-2">Status</p>
+                                            <div className="flex gap-2">
+                                                {[
+                                                    { value: 'Completed', label: '✅ Concluído', active: 'bg-emerald-500 border-emerald-500 text-white' },
+                                                    { value: 'Pending', label: '⏳ Pendente', active: 'bg-amber-500 border-amber-500 text-white' },
+                                                    { value: 'Cancelled', label: '❌ Cancelado', active: 'bg-rose-500 border-rose-500 text-white' },
+                                                ].map(s => (
+                                                    <button key={s.value} onClick={() => setEditStatus(s.value)}
+                                                        className={`flex-1 py-2 rounded-xl text-xs font-bold border-2 transition-all ${editStatus === s.value ? s.active : 'border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:border-gray-300'}`}>
+                                                        {s.label}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+
+                                        {/* Observações */}
+                                        <div>
+                                            <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">Observações</label>
+                                            <textarea value={editNotes} onChange={e => setEditNotes(e.target.value)} rows={2}
+                                                placeholder="Motivo da correção, detalhes adicionais..."
+                                                className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white outline-none focus:border-amber-400 resize-none" />
+                                        </div>
+
+                                        {/* TOTAIS */}
+                                        <div className="space-y-1 text-sm text-gray-500 dark:text-gray-400">
+                                            <div className="flex justify-between"><span>Subtotal</span><span>R$ {editSubTotal.toFixed(2)}</span></div>
+                                            {editDiscountVal > 0 && <div className="flex justify-between text-rose-600 dark:text-rose-400"><span>Desconto</span><span>− R$ {editDiscountVal.toFixed(2)}</span></div>}
+                                            {editFeeVal > 0 && <div className="flex justify-between text-indigo-600 dark:text-indigo-400 font-medium"><span>Taxa Entrega</span><span>R$ {editFeeVal.toFixed(2)}</span></div>}
+                                        </div>
+                                        <div className="flex justify-between items-baseline border-t border-gray-200 dark:border-gray-700 pt-3">
+                                            <span className="text-gray-500 dark:text-gray-400 font-bold text-sm uppercase">Total</span>
+                                            <span className="text-3xl font-black text-gray-900 dark:text-white">R$ {editTotal.toFixed(2)}</span>
+                                        </div>
+
+                                        {/* BOTÃO SALVAR – igual ao "Finalizar Venda" do PDV */}
                                         <button
-                                            key={m}
-                                            onClick={() => setEditSaleForm(f => ({ ...f, paymentMethod: m }))}
-                                            className={`py-2 rounded-xl text-xs font-bold border-2 transition-all ${editSaleForm.paymentMethod === m ? 'bg-amber-500 border-amber-500 text-white' : 'border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:border-amber-300'}`}
+                                            onClick={() => {
+                                                if (editCart.length === 0) { alert('Adicione pelo menos um item ao carrinho.'); return; }
+                                                const ok = window.confirm(
+                                                    '⚠️ Confirmar alteração da venda?\n\n' +
+                                                    'Cliente: ' + (editCustomerName || 'Não identificado') + '\n' +
+                                                    'Itens: ' + editCart.map(i => i.quantity + 'x ' + i.name).join(', ') + '\n' +
+                                                    'Pagamento: ' + (editPaymentMethod || '—') + '\n' +
+                                                    'Total: R$ ' + editTotal.toFixed(2) + '\n\n' +
+                                                    'Deseja salvar as alterações?'
+                                                );
+                                                if (ok) handleSaveFullEdit();
+                                            }}
+                                            disabled={isSavingEditSale || editCart.length === 0}
+                                            className="w-full py-3.5 bg-[#ffc8cb] hover:bg-[#ffb6b9] text-gray-900 rounded-xl font-bold text-lg shadow-lg shadow-pink-200 dark:shadow-none flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98] transition-all"
                                         >
-                                            {m}
+                                            <CheckCircle size={20} /> {isSavingEditSale ? 'Salvando...' : 'Salvar Alterações'}
                                         </button>
-                                    ))}
+                                    </div>
                                 </div>
                             </div>
-
-                            <div>
-                                <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1.5 uppercase tracking-wide">Status</label>
-                                <div className="flex gap-2">
-                                    {[
-                                        { value: 'Completed', label: 'Concluído', color: 'bg-emerald-500 border-emerald-500 text-white' },
-                                        { value: 'Cancelled', label: 'Cancelado', color: 'bg-rose-500 border-rose-500 text-white' },
-                                        { value: 'Pending', label: 'Pendente', color: 'bg-amber-500 border-amber-500 text-white' }
-                                    ].map(s => (
-                                        <button
-                                            key={s.value}
-                                            onClick={() => setEditSaleForm(f => ({ ...f, status: s.value }))}
-                                            className={`flex-1 py-2 rounded-xl text-xs font-bold border-2 transition-all ${editSaleForm.status === s.value ? s.color : 'border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:border-gray-300'}`}
-                                        >
-                                            {s.label}
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-
-                            <div>
-                                <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1.5 uppercase tracking-wide">Observações</label>
-                                <textarea
-                                    value={editSaleForm.notes}
-                                    onChange={(e) => setEditSaleForm(f => ({ ...f, notes: e.target.value }))}
-                                    rows={2}
-                                    placeholder="Motivo da correção, detalhes adicionais..."
-                                    className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm outline-none focus:border-amber-400 dark:focus:border-amber-500 transition-colors resize-none"
-                                />
-                            </div>
-                        </div>
-
-                        {/* Footer */}
-                        <div className="p-4 border-t border-gray-100 dark:border-gray-700 flex gap-2 bg-gray-50 dark:bg-gray-700/30">
-                            <button
-                                onClick={() => setIsEditSaleModalOpen(false)}
-                                className="flex-1 py-2.5 rounded-xl border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 font-bold text-sm hover:bg-white dark:hover:bg-gray-700 transition-colors"
-                            >
-                                Cancelar
-                            </button>
-                            <button
-                                onClick={handleSaveEditSale}
-                                disabled={isSavingEditSale}
-                                className="flex-1 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-black text-sm transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
-                            >
-                                <Save size={14} /> {isSavingEditSale ? 'Salvando...' : 'Salvar Alterações'}
-                            </button>
                         </div>
                     </div>
-                </div>
-            )}
+                );
+            })()}
+
         </div>
     );
 };

@@ -205,6 +205,9 @@ const Delivery: React.FC<DeliveryProps> = ({ user }) => {
     // --- PAYOUT REPORT LOGIC ---
     const [payoutData, setPayoutData] = useState<Record<string, { count: number, totalFee: number }>>({});
     const [paidPayoutData, setPaidPayoutData] = useState<Record<string, { count: number, totalFee: number }>>({});
+    const [selectedPayoutMotoboy, setSelectedPayoutMotoboy] = useState<string | null>(null);
+    const [payoutDeliveries, setPayoutDeliveries] = useState<DeliveryOrder[]>([]);
+    const [payoutDeliveriesLoading, setPayoutDeliveriesLoading] = useState(false);
 
     const loadPayoutData = async () => {
         try {
@@ -219,9 +222,28 @@ const Delivery: React.FC<DeliveryProps> = ({ user }) => {
         }
     };
 
+    const loadPayoutDeliveries = async (motoboyName: string) => {
+        setPayoutDeliveriesLoading(true);
+        try {
+            const list = await DeliveryService.getPayoutDeliveries(motoboyName);
+            setPayoutDeliveries(list);
+        } catch (err) {
+            console.error('Erro ao carregar detalhes do repasse:', err);
+        } finally {
+            setPayoutDeliveriesLoading(false);
+        }
+    };
+
+    const handleSelectPayoutMotoboy = (name: string) => {
+        setSelectedPayoutMotoboy(name);
+        loadPayoutDeliveries(name);
+    };
+
     useEffect(() => {
         if (isPayoutModalOpen) {
             setPayoutTab('pending');
+            setSelectedPayoutMotoboy(null);
+            setPayoutDeliveries([]);
             loadPayoutData();
         }
     }, [isPayoutModalOpen]);
@@ -230,88 +252,97 @@ const Delivery: React.FC<DeliveryProps> = ({ user }) => {
         const printWindow = window.open('', 'PRINT', 'height=600,width=800');
         if (!printWindow) return;
 
-        const dateStr = new Date().toLocaleString('pt-BR');
-        const totalGeneral = Object.values(payoutData).reduce((sum, item: any) => sum + item.totalFee, 0);
+        // Print detail for selected motoboy, or summary of all
+        const isSingleMotoboy = selectedPayoutMotoboy && payoutDeliveries.length > 0;
+        const motoboyName = selectedPayoutMotoboy || 'Todos';
+        const totalFee = isSingleMotoboy
+            ? payoutDeliveries.reduce((s, d) => s + (Number(d.fee) || 0), 0)
+            : Object.values(payoutData).reduce((s, v: any) => s + v.totalFee, 0);
+
+        const deliveryRows = isSingleMotoboy
+            ? payoutDeliveries.map((d, i) => {
+                const dt = d.date ? new Date(d.date).toLocaleDateString('pt-BR') : '';
+                return `
+                <div class="item">
+                    <div class="item-row" style="font-weight:900">
+                        <span>#${i + 1} — ${d.customerName || ''}</span>
+                        <span>R$ ${(Number(d.fee) || 0).toFixed(2)}</span>
+                    </div>
+                    <div class="item-sub">${dt}${d.address ? ' · ' + d.address : ''}</div>
+                    ${d.itemsSummary ? `<div class="item-sub">${d.itemsSummary}</div>` : ''}
+                </div>`;
+            }).join('')
+            : Object.entries(payoutData).map(([name, data]: [string, any]) => `
+                <div class="item">
+                    <div class="item-row">
+                        <span>${name.toUpperCase()}</span>
+                        <span>R$ ${data.totalFee.toFixed(2)}</span>
+                    </div>
+                    <div class="item-sub">${data.count} entrega${data.count !== 1 ? 's' : ''}</div>
+                </div>`).join('');
 
         printWindow.document.write(`
             <html>
             <head>
                 <title>Comprovante de Repasse</title>
                 <style>
-                    @page {
-                        size: 80mm auto;
-                        margin: 0;
-                    }
+                    @page { size: 80mm auto; margin: 0; }
                     * { box-sizing: border-box; margin: 0; padding: 0; }
-                    body { 
-                        font-family: 'Courier New', Courier, monospace; 
-                        font-size: 13px;
+                    body {
+                        font-family: 'Courier New', Courier, monospace;
+                        font-size: 12px;
                         font-weight: 700;
                         width: 80mm;
                         max-width: 80mm;
                         padding: 2mm;
                         margin: 0 auto;
-                        color: #000; 
-                        line-height: 1.3;
+                        color: #000;
+                        line-height: 1.4;
                         -webkit-print-color-adjust: exact;
                     }
-                    .header { text-align: center; margin-bottom: 15px; border-bottom: 2px dashed #000; padding-bottom: 10px; }
+                    .header { text-align: center; margin-bottom: 12px; border-bottom: 2px dashed #000; padding-bottom: 10px; }
                     .title { font-size: 16px; font-weight: 900; text-transform: uppercase; letter-spacing: 1px; }
                     .subtitle { font-size: 11px; margin-top: 4px; font-weight: 700; }
-                    .datetime { font-size: 11px; margin-top: 8px; padding: 4px; font-weight: 700; }
-                    .section-title { font-size: 12px; font-weight: 900; margin: 12px 0 8px; text-transform: uppercase; border-bottom: 1px dotted #000; padding-bottom: 4px; }
+                    .motoboy-name { font-size: 13px; font-weight: 900; margin-top: 6px; border: 1px solid #000; padding: 2px 6px; display: inline-block; }
+                    .datetime { font-size: 10px; margin-top: 6px; font-weight: 700; }
+                    .section-title { font-size: 11px; font-weight: 900; margin: 10px 0 6px; text-transform: uppercase; border-bottom: 1px dotted #000; padding-bottom: 3px; }
                     .item { margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px dotted #000; }
-                    .item-name { font-weight: 900; font-size: 13px; margin-bottom: 2px; }
-                    .item-row { display: flex; justify-content: space-between; font-size: 12px; font-weight: 700; }
+                    .item-row { display: flex; justify-content: space-between; font-size: 12px; font-weight: 900; }
+                    .item-sub { font-size: 10px; font-weight: 700; color: #333; margin-top: 2px; word-break: break-word; }
                     .total { margin-top: 12px; border-top: 2px dashed #000; padding-top: 10px; font-size: 16px; font-weight: 900; text-align: center; }
-                    .signature-block { margin-top: 30px; }
-                    .signature { text-align: center; margin-top: 25px; }
+                    .signature-block { margin-top: 28px; }
+                    .signature { text-align: center; margin-top: 22px; }
                     .signature-line { border-top: 1px solid #000; width: 90%; margin: 0 auto; padding-top: 4px; font-size: 10px; font-weight: 700; }
-                    .footer { margin-top: 20px; text-align: center; font-size: 10px; color: #000; font-weight: 700; }
-                    @media print {
-                        body { width: 80mm; }
-                    }
+                    .footer { margin-top: 18px; text-align: center; font-size: 10px; color: #000; font-weight: 700; }
+                    @media print { body { width: 80mm; } }
                 </style>
             </head>
             <body>
                 <div class="header">
                     <div class="title">PriMAKE</div>
                     <div class="subtitle">Comprovante de Repasse</div>
+                    ${isSingleMotoboy ? `<div class="motoboy-name">🏍️ ${motoboyName}</div>` : ''}
                     <div class="datetime">
-                        📅 ${new Date().toLocaleDateString('pt-BR')}<br/>
+                        📅 ${new Date().toLocaleDateString('pt-BR')} &nbsp;
                         🕐 ${new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
                     </div>
                 </div>
 
-                <div class="section-title">Detalhamento</div>
+                <div class="section-title">${isSingleMotoboy ? `Entregas — ${payoutDeliveries.length} pedido(s)` : 'Resumo por Motoboy'}</div>
 
-                ${Object.entries(payoutData).map(([name, data]: [string, any]) => `
-                    <div class="item">
-                        <div class="item-name">${name.toUpperCase()}</div>
-                        <div class="item-row">
-                            <span>Entregas: ${data.count}</span>
-                            <span>R$ ${data.totalFee.toFixed(2)}</span>
-                        </div>
-                    </div>
-                `).join('')}
+                ${deliveryRows}
 
                 <div class="total">
-                    TOTAL: R$ ${(Number(totalGeneral)).toFixed(2)}
+                    TOTAL A PAGAR: R$ ${totalFee.toFixed(2)}
                 </div>
 
                 <div class="signature-block">
                     <div class="signature">
                         <div class="signature-line">Responsável Financeiro</div>
                     </div>
-                    ${Object.keys(payoutData).length === 1 ? `
-                        <div class="signature">
-                            <div class="signature-line">Entregador: ${Object.keys(payoutData)[0]}</div>
-                        </div>
-                    ` : `
-                        <div class="signature">
-                            <div class="signature-line">Entregador(es)</div>
-                        </div>
-                    `}
+                    <div class="signature">
+                        <div class="signature-line">Entregador: ${motoboyName}</div>
+                    </div>
                 </div>
 
                 <div class="footer">
@@ -324,11 +355,27 @@ const Delivery: React.FC<DeliveryProps> = ({ user }) => {
 
         printWindow.document.close();
         printWindow.focus();
-        setTimeout(() => {
+        // Após imprimir, perguntar se deseja marcar como pago
+        setTimeout(async () => {
             printWindow.print();
             printWindow.close();
+
+            if (isSingleMotoboy && selectedPayoutMotoboy) {
+                const total = (payoutDeliveries.reduce((s, d) => s + (Number(d.fee) || 0), 0)).toFixed(2);
+                const confirmar = window.confirm(
+                    `✅ Comprovante impresso!\n\nDeseja marcar o repasse de ${selectedPayoutMotoboy} como PAGO?\n\nTotal: R$ ${total}\n${payoutDeliveries.length} entrega(s)`
+                );
+                if (confirmar) {
+                    await DeliveryService.markAsPaid(selectedPayoutMotoboy);
+                    setSelectedPayoutMotoboy(null);
+                    setPayoutDeliveries([]);
+                    loadPayoutData();
+                    refresh();
+                }
+            }
         }, 500);
     };
+
 
     // --- WHATSAPP LINK ---
     const openWhatsApp = (phone: string, name: string) => {
@@ -1001,42 +1048,101 @@ const Delivery: React.FC<DeliveryProps> = ({ user }) => {
                             {payoutTab === 'pending' ? (
                                 /* --- PENDING TAB --- */
                                 <div className="space-y-3">
-                                    <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">Taxas de entrega aguardando pagamento ao motoboy.</p>
-                                    {Object.entries(payoutData).map(([motoboy, data]: [string, { count: number, totalFee: number }]) => (
-                                        <div key={motoboy} className="flex justify-between items-center p-4 bg-amber-50 dark:bg-amber-900/10 rounded-xl border border-amber-200 dark:border-amber-800">
-                                            <div>
-                                                <p className="font-bold text-gray-800 dark:text-white flex items-center gap-2">
-                                                    <Bike size={16} className="text-amber-600" /> {motoboy}
-                                                </p>
-                                                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{data.count} entrega{data.count !== 1 ? 's' : ''} pendente{data.count !== 1 ? 's' : ''}</p>
-                                            </div>
-                                            <div className="text-right flex items-center gap-3">
-                                                <div>
-                                                    <p className="text-[10px] text-amber-600 dark:text-amber-400 uppercase font-bold">A Pagar</p>
-                                                    <p className="text-xl font-bold text-amber-700 dark:text-amber-300">R$ {data.totalFee.toFixed(2)}</p>
-                                                </div>
+                                    {/* DRILL-DOWN: Motoboy Detail View */}
+                                    {selectedPayoutMotoboy ? (
+                                        <div>
+                                            {/* Back + motoboy header */}
+                                            <div className="flex items-center gap-3 mb-4">
                                                 <button
-                                                    onClick={async () => {
-                                                        if (window.confirm(`Confirma o pagamento de R$ ${data.totalFee.toFixed(2)} para ${motoboy}?\n\nAo confirmar, as entregas deste motoboy irão para a aba "Pagos".`)) {
-                                                            await DeliveryService.markAsPaid(motoboy);
-                                                            loadPayoutData();
-                                                            refresh();
-                                                        }
-                                                    }}
-                                                    className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-lg shadow-sm font-bold text-xs flex items-center gap-1.5 transition-colors"
-                                                    title="Confirmar Pagamento"
+                                                    onClick={() => { setSelectedPayoutMotoboy(null); setPayoutDeliveries([]); }}
+                                                    className="text-gray-500 hover:text-gray-800 dark:hover:text-white flex items-center gap-1 text-xs font-bold border border-gray-200 dark:border-gray-600 px-2 py-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                                                 >
-                                                    <CheckCircle size={16} /> Pagar
+                                                    ← Voltar
                                                 </button>
+                                                <div>
+                                                    <p className="font-bold text-gray-800 dark:text-white flex items-center gap-2">
+                                                        <Bike size={16} className="text-amber-600" /> {selectedPayoutMotoboy}
+                                                    </p>
+                                                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                                                        {payoutData[selectedPayoutMotoboy]?.count || 0} entrega(s) · R$ {(payoutData[selectedPayoutMotoboy]?.totalFee || 0).toFixed(2)} a pagar
+                                                    </p>
+                                                </div>
                                             </div>
+
+                                            {/* Delivery List */}
+                                            {payoutDeliveriesLoading ? (
+                                                <div className="text-center py-8 text-gray-400 text-sm">Carregando entregas...</div>
+                                            ) : payoutDeliveries.length === 0 ? (
+                                                <div className="text-center py-8 text-gray-400 text-sm">Nenhuma entrega encontrada.</div>
+                                            ) : (
+                                                <div className="space-y-2">
+                                                    {payoutDeliveries.map((d, i) => (
+                                                        <div key={d.id} className="p-3 bg-gray-50 dark:bg-gray-700/40 rounded-xl border border-gray-200 dark:border-gray-600">
+                                                            <div className="flex justify-between items-start">
+                                                                <div className="flex-1 min-w-0">
+                                                                    <p className="font-bold text-sm text-gray-800 dark:text-white">
+                                                                        #{i + 1} — {d.customerName}
+                                                                    </p>
+                                                                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate">
+                                                                        {d.date ? new Date(d.date).toLocaleDateString('pt-BR') : ''}
+                                                                        {d.address ? ` · ${d.address}` : ''}
+                                                                    </p>
+                                                                    {d.itemsSummary && (
+                                                                        <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5 line-clamp-1">{d.itemsSummary}</p>
+                                                                    )}
+                                                                </div>
+                                                                <span className="ml-3 font-bold text-emerald-700 dark:text-emerald-400 text-sm whitespace-nowrap">
+                                                                    R$ {(Number(d.fee) || 0).toFixed(2)}
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                    {/* Summary row */}
+                                                    <div className="flex justify-between items-center pt-2 mt-2 border-t border-dashed border-gray-300 dark:border-gray-600 font-bold text-gray-800 dark:text-white">
+                                                        <span>Total a pagar</span>
+                                                        <span className="text-lg text-amber-700 dark:text-amber-300">
+                                                            R$ {payoutDeliveries.reduce((s, d) => s + (Number(d.fee) || 0), 0).toFixed(2)}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            )}
                                         </div>
-                                    ))}
-                                    {Object.keys(payoutData).length === 0 && (
-                                        <div className="text-center py-8">
-                                            <CheckCircle size={40} className="mx-auto mb-2 text-emerald-300 dark:text-emerald-700" />
-                                            <p className="text-gray-400 dark:text-gray-500 italic">Nenhum repasse pendente!</p>
-                                            <p className="text-xs text-gray-300 dark:text-gray-600 mt-1">Todos os motoboys foram pagos.</p>
-                                        </div>
+                                    ) : (
+                                        /* MOTOBOY LIST */
+                                        <>
+                                            <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">Selecione um motoboy para ver o detalhamento e confirmar o pagamento.</p>
+                                            {Object.entries(payoutData).map(([motoboy, data]: [string, { count: number, totalFee: number }]) => (
+                                                <div key={motoboy} className="p-4 bg-amber-50 dark:bg-amber-900/10 rounded-xl border border-amber-200 dark:border-amber-800">
+                                                    <div className="flex justify-between items-center">
+                                                        <div>
+                                                            <p className="font-bold text-gray-800 dark:text-white flex items-center gap-2">
+                                                                <Bike size={16} className="text-amber-600" /> {motoboy}
+                                                            </p>
+                                                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{data.count} entrega{data.count !== 1 ? 's' : ''} pendente{data.count !== 1 ? 's' : ''}</p>
+                                                        </div>
+                                                        <div className="text-right flex items-center gap-3">
+                                                            <div>
+                                                                <p className="text-[10px] text-amber-600 dark:text-amber-400 uppercase font-bold">A Pagar</p>
+                                                                <p className="text-xl font-bold text-amber-700 dark:text-amber-300">R$ {data.totalFee.toFixed(2)}</p>
+                                                            </div>
+                                                            <button
+                                                                onClick={() => handleSelectPayoutMotoboy(motoboy)}
+                                                                className="bg-amber-500 hover:bg-amber-600 text-white px-3 py-2 rounded-lg shadow-sm font-bold text-xs flex items-center gap-1.5 transition-colors"
+                                                            >
+                                                                Ver Detalhes →
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                            {Object.keys(payoutData).length === 0 && (
+                                                <div className="text-center py-8">
+                                                    <CheckCircle size={40} className="mx-auto mb-2 text-emerald-300 dark:text-emerald-700" />
+                                                    <p className="text-gray-400 dark:text-gray-500 italic">Nenhum repasse pendente!</p>
+                                                    <p className="text-xs text-gray-300 dark:text-gray-600 mt-1">Todos os motoboys foram pagos.</p>
+                                                </div>
+                                            )}
+                                        </>
                                     )}
                                 </div>
                             ) : (
@@ -1073,11 +1179,32 @@ const Delivery: React.FC<DeliveryProps> = ({ user }) => {
                         </div>
 
                         {/* Footer */}
-                        <div className="p-4 bg-gray-50 dark:bg-gray-900/30 text-center border-t border-gray-100 dark:border-gray-700">
-                            <button onClick={handlePrintPayoutReport} className="text-emerald-600 text-sm font-bold hover:underline flex items-center justify-center gap-2 w-full">
-                                <Printer size={16} /> Imprimir Comprovante
+                        <div className="p-4 bg-gray-50 dark:bg-gray-900/30 border-t border-gray-100 dark:border-gray-700 flex gap-2">
+                            <button
+                                onClick={handlePrintPayoutReport}
+                                className="flex-1 text-emerald-600 dark:text-emerald-400 text-sm font-bold hover:underline flex items-center justify-center gap-2 border border-emerald-200 dark:border-emerald-800 rounded-lg py-2 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-colors"
+                            >
+                                <Printer size={16} /> {selectedPayoutMotoboy ? `Imprimir — ${selectedPayoutMotoboy}` : 'Imprimir Comprovante'}
                             </button>
+                            {selectedPayoutMotoboy && payoutDeliveries.length > 0 && (
+                                <button
+                                    onClick={async () => {
+                                        const total = payoutDeliveries.reduce((s, d) => s + (Number(d.fee) || 0), 0);
+                                        if (window.confirm(`Confirma pagamento de R$ ${total.toFixed(2)} para ${selectedPayoutMotoboy}?\n\n${payoutDeliveries.length} entrega(s) serão marcadas como pagas.`)) {
+                                            await DeliveryService.markAsPaid(selectedPayoutMotoboy);
+                                            setSelectedPayoutMotoboy(null);
+                                            setPayoutDeliveries([]);
+                                            loadPayoutData();
+                                            refresh();
+                                        }
+                                    }}
+                                    className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg shadow-sm font-bold text-sm flex items-center gap-2 transition-colors"
+                                >
+                                    <CheckCircle size={16} /> Confirmar Pagamento
+                                </button>
+                            )}
                         </div>
+
                     </div>
                 </div>
             )}

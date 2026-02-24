@@ -964,8 +964,24 @@ export const DeliveryService = {
             payoutByMotoboy[name].totalFee += Number(d.fee) || 0;
         });
         return payoutByMotoboy;
+    },
+
+    // Buscar lista detalhada de entregas pendentes de repasse de um motoboy
+    async getPayoutDeliveries(motoboyName: string): Promise<DeliveryOrder[]> {
+        const { data, error } = await supabase
+            .from('deliveries')
+            .select('*')
+            .eq('status', 'Entregue')
+            .eq('method', 'Motoboy')
+            .eq('payout_status', 'Pending')
+            .eq('motoboy_name', motoboyName)
+            .order('updated_at', { ascending: false });
+
+        if (error) throw error;
+        return (data || []).map((d: any) => toCamelCase(d)) as DeliveryOrder[];
     }
 };
+
 
 // =====================================================
 // SERVICE DE TAREFAS (TASKS)
