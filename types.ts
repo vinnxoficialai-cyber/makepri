@@ -122,6 +122,7 @@ export interface DeliveryOrder {
     itemsSummary: string; // Ex: "2x Batom, 1x Base"
     payoutStatus?: 'Pending' | 'Paid'; // Status do repasse para o motoboy
     paymentMethod?: string; // Forma de pagamento (PIX, Dinheiro, Cartão, etc)
+    routeOrder?: number | null; // Ordem na rota do motoboy (1, 2, 3...)
 }
 
 export interface CartItem extends Product {

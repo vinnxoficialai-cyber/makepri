@@ -761,7 +761,9 @@ export const DeliveryService = {
             trackingCode: d.tracking_code,
             notes: d.notes,
             date: d.created_at,
-            payoutStatus: d.payout_status as any || 'Pending'
+            payoutStatus: d.payout_status as any || 'Pending',
+            routeOrder: d.route_order ?? null,
+            paymentMethod: d.payment_method
         }));
     },
 
@@ -812,6 +814,7 @@ export const DeliveryService = {
         if (updates.notes !== undefined) updateData.notes = updates.notes;
         if (updates.motoboyName !== undefined) updateData.motoboy_name = updates.motoboyName;
         if (updates.payoutStatus !== undefined) updateData.payout_status = updates.payoutStatus;
+        if ('routeOrder' in updates) updateData.route_order = updates.routeOrder ?? null;
 
         const { data, error } = await supabase.from('deliveries').update(updateData).eq('order_id', orderId).select().single();
         if (error) throw error;
@@ -832,7 +835,8 @@ export const DeliveryService = {
             trackingCode: data.tracking_code,
             notes: data.notes,
             date: data.created_at,
-            payoutStatus: data.payout_status as any
+            payoutStatus: data.payout_status as any,
+            routeOrder: data.route_order ?? null
         };
     },
 

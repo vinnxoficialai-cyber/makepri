@@ -32,8 +32,10 @@ const Delivery: React.FC<DeliveryProps> = ({ user }) => {
     const [searchTerm, setSearchTerm] = useState('');
 
     // --- ROUTE SELECTION STATE ---
-    const [selectedRouteIds, setSelectedRouteIds] = useState<string[]>([]);
+    // routeSequence is an ORDERED array: position 0 = stop #1, position 1 = stop #2, etc.
+    const [routeSequence, setRouteSequence] = useState<string[]>([]);
     const [isRouteModalOpen, setIsRouteModalOpen] = useState(false);
+    const [isSavingRoute, setIsSavingRoute] = useState(false);
 
     // --- MODAL STATES ---
     const [selectedDelivery, setSelectedDelivery] = useState<DeliveryOrder | null>(null);
@@ -326,21 +328,62 @@ const Delivery: React.FC<DeliveryProps> = ({ user }) => {
 
     // --- ROUTE HANDLERS ---
     const toggleRouteSelection = (id: string) => {
-        setSelectedRouteIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
+        setRouteSequence(prev =>
+            prev.includes(id)
+                ? prev.filter(i => i !== id)  // remove -> deselect
+                : [...prev, id]               // append at end = next stop number
+        );
     };
 
     const selectableDeliveries = filteredDeliveries.filter(
         d => d.status !== 'Entregue' && d.status !== 'Cancelado'
     );
-    const allSelected = selectableDeliveries.length > 0 && selectableDeliveries.every(d => selectedRouteIds.includes(d.id));
+    const allSelected = selectableDeliveries.length > 0 && selectableDeliveries.every(d => routeSequence.includes(d.id));
 
     const toggleSelectAll = () => {
         if (allSelected) {
-            setSelectedRouteIds([]);
+            setRouteSequence([]);
         } else {
-            setSelectedRouteIds(selectableDeliveries.map(d => d.id));
+            // Add only the ones not already in the sequence, preserving existing order
+            const existing = routeSequence.filter(id => selectableDeliveries.some(d => d.id === id));
+            const newOnes = selectableDeliveries.filter(d => !routeSequence.includes(d.id)).map(d => d.id);
+            setRouteSequence([...existing, ...newOnes]);
         }
     };
+
+    // Save the route order to the database
+    const saveRouteOrder = async () => {
+        setIsSavingRoute(true);
+        try {
+            // Update each delivery in routeSequence with its position number
+            const updates = routeSequence.map((id, idx) =>
+                DeliveryService.update(id, { routeOrder: idx + 1 })
+            );
+            // Also clear routeOrder for deliveries that were removed from the sequence
+            const removedIds = selectableDeliveries
+                .filter(d => !routeSequence.includes(d.id) && d.routeOrder != null)
+                .map(d => DeliveryService.update(d.id, { routeOrder: null }));
+            await Promise.all([...updates, ...removedIds]);
+            await refresh();
+            alert(`✅ Rota salva! ${routeSequence.length} paradas organizadas.`);
+        } catch (err) {
+            console.error('Erro ao salvar rota:', err);
+            alert('❌ Erro ao salvar rota. Tente novamente.');
+        } finally {
+            setIsSavingRoute(false);
+        }
+    };
+
+    // Load existing saved route order from DB on mount
+    useEffect(() => {
+        const withOrder = deliveries
+            .filter(d => d.routeOrder != null && d.status !== 'Entregue' && d.status !== 'Cancelado')
+            .sort((a, b) => (a.routeOrder ?? 0) - (b.routeOrder ?? 0))
+            .map(d => d.id);
+        if (withOrder.length > 0) {
+            setRouteSequence(withOrder);
+        }
+    }, [deliveries.length]);
 
     const getStatusColor = (status: string) => {
         switch (status) {
@@ -397,8 +440,8 @@ const Delivery: React.FC<DeliveryProps> = ({ user }) => {
                         <button
                             onClick={toggleSelectAll}
                             className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold border transition-all ${allSelected
-                                    ? 'bg-pink-600 text-white border-pink-600 hover:bg-pink-700'
-                                    : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 border-gray-300 dark:border-gray-600 hover:border-pink-400'
+                                ? 'bg-pink-600 text-white border-pink-600 hover:bg-pink-700'
+                                : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 border-gray-300 dark:border-gray-600 hover:border-pink-400'
                                 }`}
                         >
                             <CheckCircle size={16} />
@@ -406,21 +449,30 @@ const Delivery: React.FC<DeliveryProps> = ({ user }) => {
                         </button>
                     )}
 
-                    {selectedRouteIds.length > 0 && (
-                        <button
-                            onClick={() => setIsRouteModalOpen(true)}
-                            className="flex-1 md:flex-none bg-gray-900 hover:bg-black text-white px-4 py-2 rounded-lg text-sm font-bold shadow-md transition-all animate-in zoom-in-95 flex items-center justify-center gap-2"
-                        >
-                            <Map size={18} /> Rota ({selectedRouteIds.length})
-                        </button>
+                    {routeSequence.length > 0 && (
+                        <>
+                            <button
+                                onClick={() => setIsRouteModalOpen(true)}
+                                className="flex-1 md:flex-none bg-gray-900 hover:bg-black text-white px-4 py-2 rounded-lg text-sm font-bold shadow-md transition-all animate-in zoom-in-95 flex items-center justify-center gap-2"
+                            >
+                                <Map size={18} /> Ver Rota ({routeSequence.length})
+                            </button>
+                            <button
+                                onClick={saveRouteOrder}
+                                disabled={isSavingRoute}
+                                className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-md transition-all disabled:opacity-60"
+                            >
+                                <Save size={16} /> {isSavingRoute ? 'Salvando...' : 'Salvar Rota'}
+                            </button>
+                        </>
                     )}
 
                     {!isMotoboy && (
                         <button
                             onClick={() => setIsCreateModalOpen(true)}
-                            className={`bg-pink-600 hover:bg-pink-700 text-white px-4 py-2 rounded-lg flex items-center justify-center gap-2 font-medium shadow-sm shadow-pink-200 dark:shadow-none transition-all hover:scale-105 ${selectedRouteIds.length > 0 ? 'hidden md:flex' : 'flex-1 md:flex-none'}`}
+                            className={`bg-pink-600 hover:bg-pink-700 text-white px-4 py-2 rounded-lg flex items-center justify-center gap-2 font-medium shadow-sm shadow-pink-200 dark:shadow-none transition-all hover:scale-105 ${routeSequence.length > 0 ? 'hidden md:flex' : 'flex-1 md:flex-none'}`}
                         >
-                            <Plus size={18} /> <span className={selectedRouteIds.length > 0 ? "hidden lg:inline" : ""}>Nova Entrega</span>
+                            <Plus size={18} /> <span className={routeSequence.length > 0 ? "hidden lg:inline" : ""}>Nova Entrega</span>
                         </button>
                     )}
                 </div>
@@ -491,121 +543,180 @@ const Delivery: React.FC<DeliveryProps> = ({ user }) => {
                 </div>
             </div>
 
-            {/* Cards Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                {filteredDeliveries.slice().reverse().map(delivery => {
-                    const isSelectable = delivery.status !== 'Entregue' && delivery.status !== 'Cancelado';
-                    const isSelected = selectedRouteIds.includes(delivery.id);
+            {/* ── Route Summary Bar (mobile-first) ── */}
+            {viewMode === 'active' && filteredDeliveries.some(d => d.status !== 'Entregue' && d.status !== 'Cancelado') && (() => {
+                // Build per-motoboy counts from ALL active deliveries (not just filtered)
+                const activeDeliveries = deliveries.filter(d => d.status !== 'Entregue' && d.status !== 'Cancelado');
+                const byMotoboy: Record<string, number> = {};
+                activeDeliveries.forEach(d => {
+                    const name = d.motoboyName || '(Sem motoboy)';
+                    byMotoboy[name] = (byMotoboy[name] || 0) + 1;
+                });
+                const total = activeDeliveries.length;
+                const inRoute = routeSequence.filter(id => activeDeliveries.some(d => d.id === id)).length;
 
-                    return (
-                        <div
-                            key={delivery.id}
-                            className={`
+                return (
+                    <div className="flex items-center gap-2 overflow-x-auto pb-1 -mb-1 scrollbar-hide">
+                        {/* Total pill */}
+                        <div className="flex-shrink-0 flex items-center gap-1.5 bg-gray-900 dark:bg-gray-700 text-white rounded-full px-3 py-1.5 text-xs font-black shadow-sm">
+                            <Bike size={12} />
+                            <span>{total} entrega{total !== 1 ? 's' : ''}</span>
+                            {inRoute > 0 && (
+                                <span className="bg-pink-500 text-white rounded-full px-1.5 py-0.5 text-[10px] font-black ml-0.5">
+                                    {inRoute} em rota
+                                </span>
+                            )}
+                        </div>
+
+                        {/* Per-motoboy chips */}
+                        {Object.entries(byMotoboy).map(([name, count]) => (
+                            <div
+                                key={name}
+                                className="flex-shrink-0 flex items-center gap-1.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-full px-3 py-1.5 text-xs font-bold text-gray-700 dark:text-gray-300 shadow-sm"
+                            >
+                                <span className="w-4 h-4 rounded-full bg-pink-100 dark:bg-pink-900 flex items-center justify-center text-pink-600 dark:text-pink-300 font-black text-[10px]">{count}</span>
+                                <span className="max-w-[100px] truncate">{name}</span>
+                            </div>
+                        ))}
+                    </div>
+                );
+            })()}
+
+            {/* Cards Grid — sorted by routeOrder first, then by date descending */}
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                {filteredDeliveries
+                    .slice()
+                    .sort((a, b) => {
+                        const aOrder = a.routeOrder ?? null;
+                        const bOrder = b.routeOrder ?? null;
+                        if (viewMode === 'active') {
+                            // Both have order: sort numerically
+                            if (aOrder !== null && bOrder !== null) return aOrder - bOrder;
+                            // Only a has order: a goes first
+                            if (aOrder !== null) return -1;
+                            // Only b has order: b goes first
+                            if (bOrder !== null) return 1;
+                        }
+                        // Fallback: most recent first
+                        return new Date(b.date).getTime() - new Date(a.date).getTime();
+                    })
+                    .map(delivery => {
+                        const isSelectable = delivery.status !== 'Entregue' && delivery.status !== 'Cancelado';
+                        const routePosition = routeSequence.indexOf(delivery.id); // -1 = not in route
+                        const isSelected = routePosition >= 0;
+
+                        return (
+                            <div
+                                key={delivery.id}
+                                className={`
                                 bg-white dark:bg-gray-800 rounded-xl border shadow-sm overflow-hidden flex flex-col group transition-all cursor-pointer relative
                                 ${isSelected ? 'border-pink-500 ring-1 ring-pink-500' : 'border-gray-200 dark:border-gray-700 hover:border-pink-300'}
                             `}
-                            onClick={() => {
-                                setSelectedDelivery(delivery);
-                                setEditForm({ status: delivery.status, notes: delivery.notes || '' });
-                                setIsEditing(false);
-                            }}
-                        >
-                            {/* Route Selection Checkbox */}
-                            {isSelectable && viewMode === 'active' && (
-                                <div
-                                    className="absolute top-4 left-4 z-10"
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        toggleRouteSelection(delivery.id);
-                                    }}
-                                >
-                                    <div className={`w-6 h-6 rounded border-2 flex items-center justify-center transition-all ${isSelected ? 'bg-pink-600 border-pink-600' : 'bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-500'}`}>
-                                        {isSelected && <CheckCircle size={16} className="text-white" />}
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Card Header */}
-                            <div className={`p-4 border-b border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-700/20 flex justify-between items-start pointer-events-none ${isSelectable && viewMode === 'active' ? 'pl-12' : ''}`}>
-                                <div>
-                                    <div className="flex items-center gap-2 mb-1">
-                                        <span className="text-xs font-mono font-bold text-gray-500 dark:text-gray-400">{delivery.id}</span>
-                                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${getStatusColor(delivery.status)}`}>
-                                            {delivery.status.toUpperCase()}
-                                        </span>
-                                    </div>
-                                    <h3 className="font-bold text-gray-800 dark:text-white text-lg line-clamp-1">{delivery.customerName}</h3>
-                                </div>
-                                <div className="flex flex-col items-end">
-                                    <span className="text-xs text-gray-400 mt-1">{new Date(delivery.date).toLocaleDateString('pt-BR')}</span>
-                                    {/* Show assigned motoboy if admin */}
-                                    {!isMotoboy && delivery.motoboyName && (
-                                        <span className="text-[9px] bg-gray-200 dark:bg-gray-600 text-gray-600 dark:text-gray-300 px-1.5 py-0.5 rounded mt-1 flex items-center gap-1">
-                                            <Bike size={10} /> {delivery.motoboyName}
-                                        </span>
-                                    )}
-                                </div>
-                            </div>
-
-                            {/* Card Body */}
-                            <div className="p-4 flex-1 flex flex-col gap-3 pointer-events-none">
-                                <div className={`flex items-start gap-2 text-sm p-2 rounded-lg ${delivery.method === 'Motoboy' ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-800 dark:text-emerald-300' : 'bg-purple-50 dark:bg-purple-900/20 text-purple-800 dark:text-purple-300'}`}>
-                                    <MapPin size={16} className="mt-0.5 flex-shrink-0" />
-                                    <div className="flex-1">
-                                        <div className="flex justify-between items-start">
-                                            <p className="text-[10px] font-bold uppercase opacity-70">
-                                                {delivery.method === 'Motoboy' ? 'Entregar para Cliente:' : 'Levar para Despacho:'}
-                                            </p>
-
-                                            {/* PAGO Badge */}
-                                            {delivery.payoutStatus === 'Paid' && (
-                                                <span className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300 text-[10px] font-black px-1.5 py-0.5 rounded border border-emerald-200 dark:border-emerald-700 flex items-center gap-1">
-                                                    <DollarSign size={10} /> PAGO
-                                                </span>
-                                            )}
+                                onClick={() => {
+                                    setSelectedDelivery(delivery);
+                                    setEditForm({ status: delivery.status, notes: delivery.notes || '' });
+                                    setIsEditing(false);
+                                }}
+                            >
+                                {/* Route Order Badge — shows number (1, 2, 3...) instead of checkmark */}
+                                {isSelectable && viewMode === 'active' && (
+                                    <div
+                                        className="absolute top-3 left-3 z-10"
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            toggleRouteSelection(delivery.id);
+                                        }}
+                                    >
+                                        <div className={`w-7 h-7 rounded-full border-2 flex items-center justify-center font-black text-sm transition-all shadow-sm ${isSelected
+                                            ? 'bg-pink-600 border-pink-600 text-white'
+                                            : 'bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-500 text-gray-400'
+                                            }`}>
+                                            {isSelected ? routePosition + 1 : '+'}
                                         </div>
-                                        <p className="font-medium leading-tight">{delivery.address}</p>
-                                        <p className="text-xs opacity-80">{delivery.city}</p>
-                                    </div>
-                                </div>
-                                {delivery.notes && (
-                                    <div className="bg-yellow-50 dark:bg-yellow-900/10 p-2 rounded border border-yellow-100 dark:border-yellow-800 text-xs text-yellow-800 dark:text-yellow-200">
-                                        <span className="font-bold">Obs:</span> {delivery.notes}
                                     </div>
                                 )}
-                            </div>
 
-                            {/* Card Footer Actions */}
-                            <div className="p-3 bg-gray-50 dark:bg-gray-900/50 border-t border-gray-100 dark:border-gray-700 flex justify-between items-center" onClick={(e) => e.stopPropagation()}>
-                                {/* WhatsApp Button (Direct Action) */}
-                                <button
-                                    onClick={() => openWhatsApp(delivery.phone, delivery.customerName)}
-                                    className="flex items-center gap-1.5 bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition-colors shadow-sm"
-                                    title="Conversar no WhatsApp"
-                                >
-                                    <MessageCircle size={14} /> WhatsApp
-                                </button>
+                                {/* Card Header */}
+                                <div className={`p-4 border-b border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-700/20 flex justify-between items-start pointer-events-none ${isSelectable && viewMode === 'active' ? 'pl-12' : ''}`}>
+                                    <div>
+                                        <div className="flex items-center gap-2 mb-1">
+                                            <span className="text-xs font-mono font-bold text-gray-500 dark:text-gray-400">{delivery.id}</span>
+                                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${getStatusColor(delivery.status)}`}>
+                                                {delivery.status.toUpperCase()}
+                                            </span>
+                                        </div>
+                                        <h3 className="font-bold text-gray-800 dark:text-white text-lg line-clamp-1">{delivery.customerName}</h3>
+                                    </div>
+                                    <div className="flex flex-col items-end">
+                                        <span className="text-xs text-gray-400 mt-1">{new Date(delivery.date).toLocaleDateString('pt-BR')}</span>
+                                        {/* Show assigned motoboy if admin */}
+                                        {!isMotoboy && delivery.motoboyName && (
+                                            <span className="text-[9px] bg-gray-200 dark:bg-gray-600 text-gray-600 dark:text-gray-300 px-1.5 py-0.5 rounded mt-1 flex items-center gap-1">
+                                                <Bike size={10} /> {delivery.motoboyName}
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
 
-                                <div className="flex gap-2">
-                                    {delivery.status === 'Pendente' && viewMode === 'active' && (
-                                        <button
-                                            onClick={() => updateStatus(delivery.id, 'Em Rota')}
-                                            className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1 shadow-sm transition-colors"
-                                        >
-                                            <ArrowRight size={14} /> Iniciar
-                                        </button>
+                                {/* Card Body */}
+                                <div className="p-4 flex-1 flex flex-col gap-3 pointer-events-none">
+                                    <div className={`flex items-start gap-2 text-sm p-2 rounded-lg ${delivery.method === 'Motoboy' ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-800 dark:text-emerald-300' : 'bg-purple-50 dark:bg-purple-900/20 text-purple-800 dark:text-purple-300'}`}>
+                                        <MapPin size={16} className="mt-0.5 flex-shrink-0" />
+                                        <div className="flex-1">
+                                            <div className="flex justify-between items-start">
+                                                <p className="text-[10px] font-bold uppercase opacity-70">
+                                                    {delivery.method === 'Motoboy' ? 'Entregar para Cliente:' : 'Levar para Despacho:'}
+                                                </p>
+
+                                                {/* PAGO Badge */}
+                                                {delivery.payoutStatus === 'Paid' && (
+                                                    <span className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300 text-[10px] font-black px-1.5 py-0.5 rounded border border-emerald-200 dark:border-emerald-700 flex items-center gap-1">
+                                                        <DollarSign size={10} /> PAGO
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <p className="font-medium leading-tight">{delivery.address}</p>
+                                            <p className="text-xs opacity-80">{delivery.city}</p>
+                                        </div>
+                                    </div>
+                                    {delivery.notes && (
+                                        <div className="bg-yellow-50 dark:bg-yellow-900/10 p-2 rounded border border-yellow-100 dark:border-yellow-800 text-xs text-yellow-800 dark:text-yellow-200">
+                                            <span className="font-bold">Obs:</span> {delivery.notes}
+                                        </div>
                                     )}
-                                    <button onClick={() => {
-                                        setSelectedDelivery(delivery);
-                                        setEditForm({ status: delivery.status, notes: delivery.notes || '' });
-                                    }} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 p-1.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700">
-                                        <MoreVertical size={16} />
+                                </div>
+
+                                {/* Card Footer Actions */}
+                                <div className="p-3 bg-gray-50 dark:bg-gray-900/50 border-t border-gray-100 dark:border-gray-700 flex justify-between items-center" onClick={(e) => e.stopPropagation()}>
+                                    {/* WhatsApp Button (Direct Action) */}
+                                    <button
+                                        onClick={() => openWhatsApp(delivery.phone, delivery.customerName)}
+                                        className="flex items-center gap-1.5 bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition-colors shadow-sm"
+                                        title="Conversar no WhatsApp"
+                                    >
+                                        <MessageCircle size={14} /> WhatsApp
                                     </button>
+
+                                    <div className="flex gap-2">
+                                        {delivery.status === 'Pendente' && viewMode === 'active' && (
+                                            <button
+                                                onClick={() => updateStatus(delivery.id, 'Em Rota')}
+                                                className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1 shadow-sm transition-colors"
+                                            >
+                                                <ArrowRight size={14} /> Iniciar
+                                            </button>
+                                        )}
+                                        <button onClick={() => {
+                                            setSelectedDelivery(delivery);
+                                            setEditForm({ status: delivery.status, notes: delivery.notes || '' });
+                                        }} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 p-1.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700">
+                                            <MoreVertical size={16} />
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
-                        </div>
-                    );
-                })}
+                        );
+                    })}
                 {filteredDeliveries.length === 0 && (
                     <div className="col-span-full py-12 text-center text-gray-400 dark:text-gray-500">
                         {viewMode === 'active' ? (
@@ -825,9 +936,17 @@ const Delivery: React.FC<DeliveryProps> = ({ user }) => {
                                                 </p>
                                             )}
                                         </div>
-                                        <span className={`px-2 py-1 rounded text-xs font-bold border ${getStatusColor(selectedDelivery.status)}`}>
-                                            {selectedDelivery.status}
-                                        </span>
+                                        <div className="flex flex-col items-end gap-2">
+                                            <span className={`px-2 py-1 rounded text-xs font-bold border ${getStatusColor(selectedDelivery.status)}`}>
+                                                {selectedDelivery.status}
+                                            </span>
+                                            {/* Route stop number badge */}
+                                            {selectedDelivery.routeOrder != null && (
+                                                <span className="flex items-center gap-1 bg-gray-900 text-white text-xs font-black px-2 py-1 rounded-full">
+                                                    <Map size={10} /> Parada #{selectedDelivery.routeOrder}
+                                                </span>
+                                            )}
+                                        </div>
                                     </div>
 
                                     <div className="flex gap-2 mt-4">
@@ -851,6 +970,66 @@ const Delivery: React.FC<DeliveryProps> = ({ user }) => {
                                             <p className="text-sm text-yellow-900 dark:text-yellow-100">{selectedDelivery.notes}</p>
                                         </div>
                                     )}
+                                    {/* Imprimir Comprovante individual */}
+                                    <div className="mt-4 border-t border-gray-100 dark:border-gray-700 pt-4">
+                                        <button
+                                            onClick={() => {
+                                                const d = selectedDelivery;
+                                                const routeNum = d.routeOrder != null ? `PARADA #${d.routeOrder}` : null;
+                                                const printWindow = window.open('', 'PRINT', 'height=700,width=420');
+                                                if (!printWindow) return;
+                                                printWindow.document.write(`
+                                                    <html><head><title>Comprovante ${d.id}</title>
+                                                    <style>
+                                                        @page { size: 80mm auto; margin: 0; }
+                                                        * { box-sizing: border-box; margin: 0; padding: 0; }
+                                                        body { font-family: 'Courier New', monospace; font-size: 13px; font-weight: 700; width: 80mm; padding: 4mm; color: #000; line-height: 1.5; }
+                                                        .center { text-align: center; }
+                                                        .divider { border-top: 2px dashed #000; margin: 7px 0; }
+                                                        .row { display: flex; justify-content: space-between; align-items: flex-start; }
+                                                        .stop-badge { display: block; background: #111; color: #fff; font-size: 22px; font-weight: 900; letter-spacing: 2px; padding: 6px 0; border-radius: 6px; margin: 8px 0; text-align: center; }
+                                                        .label { font-size: 10px; text-transform: uppercase; color: #666; letter-spacing: 0.5px; }
+                                                        .value { font-size: 14px; font-weight: 900; }
+                                                        .sm { font-size: 12px; }
+                                                    </style>
+                                                    </head><body>
+                                                    <div class="center">
+                                                        <div class="value" style="font-size:17px">🏍️ PriMAKE</div>
+                                                        <div class="label">Comprovante de Entrega</div>
+                                                    </div>
+                                                    ${routeNum ? `<div class="stop-badge">${routeNum}</div>` : '<div class="divider"></div>'}
+                                                    <div class="divider"></div>
+                                                    <div class="label">Cliente</div>
+                                                    <div class="value">${d.customerName}</div>
+                                                    ${d.phone ? `<div class="sm">${d.phone}</div>` : ''}
+                                                    <div class="divider"></div>
+                                                    <div class="label">Endereço</div>
+                                                    <div class="value sm">${d.address}${d.city ? ', ' + d.city : ''}</div>
+                                                    <div class="divider"></div>
+                                                    <div class="label">Itens</div>
+                                                    <div class="sm" style="padding: 2px 0">${d.itemsSummary}</div>
+                                                    <div class="divider"></div>
+                                                    <div class="row">
+                                                        <div><div class="label">Total</div><div class="value">R$ ${d.totalValue.toFixed(2)}</div></div>
+                                                        ${d.paymentMethod ? `<div style="text-align:right"><div class="label">Pagamento</div><div class="value sm">${d.paymentMethod}</div></div>` : ''}
+                                                    </div>
+                                                    <div class="divider"></div>
+                                                    <div class="center sm">ID: ${d.id}</div>
+                                                    <div class="center" style="font-size:11px">${new Date(d.date).toLocaleDateString('pt-BR')}</div>
+                                                    ${d.notes ? `<div class="divider"></div><div class="label">Obs:</div><div class="sm">${d.notes}</div>` : ''}
+                                                    <div class="divider"></div>
+                                                    <div class="center" style="font-size:10px">Sistema PriMAKE • Obrigado!</div>
+                                                    </body></html>
+                                                `);
+                                                printWindow.document.close();
+                                                printWindow.focus();
+                                                setTimeout(() => { printWindow.print(); printWindow.close(); }, 400);
+                                            }}
+                                            className="w-full flex items-center justify-center gap-2 py-2.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-lg font-bold text-sm transition-colors"
+                                        >
+                                            <Printer size={16} /> Imprimir Comprovante
+                                        </button>
+                                    </div>
                                 </>
                             )}
                         </div>
@@ -865,7 +1044,7 @@ const Delivery: React.FC<DeliveryProps> = ({ user }) => {
                     <div className="bg-white dark:bg-gray-800 w-full max-w-3xl rounded-xl shadow-2xl relative flex flex-col h-[90vh] animate-in fade-in zoom-in-95 duration-200">
                         <div className="p-5 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center bg-gray-900 text-white">
                             <h3 className="font-bold text-lg flex items-center gap-2">
-                                <Map size={20} /> Rota de Entrega ({selectedRouteIds.length})
+                                <Map size={20} /> Rota de Entrega ({routeSequence.length} paradas)
                             </h3>
                             <button onClick={() => setIsRouteModalOpen(false)} className="text-gray-400 hover:text-white">
                                 <X size={20} />
@@ -876,14 +1055,16 @@ const Delivery: React.FC<DeliveryProps> = ({ user }) => {
                             {/* Header - 75mm optimized */}
                             <div className="mb-4 pb-3 border-b-2 border-dashed border-gray-400 text-center">
                                 <h1 className="text-lg font-bold text-gray-900 dark:text-gray-100 uppercase tracking-wide">Manifesto de Entrega</h1>
-                                <p className="text-xs text-gray-500 mt-1">Data: {new Date().toLocaleDateString('pt-BR')} • {selectedRouteIds.length} paradas</p>
+                                <p className="text-xs text-gray-500 mt-1">Data: {new Date().toLocaleDateString('pt-BR')} • {routeSequence.length} paradas</p>
                             </div>
 
-                            {/* Deliveries - Compact Vertical Blocks */}
+                            {/* Deliveries - in route order */}
                             <div className="space-y-3">
-                                {deliveries
-                                    .filter(d => selectedRouteIds.includes(d.id))
+                                {routeSequence
+                                    .map(id => deliveries.find(d => d.id === id))
+                                    .filter(Boolean)
                                     .map((d, index) => (
+                                        // @ts-ignore
                                         <div key={d.id} className="border border-gray-200 dark:border-gray-600 rounded-lg p-3 break-inside-avoid bg-white dark:bg-gray-700/50">
                                             {/* Sequence Number & Value Row */}
                                             <div className="flex justify-between items-center mb-2">
@@ -1018,7 +1199,7 @@ const Delivery: React.FC<DeliveryProps> = ({ user }) => {
 
                                         // Delay to wait for print dialog to close (especially on mobile)
                                         setTimeout(async () => {
-                                            const pendingIds = selectedRouteIds.filter(id => {
+                                            const pendingIds = routeSequence.filter(id => {
                                                 const d = deliveries.find(del => del.id === id);
                                                 return d && d.status !== 'Em Rota' && d.status !== 'Entregue' && d.status !== 'Cancelado';
                                             });
@@ -1026,7 +1207,7 @@ const Delivery: React.FC<DeliveryProps> = ({ user }) => {
                                                 for (const id of pendingIds) {
                                                     await updateStatus(id, 'Em Rota');
                                                 }
-                                                setSelectedRouteIds([]);
+                                                setRouteSequence([]);
                                                 setIsRouteModalOpen(false);
                                                 refresh();
                                             }
