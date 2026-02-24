@@ -569,8 +569,78 @@ export const TransactionService = {
     async getToday(): Promise<Transaction[]> {
         const today = new Date().toISOString().split('T')[0];
         return this.getByDateRange(today, today);
+    },
+
+    // Editar campos de uma transação (admin only - validado no front)
+    async update(id: string, updates: {
+        customerName?: string;
+        paymentMethod?: string;
+        discountValue?: number;
+        notes?: string;
+        status?: string;
+        total?: number;
+        sellerName?: string;
+        sellerId?: string;
+    }): Promise<void> {
+        const updateData: any = { updated_at: new Date().toISOString() };
+        if (updates.customerName !== undefined) updateData.customer_name = updates.customerName;
+        if (updates.paymentMethod !== undefined) updateData.payment_method = updates.paymentMethod;
+        if (updates.discountValue !== undefined) updateData.discount_value = updates.discountValue;
+        if (updates.notes !== undefined) updateData.notes = updates.notes;
+        if (updates.status !== undefined) updateData.status = updates.status;
+        if (updates.total !== undefined) updateData.total = updates.total;
+        if (updates.sellerName !== undefined) updateData.seller_name = updates.sellerName;
+        if (updates.sellerId !== undefined) updateData.seller_id = updates.sellerId;
+
+        const { error } = await supabase
+            .from('transactions')
+            .update(updateData)
+            .eq('id', id);
+
+        if (error) throw error;
+    },
+
+    // Deletar uma transação permanentemente (admin only - validado no front)
+    async delete(id: string): Promise<void> {
+        const { error } = await supabase
+            .from('transactions')
+            .delete()
+            .eq('id', id);
+        if (error) throw error;
     }
 };
+
+
+// =====================================================
+// VALIDAÇÃO DE SENHA ADMIN (para ações protegidas)
+// =====================================================
+export async function validateAdminPassword(input: string): Promise<{ ok: boolean; reason?: 'wrong' | 'not_configured' | 'error' }> {
+    if (!input || input.trim() === '') return { ok: false, reason: 'wrong' };
+    try {
+        const { data, error } = await supabase
+            .from('users')
+            .select('id, role, password, pin, active')
+            .in('role', ['Administrador', 'Gerente'])
+            .eq('active', true);
+
+        if (error) return { ok: false, reason: 'error' };
+        if (!data || data.length === 0) return { ok: false, reason: 'not_configured' };
+
+        // Check if ANY admin user has a password/pin configured
+        const hasAnyPassword = data.some((u: any) =>
+            (u.password && u.password !== '') || (u.pin && u.pin !== '')
+        );
+        if (!hasAnyPassword) return { ok: false, reason: 'not_configured' };
+
+        const match = data.some((u: any) =>
+            (u.password && u.password === input) ||
+            (u.pin && u.pin === input)
+        );
+        return { ok: match, reason: match ? undefined : 'wrong' };
+    } catch {
+        return { ok: false, reason: 'error' };
+    }
+}
 
 // =====================================================
 // SERVIÇO DE CONFIGURAÇÕES

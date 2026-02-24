@@ -37,6 +37,9 @@ const Delivery: React.FC<DeliveryProps> = ({ user }) => {
     const [isRouteModalOpen, setIsRouteModalOpen] = useState(false);
     const [isSavingRoute, setIsSavingRoute] = useState(false);
 
+    // --- STATUS SUB-FILTER (active view) ---
+    const [filterStatus, setFilterStatus] = useState<'Todos' | 'Iniciar' | 'Em Rota' | 'Problema'>('Todos');
+
     // --- MODAL STATES ---
     const [selectedDelivery, setSelectedDelivery] = useState<DeliveryOrder | null>(null);
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -99,6 +102,14 @@ const Delivery: React.FC<DeliveryProps> = ({ user }) => {
 
         if (viewMode === 'active') {
             matchesView = !isFinished; // Show pending, in route, etc.
+            // Apply status sub-filter
+            if (filterStatus === 'Iniciar') {
+                matchesView = matchesView && (d.status === 'Pendente' || d.status === 'Em Preparo');
+            } else if (filterStatus === 'Em Rota') {
+                matchesView = matchesView && d.status === 'Em Rota';
+            } else if (filterStatus === 'Problema') {
+                matchesView = matchesView && d.status === 'Problema';
+            }
         } else {
             // History Mode
             matchesView = isFinished;
@@ -374,16 +385,7 @@ const Delivery: React.FC<DeliveryProps> = ({ user }) => {
         }
     };
 
-    // Load existing saved route order from DB on mount
-    useEffect(() => {
-        const withOrder = deliveries
-            .filter(d => d.routeOrder != null && d.status !== 'Entregue' && d.status !== 'Cancelado')
-            .sort((a, b) => (a.routeOrder ?? 0) - (b.routeOrder ?? 0))
-            .map(d => d.id);
-        if (withOrder.length > 0) {
-            setRouteSequence(withOrder);
-        }
-    }, [deliveries.length]);
+
 
     const getStatusColor = (status: string) => {
         switch (status) {
@@ -542,6 +544,49 @@ const Delivery: React.FC<DeliveryProps> = ({ user }) => {
                     )}
                 </div>
             </div>
+
+            {/* ── Status Sub-Filter Chips (active view only) ── */}
+            {viewMode === 'active' && (() => {
+                const activeAll = deliveries.filter(d => d.status !== 'Entregue' && d.status !== 'Cancelado');
+                const counts = {
+                    Todos: activeAll.length,
+                    Iniciar: activeAll.filter(d => d.status === 'Pendente' || d.status === 'Em Preparo').length,
+                    'Em Rota': activeAll.filter(d => d.status === 'Em Rota').length,
+                    Problema: activeAll.filter(d => d.status === 'Problema').length,
+                };
+                const chips: { key: 'Todos' | 'Iniciar' | 'Em Rota' | 'Problema'; label: string; icon: string; activeClass: string }[] = [
+                    { key: 'Todos', label: 'Todas', icon: '📋', activeClass: 'bg-gray-900 text-white border-gray-900' },
+                    { key: 'Iniciar', label: 'Iniciar', icon: '🟡', activeClass: 'bg-amber-500 text-white border-amber-500' },
+                    { key: 'Em Rota', label: 'Em Rota', icon: '🏍️', activeClass: 'bg-blue-600 text-white border-blue-600' },
+                    { key: 'Problema', label: 'Problema', icon: '🔴', activeClass: 'bg-red-600 text-white border-red-600' },
+                ];
+                return (
+                    <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide">
+                        {chips.map(chip => {
+                            const count = counts[chip.key];
+                            const isActive = filterStatus === chip.key;
+                            return (
+                                <button
+                                    key={chip.key}
+                                    onClick={() => setFilterStatus(chip.key)}
+                                    className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border-2 transition-all ${isActive
+                                        ? chip.activeClass + ' shadow-sm scale-105'
+                                        : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-gray-300'
+                                        }`}
+                                >
+                                    <span>{chip.icon}</span>
+                                    <span>{chip.label}</span>
+                                    {count > 0 && (
+                                        <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-black leading-none ${isActive ? 'bg-white/30' : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200'}`}>
+                                            {count}
+                                        </span>
+                                    )}
+                                </button>
+                            );
+                        })}
+                    </div>
+                );
+            })()}
 
             {/* ── Route Summary Bar (mobile-first) ── */}
             {viewMode === 'active' && filteredDeliveries.some(d => d.status !== 'Entregue' && d.status !== 'Cancelado') && (() => {

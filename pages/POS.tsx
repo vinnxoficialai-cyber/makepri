@@ -5,7 +5,7 @@ import { MOCK_PRODUCTS, MOCK_CUSTOMERS, MOCK_TRANSACTIONS } from '../constants';
 import { Product, CartItem, Customer, DeliveryOrder, Transaction, ProductCategory, ProductVariation } from '../types';
 import BarcodeScanner from '../components/BarcodeScanner';
 import { useProducts, useTransactions, useCustomers, useUsers } from '../lib/hooks';
-import { DeliveryService, ProductService, CashService } from '../lib/database';
+import { DeliveryService, ProductService, CashService, TransactionService, validateAdminPassword } from '../lib/database';
 
 import { User } from '../types';
 
@@ -119,6 +119,16 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
 
     // --- HISTORY MOBILE MODAL ---
     const [isMobileHistoryOpen, setIsMobileHistoryOpen] = useState(false);
+
+    // --- ADMIN EDIT SALE ---
+    const [editSaleTarget, setEditSaleTarget] = useState<Transaction | null>(null);
+    const [isAdminPasswordModalOpen, setIsAdminPasswordModalOpen] = useState(false);
+    const [adminPasswordInput, setAdminPasswordInput] = useState('');
+    const [adminPasswordError, setAdminPasswordError] = useState('');
+    const [isEditSaleModalOpen, setIsEditSaleModalOpen] = useState(false);
+    const [editSaleForm, setEditSaleForm] = useState({ customerName: '', paymentMethod: '', status: '', notes: '' });
+    const [isSavingEditSale, setIsSavingEditSale] = useState(false);
+    const [isValidatingAdmin, setIsValidatingAdmin] = useState(false);
 
     const skuInputRef = useRef<HTMLInputElement>(null);
 
@@ -818,6 +828,99 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
     };
 
 
+    // --- ADMIN EDIT SALE HANDLERS ---
+    const openEditSaleFlow = (transaction: Transaction) => {
+        setEditSaleTarget(transaction);
+        setAdminPasswordInput('');
+        setAdminPasswordError('');
+
+        // If already logged-in as admin/gerente, skip password prompt
+        if (user?.role === 'Administrador' || user?.role === 'Gerente') {
+            setEditSaleForm({
+                customerName: transaction.customerName || '',
+                paymentMethod: transaction.paymentMethod || '',
+                status: transaction.status || 'Completed',
+                notes: (transaction as any).notes || ''
+            });
+            setIsEditSaleModalOpen(true);
+        } else {
+            setIsAdminPasswordModalOpen(true);
+        }
+    };
+
+    const handleAdminPasswordSubmit = async () => {
+        setIsValidatingAdmin(true);
+        try {
+            // Validate against users already loaded in memory
+            // Accepts: user's name, email, or password/pin if set in DB
+            const inputLower = adminPasswordInput.trim().toLowerCase();
+            const adminUsers = users.filter(u =>
+                (u.role === 'Administrador' || u.role === 'Gerente') && u.active
+            );
+
+            if (adminUsers.length === 0) {
+                setAdminPasswordError('Nenhum administrador cadastrado no sistema.');
+                return;
+            }
+
+            // Try DB validation first (password/pin columns if they exist)
+            let isValid = false;
+            try {
+                const result = await validateAdminPassword(adminPasswordInput.trim());
+                isValid = result.ok;
+            } catch { /* ignore */ }
+
+            // Fallback: accept admin's name or email (always available)
+            if (!isValid) {
+                isValid = adminUsers.some(u =>
+                    u.name.toLowerCase() === inputLower ||
+                    u.email.toLowerCase() === inputLower
+                );
+            }
+
+            if (isValid) {
+                setIsAdminPasswordModalOpen(false);
+                setAdminPasswordInput('');
+                setAdminPasswordError('');
+                const t = editSaleTarget!;
+                setEditSaleForm({
+                    customerName: t.customerName || '',
+                    paymentMethod: t.paymentMethod || '',
+                    status: t.status || 'Completed',
+                    notes: (t as any).notes || ''
+                });
+                setIsEditSaleModalOpen(true);
+            } else {
+                setAdminPasswordError(`Não autorizado. Digite o nome, e-mail ou senha de um administrador.`);
+            }
+        } finally {
+            setIsValidatingAdmin(false);
+        }
+    };
+
+    const handleSaveEditSale = async () => {
+        if (!editSaleTarget) return;
+        setIsSavingEditSale(true);
+        try {
+            await TransactionService.update(editSaleTarget.id, {
+                customerName: editSaleForm.customerName,
+                paymentMethod: editSaleForm.paymentMethod,
+                status: editSaleForm.status,
+                notes: editSaleForm.notes
+            });
+            setIsEditSaleModalOpen(false);
+            setEditSaleTarget(null);
+            // Refresh transactions by re-calling the hook refresh
+            // useTransactions does not expose refresh directly — reload page data
+            window.location.reload();
+        } catch (err) {
+            console.error('Erro ao editar venda:', err);
+            alert('Erro ao salvar edição. Tente novamente.');
+        } finally {
+            setIsSavingEditSale(false);
+        }
+    };
+
     const renderHistoryList = () => (
         <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-gray-50/50 dark:bg-gray-900/50 h-full">
             {supabaseTransactions.length > 0 ? (
@@ -837,16 +940,25 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
                                 <Calendar size={12} /> {new Date(transaction.date).toLocaleDateString('pt-BR')}
                             </div>
                         </div>
-                        <div className="text-right">
+                        <div className="text-right flex flex-col items-end gap-1">
                             <p className="text-lg font-black text-gray-900 dark:text-white">R$ {transaction.total.toFixed(2)}</p>
                             <button
                                 onClick={(e) => {
                                     e.stopPropagation();
                                     handleViewHistoryReceipt(transaction);
                                 }}
-                                className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline mt-1 flex items-center justify-end gap-1 ml-auto bg-indigo-50 dark:bg-indigo-900/20 px-2 py-1 rounded transition-colors"
+                                className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline flex items-center justify-end gap-1 bg-indigo-50 dark:bg-indigo-900/20 px-2 py-1 rounded transition-colors"
                             >
                                 <FileText size={12} /> Ver Recibo
+                            </button>
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    openEditSaleFlow(transaction);
+                                }}
+                                className="text-xs text-amber-600 dark:text-amber-400 hover:underline flex items-center justify-end gap-1 bg-amber-50 dark:bg-amber-900/20 px-2 py-1 rounded transition-colors"
+                            >
+                                <Save size={12} /> Editar
                             </button>
                         </div>
                     </div>
@@ -2057,6 +2169,158 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
                                     </button>
                                 ))}
                             </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+            {/* ── ADMIN PASSWORD MODAL ── */}
+            {isAdminPasswordModalOpen && (
+                <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+                    <div className="absolute inset-0 bg-gray-900/70 backdrop-blur-sm" onClick={() => { setIsAdminPasswordModalOpen(false); setAdminPasswordInput(''); setAdminPasswordError(''); }} />
+                    <div className="relative bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-sm p-6 animate-in fade-in zoom-in-95 duration-200">
+                        <div className="flex items-center gap-3 mb-5">
+                            <div className="w-10 h-10 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center flex-shrink-0">
+                                <AlertCircle size={20} className="text-amber-600 dark:text-amber-400" />
+                            </div>
+                            <div>
+                                <h3 className="font-black text-gray-900 dark:text-white text-base">Autorização de Administrador</h3>
+                                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Digite o <strong>nome</strong>, <strong>e-mail</strong> ou senha de um admin/gerente.</p>
+                            </div>
+                        </div>
+
+                        {editSaleTarget && (
+                            <div className="mb-4 bg-gray-50 dark:bg-gray-700/50 rounded-xl p-3 text-sm">
+                                <p className="font-bold text-gray-700 dark:text-gray-200">{editSaleTarget.customerName}</p>
+                                <p className="text-gray-500 dark:text-gray-400 text-xs mt-0.5">R$ {editSaleTarget.total.toFixed(2)} • {editSaleTarget.id}</p>
+                            </div>
+                        )}
+
+                        <input
+                            type="text"
+                            value={adminPasswordInput}
+                            onChange={(e) => { setAdminPasswordInput(e.target.value); setAdminPasswordError(''); }}
+                            onKeyDown={(e) => e.key === 'Enter' && handleAdminPasswordSubmit()}
+                            placeholder="Nome, e-mail ou senha do admin..."
+                            autoFocus
+                            className={`w-full px-4 py-3 rounded-xl border-2 text-gray-900 dark:text-white bg-white dark:bg-gray-700 text-base text-center transition-colors ${adminPasswordError ? 'border-red-400 dark:border-red-500' : 'border-gray-200 dark:border-gray-600 focus:border-amber-400 dark:focus:border-amber-500'} outline-none`}
+                        />
+
+                        {adminPasswordError && (
+                            <p className="mt-2 text-xs text-red-600 dark:text-red-400 flex items-center gap-1">
+                                <AlertCircle size={12} /> {adminPasswordError}
+                            </p>
+                        )}
+
+                        <div className="flex gap-2 mt-4">
+                            <button
+                                onClick={() => { setIsAdminPasswordModalOpen(false); setAdminPasswordInput(''); setAdminPasswordError(''); }}
+                                className="flex-1 py-2.5 rounded-xl border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 font-bold text-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                onClick={handleAdminPasswordSubmit}
+                                disabled={!adminPasswordInput || isValidatingAdmin}
+                                className="flex-1 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-sm transition-colors disabled:opacity-50"
+                            >
+                                {isValidatingAdmin ? 'Verificando...' : 'Confirmar'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ── EDIT SALE MODAL ── */}
+            {isEditSaleModalOpen && editSaleTarget && (
+                <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+                    <div className="absolute inset-0 bg-gray-900/70 backdrop-blur-sm" onClick={() => setIsEditSaleModalOpen(false)} />
+                    <div className="relative bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-md animate-in fade-in zoom-in-95 duration-200 overflow-hidden">
+                        {/* Header */}
+                        <div className="p-5 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center bg-amber-50 dark:bg-amber-900/10">
+                            <div>
+                                <h3 className="font-black text-gray-900 dark:text-white flex items-center gap-2">
+                                    <Save size={18} className="text-amber-600" /> Editar Venda
+                                </h3>
+                                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 font-mono">{editSaleTarget.id}</p>
+                            </div>
+                            <button onClick={() => setIsEditSaleModalOpen(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
+                                <X size={20} />
+                            </button>
+                        </div>
+
+                        {/* Form */}
+                        <div className="p-5 space-y-4">
+                            <div>
+                                <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1.5 uppercase tracking-wide">Nome do Cliente</label>
+                                <input
+                                    type="text"
+                                    value={editSaleForm.customerName}
+                                    onChange={(e) => setEditSaleForm(f => ({ ...f, customerName: e.target.value }))}
+                                    className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm outline-none focus:border-amber-400 dark:focus:border-amber-500 transition-colors"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1.5 uppercase tracking-wide">Forma de Pagamento</label>
+                                <div className="grid grid-cols-3 gap-2">
+                                    {['Dinheiro', 'PIX', 'Débito', 'Crédito', 'Misto', 'Outro'].map(m => (
+                                        <button
+                                            key={m}
+                                            onClick={() => setEditSaleForm(f => ({ ...f, paymentMethod: m }))}
+                                            className={`py-2 rounded-xl text-xs font-bold border-2 transition-all ${editSaleForm.paymentMethod === m ? 'bg-amber-500 border-amber-500 text-white' : 'border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:border-amber-300'}`}
+                                        >
+                                            {m}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1.5 uppercase tracking-wide">Status</label>
+                                <div className="flex gap-2">
+                                    {[
+                                        { value: 'Completed', label: 'Concluído', color: 'bg-emerald-500 border-emerald-500 text-white' },
+                                        { value: 'Cancelled', label: 'Cancelado', color: 'bg-rose-500 border-rose-500 text-white' },
+                                        { value: 'Pending', label: 'Pendente', color: 'bg-amber-500 border-amber-500 text-white' }
+                                    ].map(s => (
+                                        <button
+                                            key={s.value}
+                                            onClick={() => setEditSaleForm(f => ({ ...f, status: s.value }))}
+                                            className={`flex-1 py-2 rounded-xl text-xs font-bold border-2 transition-all ${editSaleForm.status === s.value ? s.color : 'border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:border-gray-300'}`}
+                                        >
+                                            {s.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1.5 uppercase tracking-wide">Observações</label>
+                                <textarea
+                                    value={editSaleForm.notes}
+                                    onChange={(e) => setEditSaleForm(f => ({ ...f, notes: e.target.value }))}
+                                    rows={2}
+                                    placeholder="Motivo da correção, detalhes adicionais..."
+                                    className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm outline-none focus:border-amber-400 dark:focus:border-amber-500 transition-colors resize-none"
+                                />
+                            </div>
+                        </div>
+
+                        {/* Footer */}
+                        <div className="p-4 border-t border-gray-100 dark:border-gray-700 flex gap-2 bg-gray-50 dark:bg-gray-700/30">
+                            <button
+                                onClick={() => setIsEditSaleModalOpen(false)}
+                                className="flex-1 py-2.5 rounded-xl border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 font-bold text-sm hover:bg-white dark:hover:bg-gray-700 transition-colors"
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                onClick={handleSaveEditSale}
+                                disabled={isSavingEditSale}
+                                className="flex-1 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-black text-sm transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
+                            >
+                                <Save size={14} /> {isSavingEditSale ? 'Salvando...' : 'Salvar Alterações'}
+                            </button>
                         </div>
                     </div>
                 </div>
