@@ -329,6 +329,19 @@ const Delivery: React.FC<DeliveryProps> = ({ user }) => {
         setSelectedRouteIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
     };
 
+    const selectableDeliveries = filteredDeliveries.filter(
+        d => d.status !== 'Entregue' && d.status !== 'Cancelado'
+    );
+    const allSelected = selectableDeliveries.length > 0 && selectableDeliveries.every(d => selectedRouteIds.includes(d.id));
+
+    const toggleSelectAll = () => {
+        if (allSelected) {
+            setSelectedRouteIds([]);
+        } else {
+            setSelectedRouteIds(selectableDeliveries.map(d => d.id));
+        }
+    };
+
     const getStatusColor = (status: string) => {
         switch (status) {
             case 'Pendente': return 'bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-800';
@@ -377,6 +390,19 @@ const Delivery: React.FC<DeliveryProps> = ({ user }) => {
                             className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-md transition-all flex items-center justify-center gap-2"
                         >
                             <DollarSign size={18} /> Repasse
+                        </button>
+                    )}
+
+                    {viewMode === 'active' && selectableDeliveries.length > 0 && (
+                        <button
+                            onClick={toggleSelectAll}
+                            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold border transition-all ${allSelected
+                                    ? 'bg-pink-600 text-white border-pink-600 hover:bg-pink-700'
+                                    : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 border-gray-300 dark:border-gray-600 hover:border-pink-400'
+                                }`}
+                        >
+                            <CheckCircle size={16} />
+                            {allSelected ? `Desmarcar Todas (${selectableDeliveries.length})` : `Selecionar Todas (${selectableDeliveries.length})`}
                         </button>
                     )}
 

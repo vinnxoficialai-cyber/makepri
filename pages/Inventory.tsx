@@ -1326,7 +1326,7 @@ const Inventory: React.FC<InventoryProps> = ({ user, autoFilterStalled, resetAut
                                 <div className="flex-1 overflow-y-auto p-6 space-y-6">
                                     <div className="bg-gray-50 dark:bg-gray-700/30 p-4 rounded-lg border border-gray-200 dark:border-gray-600">
                                         <h4 className="font-bold text-gray-800 dark:text-white mb-4 flex items-center gap-2"><Plus size={16} /> Adicionar Variação</h4>
-                                        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 items-end">
+                                        <div className="grid grid-cols-2 md:grid-cols-6 gap-3 items-end">
                                             <div className="col-span-1">
                                                 <label className="block text-xs font-medium text-gray-500 mb-1">Tipo</label>
                                                 <select
@@ -1337,14 +1337,14 @@ const Inventory: React.FC<InventoryProps> = ({ user, autoFilterStalled, resetAut
                                                     {variationTypes.map(t => <option key={t} value={t}>{t}</option>)}
                                                 </select>
                                             </div>
-                                            <div className="col-span-1 md:col-span-2">
-                                                <label className="block text-xs font-medium text-gray-500 mb-1">Nome/Valor (ex: P, Azul)</label>
+                                            <div className="col-span-1">
+                                                <label className="block text-xs font-medium text-gray-500 mb-1">Nome (ex: P, Azul)</label>
                                                 <input
                                                     type="text"
                                                     className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white dark:bg-gray-700 dark:text-white dark:border-gray-600"
                                                     value={currentVariation.name}
                                                     onChange={e => setCurrentVariation({ ...currentVariation, name: e.target.value })}
-                                                    placeholder="Ex: P, 38, Vermelho"
+                                                    placeholder="Ex: P, 38"
                                                 />
                                             </div>
                                             <div className="col-span-1">
@@ -1354,6 +1354,17 @@ const Inventory: React.FC<InventoryProps> = ({ user, autoFilterStalled, resetAut
                                                     className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white dark:bg-gray-700 dark:text-white dark:border-gray-600"
                                                     value={currentVariation.stock}
                                                     onChange={e => setCurrentVariation({ ...currentVariation, stock: Number(e.target.value) })}
+                                                />
+                                            </div>
+                                            <div className="col-span-1">
+                                                <label className="block text-xs font-medium text-gray-500 mb-1">Preço (R$)</label>
+                                                <input
+                                                    type="number"
+                                                    step="0.01"
+                                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white dark:bg-gray-700 dark:text-white dark:border-gray-600"
+                                                    value={currentVariation.priceOverride}
+                                                    onChange={e => setCurrentVariation({ ...currentVariation, priceOverride: e.target.value })}
+                                                    placeholder="Padrão"
                                                 />
                                             </div>
                                             <div className="col-span-1">
@@ -1376,6 +1387,7 @@ const Inventory: React.FC<InventoryProps> = ({ user, autoFilterStalled, resetAut
                                                     <th className="p-3 font-medium text-gray-500 dark:text-gray-400">Tipo</th>
                                                     <th className="p-3 font-medium text-gray-500 dark:text-gray-400">Nome</th>
                                                     <th className="p-3 font-medium text-gray-500 dark:text-gray-400 text-center">Estoque</th>
+                                                    <th className="p-3 font-medium text-gray-500 dark:text-gray-400 text-center">Preço</th>
                                                     <th className="p-3 font-medium text-gray-500 dark:text-gray-400 text-right">Ação</th>
                                                 </tr>
                                             </thead>
@@ -1385,6 +1397,7 @@ const Inventory: React.FC<InventoryProps> = ({ user, autoFilterStalled, resetAut
                                                         <td className="p-3">{v.type}</td>
                                                         <td className="p-3 font-medium">{v.name}</td>
                                                         <td className="p-3 text-center">{v.stock}</td>
+                                                        <td className="p-3 text-center">{v.priceOverride ? `R$ ${Number(v.priceOverride).toFixed(2)}` : <span className="text-gray-400 text-xs">Padrão</span>}</td>
                                                         <td className="p-3 text-right">
                                                             <button onClick={() => removeVariationFromList(idx)} className="text-red-500 hover:text-red-700 dark:hover:text-red-400"><Trash2 size={16} /></button>
                                                         </td>
@@ -1392,7 +1405,7 @@ const Inventory: React.FC<InventoryProps> = ({ user, autoFilterStalled, resetAut
                                                 ))}
                                                 {variationsList.length === 0 && (
                                                     <tr>
-                                                        <td colSpan={4} className="p-8 text-center text-gray-400">Nenhuma variação adicionada ainda.</td>
+                                                        <td colSpan={5} className="p-8 text-center text-gray-400">Nenhuma variação adicionada ainda.</td>
                                                     </tr>
                                                 )}
                                             </tbody>

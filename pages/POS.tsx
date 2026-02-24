@@ -99,6 +99,16 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
     const [installments, setInstallments] = useState(1);
     const [cashReceived, setCashReceived] = useState('');
 
+    // Split Payment
+    const [paymentParts, setPaymentParts] = useState<{ method: string; amount: number }[]>([]);
+    const [splitAmount, setSplitAmount] = useState('');
+
+    // Customer Dropdown
+    const [isCustomerDropdownOpen, setIsCustomerDropdownOpen] = useState(false);
+    const customerDropdownRef = useRef<HTMLDivElement>(null);
+    const [isMainPosDropdownOpen, setIsMainPosDropdownOpen] = useState(false);
+    const mainPosDropdownRef = useRef<HTMLDivElement>(null);
+
     // --- SALE TYPE & DISCOUNTS ---
     const [saleType, setSaleType] = useState<'store' | 'delivery'>('store');
 
@@ -250,11 +260,50 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
         setCart(prev => prev.filter(item => item.id !== id));
     };
 
+    // Close customer dropdown when clicking outside
+    useEffect(() => {
+        const handleClickOutside = (e: MouseEvent) => {
+            if (customerDropdownRef.current && !customerDropdownRef.current.contains(e.target as Node)) {
+                setIsCustomerDropdownOpen(false);
+            }
+            if (mainPosDropdownRef.current && !mainPosDropdownRef.current.contains(e.target as Node)) {
+                setIsMainPosDropdownOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
+
     // --- CALCULATIONS ---
     const subTotal = cart.reduce((acc, item) => acc + (item.priceSale * item.quantity), 0);
     const discountValue = subTotal * ((parseFloat(discountPercent) || 0) / 100);
     const deliveryValue = (saleType === 'delivery' ? (parseFloat(deliveryFee) || 0) : 0);
-    const finalTotal = Math.max(0, subTotal - discountValue + deliveryValue);
+    const baseTotal = Math.max(0, subTotal - discountValue + deliveryValue);
+
+    // Credit card surcharge: 5% on credit portions
+    const creditPartsTotal = paymentParts.filter(p => p.method === 'credit').reduce((acc, p) => acc + p.amount, 0);
+    const pendingForCredit = selectedMethod === 'credit' ? (baseTotal - paymentParts.reduce((acc, p) => acc + p.amount, 0)) : 0;
+    const totalCreditAmount = creditPartsTotal + Math.max(0, pendingForCredit);
+    const creditSurcharge = totalCreditAmount > 0 ? totalCreditAmount * 0.05 : 0;
+    const finalTotal = baseTotal + creditSurcharge;
+
+    // Split payment helpers
+    const allocatedTotal = paymentParts.reduce((acc, p) => acc + p.amount, 0);
+    const remainingToAllocate = Math.max(0, finalTotal - allocatedTotal);
+
+    const addPaymentPart = () => {
+        if (!selectedMethod) return;
+        const amount = parseFloat(splitAmount) || remainingToAllocate;
+        if (amount <= 0) return;
+        const methodLabel = selectedMethod === 'credit' ? `Crédito${installments > 1 ? ` ${installments}x` : ''}` : selectedMethod === 'debit' ? 'Débito' : selectedMethod === 'money' ? 'Dinheiro' : 'PIX';
+        setPaymentParts([...paymentParts, { method: selectedMethod, amount: Math.min(amount, remainingToAllocate + 0.01) }]);
+        setSplitAmount('');
+        setSelectedMethod(null);
+    };
+
+    const removePaymentPart = (index: number) => {
+        setPaymentParts(paymentParts.filter((_, i) => i !== index));
+    };
 
     // --- CUSTOMER HANDLERS ---
     const handleSaveNewCustomer = async (e: React.FormEvent) => {
@@ -333,10 +382,21 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
     };
 
     const confirmPayment = async () => {
-        if (!selectedMethod) {
+        // Validate: need at least one payment part OR a single method selected covering full amount
+        const totalAllocated = paymentParts.reduce((acc, p) => acc + p.amount, 0);
+        if (paymentParts.length === 0 && !selectedMethod) {
             alert("Selecione uma forma de pagamento.");
             return;
         }
+        if (paymentParts.length > 0 && Math.abs(totalAllocated - finalTotal) > 0.01) {
+            alert(`Valor alocado (R$ ${totalAllocated.toFixed(2)}) não cobre o total (R$ ${finalTotal.toFixed(2)}). Adicione mais uma forma de pagamento.`);
+            return;
+        }
+
+        // Build effective payment method string
+        const effectiveParts = paymentParts.length > 0 ? paymentParts : [{ method: selectedMethod as string, amount: finalTotal }];
+        const paymentMethodLabel = [...new Set(effectiveParts.map(p => p.method))].join(' + ');
+        const primaryMethod = effectiveParts[0].method as any;
 
         // Validation for Delivery (Redundant check)
         if (saleType === 'delivery') {
@@ -365,11 +425,10 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
             return;
         }
 
-        const calculatedChange = cashReceived ? Math.max(0, parseFloat(cashReceived) - finalTotal) : 0;
+        const calculatedChange = selectedMethod === 'money' && cashReceived ? Math.max(0, parseFloat(cashReceived) - finalTotal) : 0;
 
         try {
             // 1. Capture Sale Data for Receipt
-            // Merge deliveryAddress into customer so it appears on receipt
             const receiptCustomer = selectedCustomer
                 ? { ...selectedCustomer, address: deliveryAddress || selectedCustomer.address || '' }
                 : null;
@@ -378,10 +437,12 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
                 customer: receiptCustomer,
                 subTotal,
                 discountValue,
+                creditSurcharge,
                 deliveryFee: parseFloat(deliveryFee) || 0,
                 finalTotal,
-                paymentMethod: selectedMethod,
-                installments: selectedMethod === 'credit' ? installments : 1,
+                paymentMethod: paymentMethodLabel,
+                paymentParts: effectiveParts,
+                installments: primaryMethod === 'credit' ? installments : 1,
                 changeAmount: calculatedChange,
                 date: new Date().toLocaleString('pt-BR'),
                 isDelivery: saleType === 'delivery',
@@ -421,12 +482,12 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
                 total: finalTotal,
                 status: 'Completed',
                 type: 'Sale',
-                paymentMethod: selectedMethod,
+                paymentMethod: paymentMethodLabel,
                 items: cart,
                 subTotal,
                 discountValue,
                 deliveryFee: parseFloat(deliveryFee) || 0,
-                installments: selectedMethod === 'credit' ? installments : 1,
+                installments: primaryMethod === 'credit' ? installments : 1,
                 changeAmount: calculatedChange,
                 isDelivery: saleType === 'delivery',
                 motoboy: selectedMotoboy,
@@ -511,7 +572,7 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
                         cashRegisterId: currentCash.id,
                         type: 'sale',
                         amount: finalTotal,
-                        paymentMethod: selectedMethod || 'money',
+                        paymentMethod: primaryMethod as any,
                         description: `Venda ${selectedCustomer ? `- ${selectedCustomer.name}` : ''}`,
                         createdBy: user?.id || ''
                     });
@@ -535,6 +596,8 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
             setDeliveryFee('');
             setDiscountPercent('');
             setSelectedMotoboy('');
+            setPaymentParts([]);
+            setSplitAmount('');
             setPaymentStep(1);
 
             // 5. Switch Modals
@@ -754,8 +817,6 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
         }
     };
 
-    const changeAmount = cashReceived ? Math.max(0, parseFloat(cashReceived) - finalTotal) : 0;
-    const remainingAmount = cashReceived ? Math.max(0, finalTotal - parseFloat(cashReceived)) : finalTotal;
 
     const renderHistoryList = () => (
         <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-gray-50/50 dark:bg-gray-900/50 h-full">
@@ -996,45 +1057,67 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
                         </button>
                     </label>
                     <div className="flex flex-col gap-2">
-                        {/* Search Input for Customer (Sidebar) */}
-                        <div className="relative">
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
-                            <input
-                                type="text"
-                                placeholder="Buscar cliente..."
-                                className="w-full pl-8 pr-3 py-1.5 text-xs border border-[#ffc8cb] dark:border-pink-800 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-[#ffc8cb]"
-                                value={customerSearch}
-                                onChange={(e) => setCustomerSearch(e.target.value)}
-                            />
-                        </div>
-
+                        {/* Inline Customer Combobox (Sidebar) */}
                         <div className="flex gap-2">
-                            <div className="relative flex-1">
-                                <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
-                                <select
-                                    className="w-full pl-9 pr-3 py-2 border border-[#ffc8cb] dark:border-pink-800 rounded-lg text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#ffc8cb]/50"
-                                    value={selectedCustomer?.id || ''}
-                                    onChange={(e) => {
-                                        const customer = customers.find(c => c.id === e.target.value);
-                                        setSelectedCustomer(customer || null);
-                                        // Auto-fill address for state consistency
-                                        if (customer) {
-                                            setDeliveryAddress(customer.address || '');
-                                        } else {
-                                            setDeliveryAddress('');
-                                        }
-                                    }}
-                                >
-                                    <option value="">Cliente Balcão (Não identificado)</option>
-                                    {filteredCustomers.map(c => (
-                                        <option key={c.id} value={c.id}>{c.name} {c.phone ? `- ${c.phone}` : ''}</option>
-                                    ))}
-                                </select>
+                            <div className="relative flex-1" ref={mainPosDropdownRef}>
+                                <div className="relative">
+                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
+                                    <input
+                                        type="text"
+                                        placeholder="Buscar cliente por nome ou telefone..."
+                                        className="w-full pl-8 pr-7 py-2 text-sm border border-[#ffc8cb] dark:border-pink-800 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-[#ffc8cb]"
+                                        value={selectedCustomer ? selectedCustomer.name : customerSearch}
+                                        onFocus={() => {
+                                            if (selectedCustomer) { setSelectedCustomer(null); setCustomerSearch(''); setDeliveryAddress(''); }
+                                            setIsMainPosDropdownOpen(true);
+                                        }}
+                                        onChange={(e) => { setCustomerSearch(e.target.value); setIsMainPosDropdownOpen(true); setSelectedCustomer(null); }}
+                                    />
+                                    {selectedCustomer && (
+                                        <button
+                                            className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                                            onClick={() => { setSelectedCustomer(null); setCustomerSearch(''); setDeliveryAddress(''); }}
+                                        >
+                                            <X size={13} />
+                                        </button>
+                                    )}
+                                </div>
+                                {isMainPosDropdownOpen && !selectedCustomer && (
+                                    <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white dark:bg-gray-800 border border-[#ffc8cb] dark:border-pink-800 rounded-xl shadow-xl overflow-hidden max-h-52 overflow-y-auto">
+                                        <button
+                                            type="button"
+                                            className="w-full text-left px-3 py-2 text-xs text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 border-b border-gray-100 dark:border-gray-700"
+                                            onClick={() => { setSelectedCustomer(null); setCustomerSearch(''); setIsMainPosDropdownOpen(false); }}
+                                        >
+                                            👤 Cliente Balcão (não identificado)
+                                        </button>
+                                        {filteredCustomers.length === 0 ? (
+                                            <div className="p-3 text-xs text-center text-gray-400">Nenhum cliente encontrado</div>
+                                        ) : (
+                                            filteredCustomers.slice(0, 8).map((c) => (
+                                                <button
+                                                    key={c.id}
+                                                    type="button"
+                                                    className="w-full text-left px-3 py-2 hover:bg-pink-50 dark:hover:bg-pink-900/20 transition-colors"
+                                                    onClick={() => {
+                                                        setSelectedCustomer(c);
+                                                        setCustomerSearch('');
+                                                        setDeliveryAddress(c.address || '');
+                                                        setIsMainPosDropdownOpen(false);
+                                                    }}
+                                                >
+                                                    <p className="font-bold text-sm text-gray-800 dark:text-white">{c.name}</p>
+                                                    {c.phone && <p className="text-xs text-gray-400">{c.phone}</p>}
+                                                </button>
+                                            ))
+                                        )}
+                                    </div>
+                                )}
                             </div>
                             <button
                                 onClick={() => setIsAddCustomerModalOpen(true)}
-                                className="px-3 bg-pink-100 dark:bg-pink-900 text-pink-600 dark:text-pink-300 rounded-lg hover:bg-pink-200 dark:hover:bg-pink-800 transition-colors"
-                                title="Adicionar Cliente Rápido"
+                                className="px-3 bg-pink-100 dark:bg-pink-900 text-pink-600 dark:text-pink-300 rounded-lg hover:bg-pink-200 dark:hover:bg-pink-800 transition-colors flex-shrink-0"
+                                title="Cadastrar Novo Cliente"
                             >
                                 <Plus size={18} />
                             </button>
@@ -1243,39 +1326,49 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
                                                         <UserIcon size={16} /> Cliente
                                                     </label>
 
-                                                    {/* Search Input for Customer */}
-                                                    <div className="relative mb-2">
-                                                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
-                                                        <input
-                                                            type="text"
-                                                            placeholder="Filtrar clientes (Nome ou Telefone)..."
-                                                            className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-900/50 focus:outline-none focus:ring-2 focus:ring-pink-500/30"
-                                                            value={customerSearch}
-                                                            onChange={(e) => setCustomerSearch(e.target.value)}
-                                                        />
+                                                    {/* Inline Customer Search Combobox */}
+                                                    <div className="relative" ref={customerDropdownRef}>
+                                                        <div className="relative">
+                                                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                                                            <input
+                                                                type="text"
+                                                                placeholder="Buscar cliente por nome ou telefone..."
+                                                                className="w-full pl-9 pr-8 py-2.5 text-sm border border-gray-200 dark:border-gray-700 rounded-xl bg-gray-50 dark:bg-gray-900/50 focus:outline-none focus:ring-2 focus:ring-pink-500/30 text-gray-800 dark:text-white"
+                                                                value={selectedCustomer ? selectedCustomer.name : customerSearch}
+                                                                onFocus={() => { if (selectedCustomer) { setSelectedCustomer(null); setCustomerSearch(''); } setIsCustomerDropdownOpen(true); }}
+                                                                onChange={(e) => { setCustomerSearch(e.target.value); setIsCustomerDropdownOpen(true); setSelectedCustomer(null); }}
+                                                            />
+                                                            {selectedCustomer && (
+                                                                <button className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600" onClick={() => { setSelectedCustomer(null); setCustomerSearch(''); setDeliveryAddress(''); }}>
+                                                                    <X size={14} />
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                        {isCustomerDropdownOpen && !selectedCustomer && (
+                                                            <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl overflow-hidden max-h-48 overflow-y-auto">
+                                                                {filteredCustomers.length === 0 ? (
+                                                                    <div className="p-3 text-sm text-center text-gray-400">Nenhum cliente encontrado</div>
+                                                                ) : (
+                                                                    filteredCustomers.slice(0, 8).map((customer) => (
+                                                                        <button
+                                                                            key={customer.id}
+                                                                            type="button"
+                                                                            className="w-full text-left px-4 py-2.5 hover:bg-pink-50 dark:hover:bg-pink-900/20 transition-colors"
+                                                                            onClick={() => {
+                                                                                setSelectedCustomer(customer);
+                                                                                setCustomerSearch('');
+                                                                                setDeliveryAddress(customer.address || '');
+                                                                                setIsCustomerDropdownOpen(false);
+                                                                            }}
+                                                                        >
+                                                                            <p className="font-bold text-sm text-gray-800 dark:text-white">{customer.name}</p>
+                                                                            {customer.phone && <p className="text-xs text-gray-400">{customer.phone}</p>}
+                                                                        </button>
+                                                                    ))
+                                                                )}
+                                                            </div>
+                                                        )}
                                                     </div>
-
-                                                    <select
-                                                        className="w-full p-3 rounded-xl border border-gray-300 dark:border-gray-600 focus:border-pink-500 outline-none bg-white dark:bg-gray-800 text-gray-800 dark:text-white font-medium shadow-sm transition-all"
-                                                        value={selectedCustomer?.id || ''}
-                                                        onChange={(e) => {
-                                                            const customer = customers.find(c => c.id === e.target.value);
-                                                            setSelectedCustomer(customer || null);
-                                                            // Auto-fill address
-                                                            if (customer) {
-                                                                setDeliveryAddress(customer.address || '');
-                                                            } else {
-                                                                setDeliveryAddress('');
-                                                            }
-                                                        }}
-                                                    >
-                                                        <option value="">Selecione o cliente...</option>
-                                                        {filteredCustomers.map((customer) => (
-                                                            <option key={customer.id} value={customer.id}>
-                                                                {customer.name} {customer.phone ? `- ${customer.phone}` : ''}
-                                                            </option>
-                                                        ))}
-                                                    </select>
                                                     <button
                                                         onClick={() => setIsAddCustomerModalOpen(true)}
                                                         className="mt-2 w-full py-2 text-xs font-bold uppercase text-pink-600 dark:text-pink-400 bg-pink-50 dark:bg-pink-900/20 rounded-lg hover:bg-pink-100 dark:hover:bg-pink-900/40 transition-colors flex items-center justify-center gap-2"
@@ -1362,7 +1455,7 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
 
                                 {/* STEP 2: PAYMENT */}
                                 {paymentStep === 2 && (
-                                    <div className="space-y-6 animate-in slide-in-from-right-4 duration-300 h-full flex flex-col">
+                                    <div className="space-y-4 animate-in slide-in-from-right-4 duration-300 h-full flex flex-col">
                                         <div className="flex items-center gap-2 mb-2">
                                             <button onClick={() => setPaymentStep(1)} className="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full">
                                                 <ArrowLeft size={20} className="text-gray-500" />
@@ -1372,84 +1465,140 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
                                             </h3>
                                         </div>
 
-                                        {/* Payment Methods Grid */}
-                                        <div className="grid grid-cols-2 gap-3">
-                                            {[
-                                                { id: 'credit', label: 'Crédito', icon: CreditCard },
-                                                { id: 'debit', label: 'Débito', icon: CreditCard },
-                                                { id: 'money', label: 'Dinheiro', icon: Banknote },
-                                                { id: 'pix', label: 'Pix', icon: QrCode },
-                                            ].map((m) => (
-                                                <button
-                                                    key={m.id}
-                                                    onClick={() => {
-                                                        setSelectedMethod(m.id as any);
-                                                        if (m.id === 'credit' || m.id === 'debit') { setCardType(m.id as any); setInstallments(1); }
-                                                        if (m.id === 'money') setCashReceived('');
-                                                    }}
-                                                    className={`p-4 rounded-xl border-2 flex flex-col items-center justify-center gap-1 transition-all ${selectedMethod === m.id ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300' : 'border-gray-200 dark:border-gray-600 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800'}`}
-                                                >
-                                                    <m.icon size={20} />
-                                                    <span className="font-bold">{m.label}</span>
-                                                </button>
-                                            ))}
-                                        </div>
-
-                                        {/* Dynamic Inputs based on Method */}
-                                        <div className="flex-1 space-y-4">
-                                            {/* Installments for Credit */}
-                                            {selectedMethod === 'credit' && (
-                                                <div className="animate-in fade-in slide-in-from-top-2">
-                                                    <label className="block text-sm font-bold text-gray-500 uppercase mb-2">Parcelamento</label>
-                                                    <select
-                                                        className="w-full p-4 rounded-xl border-2 border-emerald-200 dark:border-emerald-900 focus:border-emerald-500 outline-none bg-white dark:bg-gray-800 text-lg font-bold text-gray-800 dark:text-white"
-                                                        value={installments}
-                                                        onChange={(e) => setInstallments(Number(e.target.value))}
-                                                    >
-                                                        {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12].map(num => (
-                                                            <option key={num} value={num}>
-                                                                {num}x de R$ {(finalTotal / num).toFixed(2)} {num === 1 ? '(À vista)' : '(Sem juros)'}
-                                                            </option>
-                                                        ))}
-                                                    </select>
-                                                </div>
-                                            )}
-
-                                            {/* Cash Inputs */}
-                                            {selectedMethod === 'money' && (
-                                                <div className="animate-in fade-in slide-in-from-top-2">
-                                                    <label className="block text-sm font-bold text-gray-500 uppercase mb-2">Valor Recebido</label>
-                                                    <div className="relative">
-                                                        <DollarSign className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
-                                                        <input
-                                                            type="number"
-                                                            autoFocus
-                                                            className="w-full pl-12 pr-4 py-4 rounded-xl border-2 border-emerald-200 dark:border-emerald-900 focus:border-emerald-500 outline-none text-2xl font-bold bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-300"
-                                                            placeholder="0.00"
-                                                            value={cashReceived}
-                                                            onChange={(e) => setCashReceived(e.target.value)}
-                                                        />
+                                        {/* Allocated Parts */}
+                                        {paymentParts.length > 0 && (
+                                            <div className="space-y-1.5 animate-in fade-in">
+                                                <p className="text-xs font-bold text-gray-500 uppercase">Pagamentos adicionados</p>
+                                                {paymentParts.map((p, i) => (
+                                                    <div key={i} className="flex items-center justify-between bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-xl px-3 py-2">
+                                                        <span className="font-bold text-emerald-700 dark:text-emerald-300 text-sm">{p.method === 'credit' ? 'Crédito' : p.method === 'debit' ? 'Débito' : p.method === 'money' ? 'Dinheiro' : 'PIX'}</span>
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="font-black text-emerald-800 dark:text-emerald-200">R$ {p.amount.toFixed(2)}</span>
+                                                            <button onClick={() => removePaymentPart(i)} className="text-rose-400 hover:text-rose-600"><X size={14} /></button>
+                                                        </div>
                                                     </div>
-                                                    <div className={`mt-3 p-4 rounded-xl border-2 text-center transition-all ${remainingAmount > 0 ? 'bg-rose-50 border-rose-100 text-rose-700' : 'bg-emerald-50 border-emerald-100 text-emerald-700'}`}>
-                                                        {remainingAmount > 0 ? (
-                                                            <span className="font-bold">Faltam: R$ {remainingAmount.toFixed(2)}</span>
-                                                        ) : (
-                                                            <span className="font-bold text-xl">Troco: R$ {changeAmount.toFixed(2)}</span>
+                                                ))}
+                                                {remainingToAllocate > 0.01 ? (
+                                                    <div className="flex justify-between items-center bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl px-3 py-2">
+                                                        <span className="text-amber-700 dark:text-amber-300 text-sm font-bold">Falta cobrir</span>
+                                                        <span className="font-black text-amber-800 dark:text-amber-200">R$ {remainingToAllocate.toFixed(2)}</span>
+                                                    </div>
+                                                ) : (
+                                                    <div className="flex justify-between items-center bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-xl px-3 py-2">
+                                                        <span className="text-emerald-700 dark:text-emerald-300 text-sm font-bold">✅ Total coberto!</span>
+                                                        <span className="font-black text-emerald-700 dark:text-emerald-300">R$ {finalTotal.toFixed(2)}</span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+
+                                        {/* Add next payment method */}
+                                        {(remainingToAllocate > 0.01 || paymentParts.length === 0) && (
+                                            <div className="space-y-3">
+                                                <p className="text-xs font-bold text-gray-500 uppercase">{paymentParts.length > 0 ? 'Adicionar mais uma forma' : 'Forma de pagamento'}</p>
+                                                <div className="grid grid-cols-2 gap-3">
+                                                    {[
+                                                        { id: 'credit', label: 'Crédito', icon: CreditCard },
+                                                        { id: 'debit', label: 'Débito', icon: CreditCard },
+                                                        { id: 'money', label: 'Dinheiro', icon: Banknote },
+                                                        { id: 'pix', label: 'Pix', icon: QrCode },
+                                                    ].map((m) => (
+                                                        <button
+                                                            key={m.id}
+                                                            onClick={() => {
+                                                                setSelectedMethod(m.id as any);
+                                                                if (m.id === 'credit' || m.id === 'debit') { setCardType(m.id as any); setInstallments(1); }
+                                                                if (m.id === 'money') setCashReceived('');
+                                                            }}
+                                                            className={`p-4 rounded-xl border-2 flex flex-col items-center justify-center gap-1 transition-all ${selectedMethod === m.id ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300' : 'border-gray-200 dark:border-gray-600 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800'}`}
+                                                        >
+                                                            <m.icon size={20} />
+                                                            <span className="font-bold">{m.label}</span>
+                                                        </button>
+                                                    ))}
+                                                </div>
+
+                                                {/* Credit surcharge notice */}
+                                                {selectedMethod === 'credit' && (
+                                                    <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-xl px-4 py-2 text-xs text-amber-700 dark:text-amber-300 font-medium animate-in fade-in">
+                                                        ⚠️ Acréscimo de 5% para pagamento no crédito
+                                                    </div>
+                                                )}
+
+                                                {/* Amount input + installments/cash/pix details + Add button */}
+                                                {selectedMethod && (
+                                                    <div className="space-y-3 animate-in fade-in">
+                                                        <div>
+                                                            <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Valor nesta forma</label>
+                                                            <div className="relative">
+                                                                <DollarSign className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                                                                <input
+                                                                    type="number" step="0.01"
+                                                                    className="w-full pl-10 pr-4 py-3 rounded-xl border-2 border-emerald-200 dark:border-emerald-900 focus:border-emerald-500 outline-none font-bold bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                                                                    placeholder={`${remainingToAllocate.toFixed(2)} (restante)`}
+                                                                    value={splitAmount}
+                                                                    onChange={(e) => setSplitAmount(e.target.value)}
+                                                                />
+                                                            </div>
+                                                        </div>
+
+                                                        {selectedMethod === 'credit' && (
+                                                            <div>
+                                                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Parcelamento</label>
+                                                                <select
+                                                                    className="w-full p-3 rounded-xl border-2 border-emerald-200 dark:border-emerald-900 font-bold bg-white dark:bg-gray-800 text-gray-800 dark:text-white outline-none"
+                                                                    value={installments}
+                                                                    onChange={(e) => setInstallments(Number(e.target.value))}
+                                                                >
+                                                                    {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12].map(num => (
+                                                                        <option key={num} value={num}>
+                                                                            {num}x de R$ {((parseFloat(splitAmount) || remainingToAllocate) / num).toFixed(2)} {num === 1 ? '(À vista)' : ''}
+                                                                        </option>
+                                                                    ))}
+                                                                </select>
+                                                            </div>
                                                         )}
-                                                    </div>
-                                                </div>
-                                            )}
 
-                                            {/* Pix Instructions */}
-                                            {selectedMethod === 'pix' && (
-                                                <div className="flex flex-col items-center justify-center py-4 text-center space-y-2 animate-in fade-in">
-                                                    <div className="p-3 bg-white rounded-xl border-2 border-teal-500 shadow-sm">
-                                                        <QrCode size={100} className="text-gray-900" />
+                                                        {selectedMethod === 'money' && (
+                                                            <div>
+                                                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Valor entregue</label>
+                                                                <div className="relative">
+                                                                    <DollarSign className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                                                                    <input
+                                                                        type="number"
+                                                                        className="w-full pl-10 pr-4 py-3 rounded-xl border-2 border-emerald-200 dark:border-emerald-900 font-bold bg-white dark:bg-gray-800 text-gray-900 dark:text-white outline-none"
+                                                                        placeholder="0.00" value={cashReceived}
+                                                                        onChange={(e) => setCashReceived(e.target.value)}
+                                                                    />
+                                                                </div>
+                                                                {cashReceived && (
+                                                                    <div className={`mt-1.5 p-2 rounded-xl border text-center text-sm ${parseFloat(cashReceived) < (parseFloat(splitAmount) || remainingToAllocate) ? 'bg-rose-50 border-rose-100 text-rose-700' : 'bg-emerald-50 border-emerald-100 text-emerald-700'}`}>
+                                                                        <span className="font-bold">
+                                                                            {parseFloat(cashReceived) < (parseFloat(splitAmount) || remainingToAllocate)
+                                                                                ? `Faltam: R$ ${((parseFloat(splitAmount) || remainingToAllocate) - parseFloat(cashReceived)).toFixed(2)}`
+                                                                                : `Troco: R$ ${(parseFloat(cashReceived) - (parseFloat(splitAmount) || remainingToAllocate)).toFixed(2)}`
+                                                                            }
+                                                                        </span>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        )}
+
+                                                        {selectedMethod === 'pix' && (
+                                                            <div className="flex items-center gap-3 py-1 animate-in fade-in">
+                                                                <div className="p-2 bg-white rounded-xl border-2 border-teal-500"><QrCode size={48} className="text-gray-900" /></div>
+                                                                <p className="text-sm text-gray-500">Aguardando PIX...</p>
+                                                            </div>
+                                                        )}
+
+                                                        <button type="button" onClick={addPaymentPart}
+                                                            className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-sm shadow-md transition-all flex items-center justify-center gap-2 active:scale-95">
+                                                            <Plus size={16} /> {paymentParts.length > 0 ? 'Adicionar método' : 'Usar este método'}
+                                                        </button>
                                                     </div>
-                                                    <p className="text-sm text-gray-500">Aguardando pagamento...</p>
-                                                </div>
-                                            )}
-                                        </div>
+                                                )}
+                                            </div>
+                                        )}
                                     </div>
                                 )}
                             </div>
@@ -1530,6 +1679,12 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
                                                 <span>R$ {(parseFloat(deliveryFee) || 0).toFixed(2)}</span>
                                             </div>
                                         )}
+                                        {creditSurcharge > 0 && (
+                                            <div className="flex justify-between text-amber-600 dark:text-amber-400 font-medium">
+                                                <span>Acréscimo Crédito (5%)</span>
+                                                <span>+ R$ {creditSurcharge.toFixed(2)}</span>
+                                            </div>
+                                        )}
                                     </div>
 
                                     <div className="flex justify-between items-end border-t border-gray-200 dark:border-gray-700 pt-3">
@@ -1540,7 +1695,7 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
                                     {paymentStep === 2 && (
                                         <button
                                             onClick={confirmPayment}
-                                            disabled={(selectedMethod === 'money' && remainingAmount > 0)}
+                                            disabled={paymentParts.length > 0 ? remainingToAllocate > 0.01 : !selectedMethod}
                                             className="w-full py-4 bg-[#ffc8cb] hover:bg-[#ffb6b9] text-gray-900 rounded-xl font-bold text-lg shadow-lg shadow-pink-200 dark:shadow-none transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed hover:scale-[1.01] active:scale-[0.99] mt-2"
                                         >
                                             <CheckCircle size={24} /> {saleType === 'delivery' ? 'Lançar Entrega' : 'Confirmar Venda'}
