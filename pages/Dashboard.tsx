@@ -523,8 +523,8 @@ const Dashboard: React.FC<DashboardProps> = ({ user, users = [], salesGoals, onN
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {isSalesperson ? (
                     <>
-                        <StatCard title="Minha Comissão (Mês)" value={`R$ ${commission.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`} subtext={commissionSubtext} icon={Award} color="bg-purple-500" trend="info" />
-                        <StatCard title="Minhas Vendas (Mês)" value={`R$ ${myPersonalSalesMonth.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`} subtext="Acumulado" icon={DollarSign} color="bg-pink-500" trend="info" />
+                        <StatCard title="Minha Comissão (Mês)" value={`R$ ${commission.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`} subtext={commissionSubtext} icon={Award} color="bg-purple-500" trend="info" />
+                        <StatCard title="Minhas Vendas (Mês)" value={`R$ ${myPersonalSalesMonth.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`} subtext="Acumulado" icon={DollarSign} color="bg-pink-500" trend="info" />
                         <StatCard title="Envios Pendentes" value={itemsToShip} subtext="Pedidos para separar" icon={Truck} trend="info" color="bg-indigo-500" onClick={() => onNavigate('delivery')} />
                         <StatCard title="Produtos Parados" value={stalledCount} subtext="Sem vendas > 30d" icon={Clock} color="bg-amber-500" onClick={() => onViewStalled && onViewStalled()} action={<div className="text-xs bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200 px-2 py-1 rounded font-bold">Ver Estoque</div>} />
                         <StatCard title="Estoque Crítico" value={lowStockCount} subtext="Itens para repor" icon={AlertTriangle} trend={lowStockCount > 0 ? "down" : "info"} color="bg-rose-500" onClick={() => onViewLowStock && onViewLowStock()} action={<div className="text-xs bg-rose-100 text-rose-800 dark:bg-rose-900 dark:text-rose-200 px-2 py-1 rounded font-bold">Ver Estoque</div>} />
@@ -534,7 +534,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, users = [], salesGoals, onN
                         <StatCard title="Vendas Hoje (Total)" value={`R$ ${salesToday.toFixed(2)}`} subtext="vs. ontem" icon={DollarSign} trend="info" color="bg-emerald-500" />
                         <StatCard title="Vendas no Site" value={`R$ ${onlineSalesToday.toFixed(2)}`} subtext="~0% do total" icon={Globe} trend="info" color="bg-pink-500" onClick={() => onNavigate('ecommerce')} />
                         <StatCard title="Envios Pendentes" value={itemsToShip} subtext={`${ecommercePending} E-commerce / ${itemsToShip - ecommercePending} Loja`} icon={Truck} trend="info" color="bg-indigo-500" onClick={() => onNavigate('delivery')} />
-                        <StatCard title="Comissões a Pagar" value={`R$ ${commission.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`} subtext={commissionSubtext} icon={Award} color="bg-purple-500" />
+                        <StatCard title="Comissões a Pagar" value={`R$ ${commission.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`} subtext={commissionSubtext} icon={Award} color="bg-purple-500" />
                         <StatCard title="Produtos Parados" value={stalledCount} subtext="Sem vendas > 30d" icon={Clock} color="bg-amber-500" onClick={() => onViewStalled && onViewStalled()} action={<div className="text-xs bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200 px-2 py-1 rounded font-bold">Ver Estoque</div>} />
                         <StatCard title="Estoque Crítico" value={lowStockCount} subtext="Itens para repor" icon={AlertTriangle} trend={lowStockCount > 0 ? "down" : "info"} color="bg-rose-500" onClick={() => onViewLowStock && onViewLowStock()} action={<div className="text-xs bg-rose-100 text-rose-800 dark:bg-rose-900 dark:text-rose-200 px-2 py-1 rounded font-bold">Ver Estoque</div>} />
                     </>
@@ -563,8 +563,8 @@ const Dashboard: React.FC<DashboardProps> = ({ user, users = [], salesGoals, onN
                                         <span className="text-xs bg-white dark:bg-indigo-900/50 px-2 py-1 rounded font-mono text-indigo-600 dark:text-indigo-300">Hoje</span>
                                     </div>
                                     <div className="mb-4">
-                                        <span className="text-2xl font-black text-gray-800 dark:text-white">R$ {myPerformance.salesToday.toLocaleString('pt-BR')}</span>
-                                        <span className="text-xs text-gray-500 dark:text-gray-400 block mt-1">Meta: R$ {myPerformance.dailyTarget.toLocaleString('pt-BR')}</span>
+                                        <span className="text-2xl font-black text-gray-800 dark:text-white">R$ {myPerformance.salesToday.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                        <span className="text-xs text-gray-500 dark:text-gray-400 block mt-1">Meta: R$ {myPerformance.dailyTarget.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                                     </div>
                                     <div className="w-full bg-white dark:bg-indigo-900/50 rounded-full h-3 overflow-hidden border border-indigo-100 dark:border-indigo-800/50">
                                         <div className="bg-indigo-500 h-full rounded-full transition-all duration-1000" style={{ width: `${Math.min(100, (myPerformance.salesToday / Math.max(1, myPerformance.dailyTarget)) * 100)}%` }}></div>
@@ -580,8 +580,8 @@ const Dashboard: React.FC<DashboardProps> = ({ user, users = [], salesGoals, onN
                                         </span>
                                     </div>
                                     <div className="mb-4">
-                                        <span className="text-2xl font-black text-gray-800 dark:text-white">R$ {myPerformance.salesMonth.toLocaleString('pt-BR')}</span>
-                                        <span className="text-xs text-gray-500 dark:text-gray-400 block mt-1">Meta: R$ {myPerformance.monthlyTarget.toLocaleString('pt-BR')}</span>
+                                        <span className="text-2xl font-black text-gray-800 dark:text-white">R$ {myPerformance.salesMonth.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                        <span className="text-xs text-gray-500 dark:text-gray-400 block mt-1">Meta: R$ {myPerformance.monthlyTarget.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                                     </div>
                                     <div className="w-full bg-white dark:bg-pink-900/50 rounded-full h-3 overflow-hidden border border-pink-100 dark:border-pink-800/50">
                                         <div className="bg-pink-500 h-full rounded-full transition-all duration-1000" style={{ width: `${Math.min(100, (myPerformance.salesMonth / Math.max(1, myPerformance.monthlyTarget)) * 100)}%` }}></div>
@@ -619,7 +619,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, users = [], salesGoals, onN
                                                             <div className="bg-indigo-500 h-full rounded-full transition-all duration-700" style={{ width: `${Math.min(100, (seller.salesToday / Math.max(1, seller.dailyTarget)) * 100)}%` }}></div>
                                                         </div>
                                                         <div className="flex justify-between mt-1 text-[10px] text-gray-400">
-                                                            <span>R$ {seller.salesToday.toLocaleString('pt-BR')}</span>
+                                                            <span>R$ {seller.salesToday.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                                                             <span>Meta: R$ {seller.dailyTarget.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</span>
                                                         </div>
                                                     </div>
@@ -633,7 +633,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, users = [], salesGoals, onN
                                                             <div className="bg-pink-500 h-full rounded-full transition-all duration-700" style={{ width: `${Math.min(100, (seller.salesMonth / Math.max(1, seller.monthlyTarget)) * 100)}%` }}></div>
                                                         </div>
                                                         <div className="flex justify-between mt-1 text-[10px] text-gray-400">
-                                                            <span>R$ {seller.salesMonth.toLocaleString('pt-BR')}</span>
+                                                            <span>R$ {seller.salesMonth.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                                                             <span>Meta: R$ {seller.monthlyTarget.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</span>
                                                         </div>
                                                         {/* Comissão acumulada no mês */}
@@ -641,7 +641,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, users = [], salesGoals, onN
                                                             <div>
                                                                 <p className="text-[10px] font-bold text-gray-400 uppercase">Comissão do Mês</p>
                                                                 <p className="text-base font-black text-purple-600 dark:text-purple-400">
-                                                                    R$ {((seller as any).commission ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                                                    R$ {((seller as any).commission ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                                                 </p>
                                                             </div>
                                                             <span className={`text-xs font-bold px-2 py-1 rounded-full ${(seller as any).todayRate === '2%' ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>

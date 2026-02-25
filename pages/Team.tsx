@@ -253,8 +253,8 @@ const Team: React.FC<TeamProps> = ({ users, currentUser, salesGoals, onUpdateGoa
                                                             <div className={`h-full rounded-full ${progress >= 100 ? 'bg-emerald-500' : 'bg-pink-500'}`} style={{ width: `${Math.min(progress, 100)}%` }}></div>
                                                         </div>
                                                         <div className="flex justify-between text-xs mt-1 text-gray-400">
-                                                            <span>R$ {currentSales.toLocaleString('pt-BR')}</span>
-                                                            <span>{type === 'daily' ? 'Meta Dia: ' : 'Meta Mês: '}R$ {goalVal.toLocaleString('pt-BR')}</span>
+                                                            <span>R$ {currentSales.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                                            <span>{type === 'daily' ? 'Meta Dia: ' : 'Meta Mês: '}R$ {goalVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                                                         </div>
                                                     </div>
                                                     <div className="flex items-center justify-between p-2.5 rounded-lg bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800">
@@ -265,7 +265,7 @@ const Team: React.FC<TeamProps> = ({ users, currentUser, salesGoals, onUpdateGoa
                                                             </span>
                                                         </div>
                                                         <span className="text-sm font-black text-purple-700 dark:text-purple-300">
-                                                            R$ {commValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                                            R$ {commValue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                                         </span>
                                                     </div>
                                                     <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300 bg-white dark:bg-gray-800 p-2 rounded border border-gray-100 dark:border-gray-700">
@@ -638,11 +638,11 @@ const Team: React.FC<TeamProps> = ({ users, currentUser, salesGoals, onUpdateGoa
                             <div className="grid grid-cols-2 gap-4 mb-6">
                                 <div className="bg-gray-50 dark:bg-gray-700/50 p-4 rounded-xl border border-gray-100 dark:border-gray-600 text-center">
                                     <p className="text-xs text-gray-500 dark:text-gray-400 uppercase font-bold">Vendido (Mês)</p>
-                                    <p className="text-lg font-bold text-gray-800 dark:text-white">R$ {(salesBySeller[selectedMember.id] || 0).toLocaleString('pt-BR')}</p>
+                                    <p className="text-lg font-bold text-gray-800 dark:text-white">R$ {(salesBySeller[selectedMember.id] || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
                                 </div>
                                 <div className="bg-gray-50 dark:bg-gray-700/50 p-4 rounded-xl border border-gray-100 dark:border-gray-600 text-center">
                                     <p className="text-xs text-gray-500 dark:text-gray-400 uppercase font-bold">Meta ({salesGoals.goalTypes[selectedMember.id] === 'daily' ? 'Diária' : 'Mensal'})</p>
-                                    <p className="text-lg font-bold text-gray-800 dark:text-white">R$ {(salesGoals.userGoals[selectedMember.id] || 0).toLocaleString('pt-BR')}</p>
+                                    <p className="text-lg font-bold text-gray-800 dark:text-white">R$ {(salesGoals.userGoals[selectedMember.id] || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
                                 </div>
                             </div>
 
@@ -666,7 +666,7 @@ const Team: React.FC<TeamProps> = ({ users, currentUser, salesGoals, onUpdateGoa
                                                     <p className="text-sm font-medium text-gray-800 dark:text-white">{sale.customerName}</p>
                                                     <p className="text-xs text-gray-400">{new Date(sale.date).toLocaleString('pt-BR')}</p>
                                                 </div>
-                                                <span className="text-sm font-bold text-emerald-600">R$ {sale.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                                                <span className="text-sm font-bold text-emerald-600">R$ {sale.total.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                                             </div>
                                         ));
                                     })()}

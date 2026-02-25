@@ -148,6 +148,8 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
     const [isDeletingSale, setIsDeletingSale] = useState(false);
     const [historySearchTerm, setHistorySearchTerm] = useState('');
     const [historyDate, setHistoryDate] = useState<string>(new Date().toISOString().split('T')[0]);
+    const [historySeller, setHistorySeller] = useState<string>(''); // '' = todas as vendedoras
+
 
     const skuInputRef = useRef<HTMLInputElement>(null);
 
@@ -1005,10 +1007,19 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
 
     const renderHistoryList = () => {
         const q = historySearchTerm.trim().toLowerCase();
-        // Filter by selected date first
+
+        // Lista de vendedoras únicas das transações (para o dropdown)
+        const sellerOptions = Array.from(
+            new Set(
+                supabaseTransactions
+                    .map(t => (t as any).sellerName)
+                    .filter(Boolean)
+            )
+        ).sort() as string[];
+
+        // 1. Filtrar por data (local)
         const dateFiltered = historyDate
             ? supabaseTransactions.filter(t => {
-                // Usar fuso local (evita bug UTC-3: venda às 21h apareceria no dia seguinte em UTC)
                 const d = new Date(t.date);
                 const day = String(d.getDate()).padStart(2, '0');
                 const month = String(d.getMonth() + 1).padStart(2, '0');
@@ -1017,18 +1028,39 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
                 return txDate === historyDate;
             })
             : supabaseTransactions;
+
+        // 2. Filtrar por vendedora
+        const sellerFiltered = historySeller
+            ? dateFiltered.filter(t => (t as any).sellerName === historySeller)
+            : dateFiltered;
+
+        // 3. Filtrar por busca de texto
         const visibleTransactions = q
-            ? dateFiltered.filter(t =>
+            ? sellerFiltered.filter(t =>
                 t.customerName.toLowerCase().includes(q) ||
                 ((t as any).phone || '').toLowerCase().includes(q) ||
                 t.id.toLowerCase().includes(q)
             )
-            : dateFiltered;
+            : sellerFiltered;
+
         const today = new Date().toISOString().split('T')[0];
         const isToday = historyDate === today;
+
+        // KPI da vendedora selecionada: total + comissão do dia
+        const sellerDayTotal = historySeller
+            ? sellerFiltered
+                .filter(t => t.status === 'Completed')
+                .reduce((acc, t) => acc + t.total - ((t as any).deliveryFee ?? 0), 0)
+            : 0;
+        const COMMISSION_THRESHOLD_POS = 3000;
+        const sellerDayCommission = historySeller
+            ? sellerDayTotal * (sellerDayTotal >= COMMISSION_THRESHOLD_POS ? 0.02 : 0.01)
+            : 0;
+        const sellerRate = sellerDayTotal >= COMMISSION_THRESHOLD_POS ? '2%' : '1%';
+
         return (
             <div className="flex-1 overflow-y-auto bg-gray-50/50 dark:bg-gray-900/50 h-full flex flex-col">
-                {/* Search + Date bar */}
+                {/* Search + Date + Seller bar */}
                 <div className="p-3 border-b border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800 space-y-2">
                     {/* Date row */}
                     <div className="flex items-center gap-2">
@@ -1048,6 +1080,30 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
                             </button>
                         )}
                     </div>
+
+                    {/* Seller filter row */}
+                    <div className="flex items-center gap-2">
+                        <UserIcon size={14} className="text-purple-400 flex-shrink-0" />
+                        <select
+                            value={historySeller}
+                            onChange={e => setHistorySeller(e.target.value)}
+                            className="flex-1 text-sm border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-purple-300/50 focus:border-purple-400 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white"
+                        >
+                            <option value="">👥 Todas as vendedoras</option>
+                            {sellerOptions.map(s => (
+                                <option key={s} value={s}>{s}</option>
+                            ))}
+                        </select>
+                        {historySeller && (
+                            <button
+                                onClick={() => setHistorySeller('')}
+                                className="text-[11px] font-bold text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/20 px-2 py-1 rounded-lg hover:bg-purple-100 dark:hover:bg-purple-900/40 transition-colors whitespace-nowrap"
+                            >
+                                <X size={12} />
+                            </button>
+                        )}
+                    </div>
+
                     {/* Text search row */}
                     <div className="relative">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={15} />
@@ -1064,8 +1120,37 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
                             </button>
                         )}
                     </div>
+
+                    {/* KPI bar — só aparece quando uma vendedora está selecionada */}
+                    {historySeller && (
+                        <div className="flex gap-2 pt-1">
+                            {/* Total vendido — sempre visível */}
+                            <div className="flex-1 bg-purple-50 dark:bg-purple-900/20 border border-purple-100 dark:border-purple-800 rounded-xl px-3 py-2">
+                                <p className="text-[10px] font-bold text-purple-400 uppercase">Total vendido (sem entrega)</p>
+                                <p className="text-base font-black text-purple-700 dark:text-purple-300">
+                                    R$ {sellerDayTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </p>
+                            </div>
+                            {/* Comissão — só para admins/gerentes */}
+                            {user?.role !== 'Vendedor' && (
+                                <div className="flex-1 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-800 rounded-xl px-3 py-2">
+                                    <p className="text-[10px] font-bold text-emerald-400 uppercase flex items-center gap-1">
+                                        Comissão
+                                        <span className={`ml-1 px-1.5 py-0.5 rounded text-[9px] font-black ${sellerRate === '2%'
+                                            ? 'bg-emerald-200 text-emerald-800 dark:bg-emerald-800 dark:text-emerald-200'
+                                            : 'bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300'
+                                            }`}>{sellerRate}</span>
+                                    </p>
+                                    <p className="text-base font-black text-emerald-700 dark:text-emerald-300">
+                                        R$ {sellerDayCommission.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    </p>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
                     <p className="text-[11px] text-gray-400 ml-1">
-                        {visibleTransactions.length} venda(s) em {isToday ? 'hoje' : new Date(historyDate + 'T12:00:00').toLocaleDateString('pt-BR')}
+                        {visibleTransactions.length} venda(s) {historySeller ? `de ${historySeller}` : ''} em {isToday ? 'hoje' : new Date(historyDate + 'T12:00:00').toLocaleDateString('pt-BR')}
                     </p>
                 </div>
                 <div className="p-4 space-y-3 overflow-y-auto flex-1">
@@ -1084,6 +1169,11 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
                                     <p className="font-bold text-gray-800 dark:text-white line-clamp-1">{transaction.customerName}</p>
                                     <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
                                         <Calendar size={12} /> {new Date(transaction.date).toLocaleDateString('pt-BR')}
+                                        {(transaction as any).sellerName && (
+                                            <span className="flex items-center gap-1 text-purple-500 dark:text-purple-400">
+                                                <UserIcon size={11} /> {(transaction as any).sellerName}
+                                            </span>
+                                        )}
                                     </div>
                                 </div>
                                 <div className="text-right flex flex-col items-end gap-1">
@@ -1121,13 +1211,14 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
                     ) : (
                         <div className="h-full flex flex-col items-center justify-center text-gray-400">
                             <History size={48} className="mb-2 opacity-20" />
-                            <p>{q ? 'Nenhum resultado encontrado.' : 'Nenhuma venda registrada.'}</p>
+                            <p>{q || historySeller ? 'Nenhum resultado encontrado.' : 'Nenhuma venda registrada.'}</p>
                         </div>
                     )}
                 </div>
             </div>
         );
     };
+
 
     return (
 
