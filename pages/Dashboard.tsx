@@ -125,13 +125,13 @@ const Dashboard: React.FC<DashboardProps> = ({ user, users = [], salesGoals, onN
     // Commission Calculation (UPDATED LOGIC: Tiered System)
     const currentMonthSales = transactions
         .filter(t => t.date.startsWith(currentMonth) && t.status === 'Completed')
-        .reduce((acc, curr) => acc + curr.total, 0);
+        .reduce((acc, curr) => acc + curr.total - (curr.deliveryFee ?? 0), 0);
 
     // Vendas específicas do vendedor logado
     const myPersonalSalesMonth = isSalesperson
         ? transactions
             .filter(t => t.date.startsWith(currentMonth) && t.status === 'Completed' && t.sellerId === user.id)
-            .reduce((acc, curr) => acc + curr.total, 0)
+            .reduce((acc, curr) => acc + curr.total - (curr.deliveryFee ?? 0), 0)
         : 0;
 
     const COMMISSION_THRESHOLD = 3000;
@@ -160,7 +160,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, users = [], salesGoals, onN
         salespeople.forEach(sp => {
             const spSales = transactions
                 .filter(t => t.date.startsWith(currentMonth) && t.status === 'Completed' && t.sellerId === sp.id)
-                .reduce((acc, curr) => acc + curr.total, 0);
+                .reduce((acc, curr) => acc + curr.total - (curr.deliveryFee ?? 0), 0);
             totalOwed += calcCommission(spSales);
         });
         commission = totalOwed;
@@ -196,14 +196,14 @@ const Dashboard: React.FC<DashboardProps> = ({ user, users = [], salesGoals, onN
         const monthlyTarget = goalType === 'monthly' ? rawGoal : rawGoal * 30;
         const dailyTarget = goalType === 'daily' ? rawGoal : rawGoal / 30;
 
-        // Calcular Vendas Reais por Usuário via sellerId
+        // Calcular Vendas Reais por Usuário via sellerId (excluindo taxa de entrega)
         const salesMonth = transactions
             .filter(t => t.date.startsWith(currentMonth) && t.status === 'Completed' && t.sellerId === u.id)
-            .reduce((acc, curr) => acc + curr.total, 0);
+            .reduce((acc, curr) => acc + curr.total - (curr.deliveryFee ?? 0), 0);
 
         const salesToday = transactions
             .filter(t => t.date.startsWith(today) && t.status === 'Completed' && t.sellerId === u.id)
-            .reduce((acc, curr) => acc + curr.total, 0);
+            .reduce((acc, curr) => acc + curr.total - (curr.deliveryFee ?? 0), 0);
 
         return {
             id: u.id,

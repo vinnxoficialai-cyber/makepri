@@ -28,8 +28,9 @@ const Finance: React.FC = () => {
                 type: 'Income',
                 date: t.date,
                 category: 'Vendas',
-                status: 'Paid'
-            }));
+                status: 'Paid',
+                paymentMethod: t.paymentMethod // ← guardar método de pagamento
+            } as any));
 
         // Sort by date desc
         return [...manualRecords, ...salesRecords].sort((a, b) =>
@@ -61,6 +62,7 @@ const Finance: React.FC = () => {
         let incomePix = 0;
         let incomeCredit = 0;
         let incomeDebit = 0;
+        let incomeCash = 0;
 
         // Need to check transactions payment method correctly
         const sales = transactions.filter(t => t.status === 'Completed');
@@ -70,13 +72,13 @@ const Finance: React.FC = () => {
             if (method.includes('pix')) incomePix += sale.total;
             else if (method.includes('credit') || method.includes('crédito')) incomeCredit += sale.total;
             else if (method.includes('debit') || method.includes('débito')) incomeDebit += sale.total;
-            // else money/other
+            else if (method.includes('money') || method.includes('dinheiro') || method.includes('cash')) incomeCash += sale.total;
         });
 
-        return { incomePix, incomeCredit, incomeDebit };
+        return { incomePix, incomeCredit, incomeDebit, incomeCash };
     };
 
-    const { incomePix, incomeCredit, incomeDebit } = calculateBreakdown();
+    const { incomePix, incomeCredit, incomeDebit, incomeCash } = calculateBreakdown();
 
     // --- HANDLERS ---
 
@@ -185,7 +187,7 @@ const Finance: React.FC = () => {
             </div>
 
             {/* BREAKDOWN ROW */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                 {/* PIX */}
                 <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-teal-100 dark:border-teal-900/30 shadow-sm flex items-center gap-4 relative overflow-hidden">
                     <div className="absolute right-0 top-0 h-full w-1 bg-teal-500"></div>
@@ -221,6 +223,18 @@ const Finance: React.FC = () => {
                         <p className="text-xl font-bold text-blue-700 dark:text-blue-400">R$ {incomeDebit.toFixed(2)}</p>
                     </div>
                 </div>
+
+                {/* DINHEIRO (NOVO) */}
+                <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-emerald-100 dark:border-emerald-900/30 shadow-sm flex items-center gap-4 relative overflow-hidden">
+                    <div className="absolute right-0 top-0 h-full w-1 bg-emerald-500"></div>
+                    <div className="p-3 bg-emerald-50 dark:bg-emerald-900/20 rounded-full text-emerald-600 dark:text-emerald-400">
+                        <Banknote size={20} />
+                    </div>
+                    <div>
+                        <p className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">Vendas em Dinheiro</p>
+                        <p className="text-xl font-bold text-emerald-700 dark:text-emerald-400">R$ {incomeCash.toFixed(2)}</p>
+                    </div>
+                </div>
             </div>
 
             {/* TRANSACTIONS TABLE */}
@@ -229,43 +243,66 @@ const Finance: React.FC = () => {
                     <h3 className="font-bold text-gray-800 dark:text-white">Lançamentos Recentes</h3>
                     <button className="text-indigo-600 dark:text-indigo-400 text-sm font-medium hover:underline">Ver Todos</button>
                 </div>
-                <table className="w-full text-left">
-                    <thead className="bg-gray-50 dark:bg-gray-700/50 text-gray-500 dark:text-gray-400 text-xs uppercase">
-                        <tr>
-                            <th className="p-4 font-medium">Descrição</th>
-                            <th className="p-4 font-medium">Categoria</th>
-                            <th className="p-4 font-medium">Data</th>
-                            <th className="p-4 font-medium">Valor</th>
-                            <th className="p-4 font-medium">Status</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100 dark:divide-gray-700 text-sm">
-                        {records.map(item => (
-                            <tr key={item.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
-                                <td className="p-4 font-medium text-gray-800 dark:text-white">
-                                    {item.description}
-                                </td>
-                                <td className="p-4 text-gray-500 dark:text-gray-400">
-                                    <span className={`px-2 py-1 rounded text-xs ${item.category.includes('Sangria') ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400 font-bold' : 'bg-gray-100 dark:bg-gray-700'}`}>
-                                        {item.category}
-                                    </span>
-                                </td>
-                                <td className="p-4 text-gray-500 dark:text-gray-400 flex items-center gap-2">
-                                    <Calendar size={14} /> {new Date(item.date).toLocaleDateString('pt-BR')}
-                                </td>
-                                <td className={`p-4 font-bold ${item.type === 'Income' ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
-                                    {item.type === 'Income' ? '+' : '-'} R$ {item.amount.toFixed(2)}
-                                </td>
-                                <td className="p-4">
-                                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${item.status === 'Paid' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400' : 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400'
-                                        }`}>
-                                        {item.status === 'Paid' ? 'Pago' : 'Pendente'}
-                                    </span>
-                                </td>
+                <div className="overflow-x-auto">
+                    <table className="w-full text-left">
+                        <thead className="bg-gray-50 dark:bg-gray-700/50 text-gray-500 dark:text-gray-400 text-xs uppercase">
+                            <tr>
+                                <th className="p-4 font-medium">Descrição</th>
+                                <th className="p-4 font-medium">Pagamento</th>
+                                <th className="p-4 font-medium">Categoria</th>
+                                <th className="p-4 font-medium">Data</th>
+                                <th className="p-4 font-medium">Valor</th>
+                                <th className="p-4 font-medium">Status</th>
                             </tr>
-                        ))}
-                    </tbody>
-                </table>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100 dark:divide-gray-700 text-sm">
+                            {records.map(item => {
+                                const pm = (item as any).paymentMethod?.toLowerCase() || '';
+                                const pmLabel = pm.includes('pix') ? 'PIX'
+                                    : pm.includes('credit') || pm.includes('crédito') ? 'Crédito'
+                                        : pm.includes('debit') || pm.includes('débito') ? 'Débito'
+                                            : pm.includes('money') || pm.includes('dinheiro') || pm.includes('cash') ? 'Dinheiro'
+                                                : pm ? pm : '--';
+                                const pmColor = pm.includes('pix') ? 'bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400'
+                                    : pm.includes('credit') || pm.includes('crédito') ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400'
+                                        : pm.includes('debit') || pm.includes('débito') ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+                                            : pm.includes('money') || pm.includes('dinheiro') || pm.includes('cash') ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+                                                : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400';
+                                return (
+                                    <tr key={item.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
+                                        <td className="p-4 font-medium text-gray-800 dark:text-white">
+                                            {item.description}
+                                        </td>
+                                        <td className="p-4">
+                                            {pmLabel !== '--' ? (
+                                                <span className={`px-2 py-1 rounded text-xs font-bold ${pmColor}`}>{pmLabel}</span>
+                                            ) : (
+                                                <span className="text-gray-400 text-xs">--</span>
+                                            )}
+                                        </td>
+                                        <td className="p-4 text-gray-500 dark:text-gray-400">
+                                            <span className={`px-2 py-1 rounded text-xs ${item.category.includes('Sangria') ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400 font-bold' : 'bg-gray-100 dark:bg-gray-700'}`}>
+                                                {item.category}
+                                            </span>
+                                        </td>
+                                        <td className="p-4 text-gray-500 dark:text-gray-400 flex items-center gap-2">
+                                            <Calendar size={14} /> {new Date(item.date).toLocaleDateString('pt-BR')}
+                                        </td>
+                                        <td className={`p-4 font-bold ${item.type === 'Income' ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                                            {item.type === 'Income' ? '+' : '-'} R$ {item.amount.toFixed(2)}
+                                        </td>
+                                        <td className="p-4">
+                                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${item.status === 'Paid' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400' : 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400'
+                                                }`}>
+                                                {item.status === 'Paid' ? 'Pago' : 'Pendente'}
+                                            </span>
+                                        </td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+                </div>
             </div>
 
             {/* --- ADMIN AUTH MODAL --- */}

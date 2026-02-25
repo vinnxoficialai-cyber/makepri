@@ -4,7 +4,7 @@ import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
     PieChart, Pie, Cell, AreaChart, Area, LineChart, Line, Legend
 } from 'recharts';
-import { Download, Calendar, Filter, FileText, Check, X, FileSpreadsheet, Globe, Store, Truck, MousePointer2, ShoppingCart } from 'lucide-react';
+import { Download, Calendar, Filter, FileText, Check, X, FileSpreadsheet, Globe, Store, Truck, MousePointer2, ShoppingCart, QrCode, Banknote } from 'lucide-react';
 import { useTransactions } from '../lib/hooks'; // Importar hook
 import { MOCK_TRANSACTIONS } from '../constants';
 
@@ -58,6 +58,7 @@ const Reports: React.FC = () => {
     const totalRevenue = filteredTransactions.reduce((sum, t) => sum + t.total, 0);
     const totalOrders = filteredTransactions.length;
     const averageTicket = totalOrders > 0 ? totalRevenue / totalOrders : 0;
+
 
     // Calcular Top Categoria Real
     const categoryCounts: Record<string, number> = {};
@@ -137,6 +138,14 @@ const Reports: React.FC = () => {
         const pm = paymentMethod.toLowerCase();
         return keys.some(k => pm.includes(k.toLowerCase()));
     };
+
+    // Totais por forma de pagamento (usados nos KPI cards)
+    const totalPix = filteredTransactions
+        .filter(t => matchesMethod(t.paymentMethod, 'pix'))
+        .reduce((sum, t) => sum + t.total, 0);
+    const totalCash = filteredTransactions
+        .filter(t => matchesMethod(t.paymentMethod, 'money', 'dinheiro', 'cash'))
+        .reduce((sum, t) => sum + t.total, 0);
 
     const generalPaymentData = [
         {
@@ -257,7 +266,7 @@ const Reports: React.FC = () => {
             {reportType === 'general' && (
                 <div className="space-y-6 animate-in fade-in duration-300">
                     {/* KPI Cards */}
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
                         <div className="bg-white dark:bg-gray-800 p-5 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm transition-colors">
                             <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">Faturamento Bruto</p>
                             <h3 className="text-2xl font-bold text-gray-800 dark:text-white">R$ {totalRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</h3>
@@ -276,6 +285,28 @@ const Reports: React.FC = () => {
                         <div className="bg-white dark:bg-gray-800 p-5 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm transition-colors">
                             <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">Categoria Top</p>
                             <h3 className="text-2xl font-bold text-pink-600 dark:text-pink-400">{topCategory}</h3>
+                        </div>
+                        {/* Card: Recebido em PIX */}
+                        <div className="bg-teal-50 dark:bg-teal-900/20 p-5 rounded-xl border border-teal-100 dark:border-teal-800 shadow-sm transition-colors">
+                            <div className="flex justify-between items-start mb-1">
+                                <p className="text-sm text-teal-700 dark:text-teal-300 font-medium">Recebido em PIX</p>
+                                <QrCode size={16} className="text-teal-500 dark:text-teal-400 flex-shrink-0" />
+                            </div>
+                            <h3 className="text-2xl font-bold text-teal-700 dark:text-teal-300">R$ {totalPix.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</h3>
+                            <p className="mt-1 text-xs text-teal-500 dark:text-teal-400">
+                                {totalRevenue > 0 ? ((totalPix / totalRevenue) * 100).toFixed(0) : 0}% do total
+                            </p>
+                        </div>
+                        {/* Card: Vendas em Dinheiro */}
+                        <div className="bg-emerald-50 dark:bg-emerald-900/20 p-5 rounded-xl border border-emerald-100 dark:border-emerald-800 shadow-sm transition-colors">
+                            <div className="flex justify-between items-start mb-1">
+                                <p className="text-sm text-emerald-700 dark:text-emerald-300 font-medium">Vendas em Dinheiro</p>
+                                <Banknote size={16} className="text-emerald-500 dark:text-emerald-400 flex-shrink-0" />
+                            </div>
+                            <h3 className="text-2xl font-bold text-emerald-700 dark:text-emerald-300">R$ {totalCash.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</h3>
+                            <p className="mt-1 text-xs text-emerald-500 dark:text-emerald-400">
+                                {totalRevenue > 0 ? ((totalCash / totalRevenue) * 100).toFixed(0) : 0}% do total
+                            </p>
                         </div>
                     </div>
 
