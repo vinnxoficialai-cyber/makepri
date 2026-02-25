@@ -646,6 +646,11 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
             setSplitAmount('');
             setPaymentStep(1);
 
+            // ✅ Mudar para aba Histórico e garantir data = hoje
+            const todayDate = new Date().toISOString().split('T')[0];
+            setHistoryDate(todayDate);
+            setActiveTab('history');
+
             setIsPaymentModalOpen(false);
             setIsReceiptOpen(true);
 
@@ -1003,7 +1008,12 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
         // Filter by selected date first
         const dateFiltered = historyDate
             ? supabaseTransactions.filter(t => {
-                const txDate = new Date(t.date).toISOString().split('T')[0];
+                // Usar fuso local (evita bug UTC-3: venda às 21h apareceria no dia seguinte em UTC)
+                const d = new Date(t.date);
+                const day = String(d.getDate()).padStart(2, '0');
+                const month = String(d.getMonth() + 1).padStart(2, '0');
+                const year = d.getFullYear();
+                const txDate = `${year}-${month}-${day}`;
                 return txDate === historyDate;
             })
             : supabaseTransactions;
