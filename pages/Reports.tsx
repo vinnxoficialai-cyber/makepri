@@ -54,7 +54,8 @@ const Reports: React.FC = () => {
     const filteredTransactions = getFilteredTransactions();
 
     // KPI Calculations
-    const totalRevenue = filteredTransactions.reduce((sum, t) => sum + (t.total - (t.deliveryFee || 0)), 0);
+    // ⚠️ IMPORTANTE: usar t.total (que já inclui taxa de entrega) para coincidir com o financeiro do caixa
+    const totalRevenue = filteredTransactions.reduce((sum, t) => sum + t.total, 0);
     const totalOrders = filteredTransactions.length;
     const averageTicket = totalOrders > 0 ? totalRevenue / totalOrders : 0;
 
@@ -85,12 +86,10 @@ const Reports: React.FC = () => {
                 const total = filteredTransactions
                     .filter(t => {
                         const dateObj = new Date(t.date);
-                        // Ajuste fuso horário simples (pegar hora local) - ou usar UTC dependendo de como salvou
-                        // Assumindo que t.date é ISO UTC, new Date(t.date).getHours() pega hora local do browser
                         const tHour = dateObj.getHours();
                         return tHour >= hour && tHour < hour + 2;
                     })
-                    .reduce((sum, t) => sum + (t.total - (t.deliveryFee || 0)), 0);
+                    .reduce((sum, t) => sum + t.total, 0);
 
                 return { name: `${hourStr}:00`, total };
             });
@@ -108,7 +107,7 @@ const Reports: React.FC = () => {
 
                 const total = transactions
                     .filter(t => t.status === 'Completed' && t.date.startsWith(dayStr))
-                    .reduce((sum, t) => sum + (t.total - (t.deliveryFee || 0)), 0);
+                    .reduce((sum, t) => sum + t.total, 0);
 
                 data.push({ name: dayName, total });
             }
@@ -132,11 +131,47 @@ const Reports: React.FC = () => {
             : [{ name: 'Sem 1', visitors: 0, sales: 0 }, { name: 'Sem 2', visitors: 0, sales: 0 }];
     };
 
+    // Helpers para checar forma de pagamento (aceita inglês e português, e pagamentos mistos como 'credit + pix')
+    const matchesMethod = (paymentMethod: string | undefined, ...keys: string[]) => {
+        if (!paymentMethod) return false;
+        const pm = paymentMethod.toLowerCase();
+        return keys.some(k => pm.includes(k.toLowerCase()));
+    };
+
     const generalPaymentData = [
-        { name: 'Crédito', value: filteredTransactions.filter(t => t.paymentMethod === 'credit').length },
-        { name: 'Débito', value: filteredTransactions.filter(t => t.paymentMethod === 'debit').length },
-        { name: 'Dinheiro', value: filteredTransactions.filter(t => t.paymentMethod === 'money').length },
-        { name: 'Pix', value: filteredTransactions.filter(t => t.paymentMethod === 'pix').length },
+        {
+            name: 'Crédito',
+            value: filteredTransactions
+                .filter(t => matchesMethod(t.paymentMethod, 'credit', 'crédito', 'credito'))
+                .reduce((sum, t) => sum + t.total, 0)
+        },
+        {
+            name: 'Débito',
+            value: filteredTransactions
+                .filter(t => matchesMethod(t.paymentMethod, 'debit', 'débito', 'debito'))
+                .reduce((sum, t) => sum + t.total, 0)
+        },
+        {
+            name: 'Dinheiro',
+            value: filteredTransactions
+                .filter(t => matchesMethod(t.paymentMethod, 'money', 'dinheiro', 'cash'))
+                .reduce((sum, t) => sum + t.total, 0)
+        },
+        {
+            name: 'Pix',
+            value: filteredTransactions
+                .filter(t => matchesMethod(t.paymentMethod, 'pix'))
+                .reduce((sum, t) => sum + t.total, 0)
+        },
+        {
+            name: 'Misto/Outro',
+            value: filteredTransactions
+                .filter(t => matchesMethod(t.paymentMethod, 'misto', 'outro', 'mixed', 'other') ||
+                    // pagamento misto contém '+' (ex: 'credit + pix')
+                    (t.paymentMethod || '').includes('+')
+                )
+                .reduce((sum, t) => sum + t.total, 0)
+        },
     ].filter(d => d.value > 0);
 
     // Se vazio, manter estrutura para não quebrar gráfico
@@ -290,15 +325,21 @@ const Reports: React.FC = () => {
                                 )}
                             </div>
                             <div className="mt-4 space-y-2">
-                                {generalPaymentData.map((item, idx) => (
-                                    <div key={idx} className="flex justify-between items-center text-sm">
-                                        <div className="flex items-center gap-2">
-                                            <div className="w-3 h-3 rounded-full" style={{ backgroundColor: COLORS[idx % COLORS.length] }}></div>
-                                            <span className="text-gray-600 dark:text-gray-300">{item.name}</span>
+                                {(() => {
+                                    const totalPay = generalPaymentData.reduce((s, d) => s + d.value, 0);
+                                    return generalPaymentData.map((item, idx) => (
+                                        <div key={idx} className="flex justify-between items-center text-sm">
+                                            <div className="flex items-center gap-2">
+                                                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: COLORS[idx % COLORS.length] }}></div>
+                                                <span className="text-gray-600 dark:text-gray-300">{item.name}</span>
+                                            </div>
+                                            <div className="text-right">
+                                                <span className="font-bold text-gray-800 dark:text-white">R$ {item.value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                                                <span className="ml-1 text-xs text-gray-400">({totalPay > 0 ? ((item.value / totalPay) * 100).toFixed(0) : 0}%)</span>
+                                            </div>
                                         </div>
-                                        <span className="font-bold text-gray-800 dark:text-white">{item.value}%</span>
-                                    </div>
-                                ))}
+                                    ));
+                                })()}
                             </div>
                         </div>
                     </div>

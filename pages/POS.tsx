@@ -67,6 +67,12 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
     const [isCashClosedModalOpen, setIsCashClosedModalOpen] = useState(false);
     const [openingCashValue, setOpeningCashValue] = useState('');
 
+    // ── Duplicate Sale Warning ──
+    const [duplicateSaleWarning, setDuplicateSaleWarning] = useState<{
+        sale: Transaction;
+        pendingConfirm: () => void;
+    } | null>(null);
+
     // New States for Improved POS
     const [deliveryAddress, setDeliveryAddress] = useState('');
     const [customerSearch, setCustomerSearch] = useState('');
@@ -448,6 +454,46 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
             return;
         }
 
+        // 🔁 VERIFICAR VENDA DUPLICADA (mesmo cliente nos últimos 5 minutos)
+        if (selectedCustomer) {
+            const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+            const recentDuplicate = supabaseTransactions.find(t => {
+                if (t.status !== 'Completed') return false;
+                const tDate = new Date(t.date);
+                if (tDate < fiveMinutesAgo) return false;
+                // Checar nome do cliente (case-insensitive)
+                const nameMatch = t.customerName &&
+                    t.customerName.toLowerCase().trim() === selectedCustomer.name.toLowerCase().trim();
+                // Checar telefone (se o cliente tiver)
+                const phoneMatch = selectedCustomer.phone &&
+                    t.customerSnapshot?.phone &&
+                    t.customerSnapshot.phone.replace(/\D/g, '') === selectedCustomer.phone.replace(/\D/g, '');
+                return nameMatch || phoneMatch;
+            });
+
+            if (recentDuplicate) {
+                // Mostrar aviso de duplicata e pausar o fluxo
+                setDuplicateSaleWarning({
+                    sale: recentDuplicate,
+                    pendingConfirm: () => finalizeSale(effectiveParts, paymentMethodLabel, primaryMethod),
+                });
+                return;
+            }
+        }
+
+        // Prosseguir direto se não há duplicata
+        finalizeSale(effectiveParts, paymentMethodLabel, primaryMethod);
+
+    };
+
+    // ─── FINALIZAR VENDA (lógica core, chamada com ou sem aviso de duplicata) ───
+    const finalizeSale = async (
+        effectiveParts: { method: string; amount: number }[],
+        paymentMethodLabel: string,
+        primaryMethod: string
+    ) => {
+        setDuplicateSaleWarning(null); // fechar modal de duplicata se estava aberto
+
         const calculatedChange = selectedMethod === 'money' && cashReceived ? Math.max(0, parseFloat(cashReceived) - finalTotal) : 0;
 
         try {
@@ -474,31 +520,7 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
             };
             setCompletedSale(currentSaleData);
 
-            // 2. Add to Sales History (Extended with full details)
-            const newTransaction: Transaction = {
-                id: `TRX-${Date.now().toString().slice(-6)}`,
-                date: new Date().toISOString(),
-                customerName: selectedCustomer ? selectedCustomer.name : 'Cliente Balcão',
-                total: finalTotal,
-                status: 'Completed',
-                type: 'Sale',
-                // Detailed Info for History Receipt
-                items: [...cart],
-                paymentMethod: selectedMethod,
-                installments: selectedMethod === 'credit' ? installments : 1,
-                subTotal: subTotal,
-                discountValue: discountValue,
-                deliveryFee: parseFloat(deliveryFee) || 0,
-                changeAmount: calculatedChange,
-                isDelivery: saleType === 'delivery',
-                motoboy: selectedMotoboy,
-                customerId: selectedCustomer?.id,
-                customerSnapshot: receiptCustomer,
-                sellerId: user?.id,
-                sellerName: user?.name
-            };
-
-            // Salvar transação no Supabase
+            // 2. Salvar transação no Supabase
             await addTransaction({
                 date: new Date().toISOString(),
                 customerName: selectedCustomer ? selectedCustomer.name : 'Cliente Balcão',
@@ -524,7 +546,6 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
             if (saleType === 'delivery' && selectedCustomer) {
                 try {
                     const itemsSummary = cart.map(item => `${item.quantity}x ${item.name}`).join(', ');
-
                     await DeliveryService.create({
                         customerName: selectedCustomer.name,
                         phone: selectedCustomer.phone,
@@ -546,46 +567,34 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
                 }
             }
 
-            // 📦 DESCONTAR ESTOQUE (após venda)
+            // 📦 DESCONTAR ESTOQUE
             try {
                 for (const item of cart) {
                     if (item.id) {
                         const currentProduct = products.find(p => p.id === item.id);
                         if (currentProduct) {
-                            await ProductService.update(item.id, {
-                                stock: currentProduct.stock - item.quantity
-                            });
+                            await ProductService.update(item.id, { stock: currentProduct.stock - item.quantity });
                         }
                     }
                 }
                 console.log('✅ Estoque atualizado com sucesso!');
             } catch (stockError: any) {
                 console.error('⚠️ Erro ao atualizar estoque:', stockError);
-                // Não bloqueia a venda se falhar o estoque
             }
 
-            // 👤 ATUALIZAR CLIENTE (total gasto e última compra)
+            // 👤 ATUALIZAR CLIENTE
             if (selectedCustomer?.id) {
                 try {
-                    // Calcular novo total gasto
-                    const customerTransactions = supabaseTransactions.filter(
-                        t => t.customerName === selectedCustomer.name
-                    );
+                    const customerTransactions = supabaseTransactions.filter(t => t.customerName === selectedCustomer.name);
                     const newTotalSpent = customerTransactions.reduce((sum, t) => sum + t.total, 0) + finalTotal;
-
-                    await updateCustomer(selectedCustomer.id, {
-                        totalSpent: newTotalSpent,
-                        lastPurchase: new Date().toISOString()
-                    });
+                    await updateCustomer(selectedCustomer.id, { totalSpent: newTotalSpent, lastPurchase: new Date().toISOString() });
                     console.log('✅ Cliente atualizado com sucesso!');
                 } catch (customerError: any) {
                     console.error('⚠️ Erro ao atualizar cliente:', customerError);
-                    // Não bloqueia a venda se falhar a atualização do cliente
                 }
             }
 
-
-            // 💰 REGISTRAR NO CAIXA (após venda)
+            // 💰 REGISTRAR NO CAIXA
             try {
                 const mapMethod = (m: string): 'cash' | 'credit' | 'debit' | 'pix' => {
                     if (m === 'money') return 'cash';
@@ -594,13 +603,9 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
                     if (m === 'pix') return 'pix';
                     return 'cash';
                 };
-
-                // Re-fetch to ensure we have the ID (validation already passed at start)
                 const currentCash = await CashService.getCurrentRegister();
-
                 if (currentCash) {
                     if (effectiveParts.length > 1) {
-                        // Pagamento dividido: uma movimentação por método
                         for (const part of effectiveParts) {
                             await CashService.addMovement({
                                 cashRegisterId: currentCash.id,
@@ -612,7 +617,6 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
                             });
                         }
                     } else {
-                        // Pagamento único
                         await CashService.addMovement({
                             cashRegisterId: currentCash.id,
                             type: 'sale',
@@ -626,13 +630,9 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
                 }
             } catch (cashError: any) {
                 console.error('⚠️ Erro ao registrar no caixa:', cashError);
-                // Não bloqueia a venda se falhar o registro no caixa
             }
 
-            // Histórico já é carregado do Supabase via useTransactions
-            // Não precisa mais de setSalesHistory
-
-            // 4. Clear Cart & Operational State (Product leaves cart automatically)
+            // 4. Limpar carrinho e estado
             setCart([]);
             setSelectedCustomer(null);
             setSelectedMethod(null);
@@ -646,7 +646,6 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
             setSplitAmount('');
             setPaymentStep(1);
 
-            // 5. Switch Modals
             setIsPaymentModalOpen(false);
             setIsReceiptOpen(true);
 
@@ -2378,6 +2377,81 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
                     </div>
                 </div>
             )}
+
+            {/* ── DUPLICATE SALE WARNING MODAL ── */}
+            {duplicateSaleWarning && (() => {
+                const dup = duplicateSaleWarning.sale;
+                const minutesAgo = Math.round((Date.now() - new Date(dup.date).getTime()) / 60000);
+                const payLabel = (dup.paymentMethod || '').replace('money', 'Dinheiro').replace('credit', 'Crédito').replace('debit', 'Débito').replace('pix', 'PIX');
+                return (
+                    <div className="fixed inset-0 z-[300] flex items-center justify-center p-4">
+                        <div className="absolute inset-0 bg-gray-900/75 backdrop-blur-sm" />
+                        <div className="relative bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-md animate-in fade-in zoom-in-95 duration-200 overflow-hidden">
+                            {/* Header coral/laranja de alerta */}
+                            <div className="bg-amber-400 px-5 py-4 flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-xl bg-white/30 flex items-center justify-center text-2xl">⚠️</div>
+                                <div>
+                                    <p className="font-black text-gray-900 text-base">Venda Duplicada Detectada!</p>
+                                    <p className="text-xs text-gray-800 opacity-80">Esse cliente já comprou há {minutesAgo} min.</p>
+                                </div>
+                            </div>
+
+                            {/* Corpo com detalhes da venda anterior */}
+                            <div className="p-5 space-y-4">
+                                <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-xl p-4 space-y-2 text-sm">
+                                    <div className="flex justify-between">
+                                        <span className="text-gray-500 dark:text-gray-400">Cliente</span>
+                                        <span className="font-bold text-gray-900 dark:text-white">{dup.customerName}</span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                        <span className="text-gray-500 dark:text-gray-400">Horário</span>
+                                        <span className="font-semibold text-gray-800 dark:text-gray-200">
+                                            {new Date(dup.date).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                                            <span className="ml-1 text-amber-600 dark:text-amber-400 text-xs">({minutesAgo} min atrás)</span>
+                                        </span>
+                                    </div>
+                                    {dup.items && dup.items.length > 0 && (
+                                        <div className="flex justify-between items-start">
+                                            <span className="text-gray-500 dark:text-gray-400">Itens</span>
+                                            <span className="font-semibold text-gray-800 dark:text-gray-200 text-right max-w-[60%]">
+                                                {dup.items.slice(0, 3).map(i => `${i.quantity}x ${i.name}`).join(', ')}
+                                                {dup.items.length > 3 && ` +${dup.items.length - 3} mais`}
+                                            </span>
+                                        </div>
+                                    )}
+                                    <div className="flex justify-between">
+                                        <span className="text-gray-500 dark:text-gray-400">Pagamento</span>
+                                        <span className="font-semibold text-gray-800 dark:text-gray-200">{payLabel || '—'}</span>
+                                    </div>
+                                    <div className="flex justify-between border-t border-amber-200 dark:border-amber-700 pt-2 mt-1">
+                                        <span className="font-bold text-gray-900 dark:text-white">Total Anterior</span>
+                                        <span className="font-black text-amber-700 dark:text-amber-400 text-base">R$ {dup.total.toFixed(2)}</span>
+                                    </div>
+                                </div>
+
+                                <p className="text-sm text-gray-600 dark:text-gray-400 text-center">
+                                    Deseja registrar uma <strong>nova venda</strong> para esse cliente mesmo assim?
+                                </p>
+
+                                <div className="flex gap-3">
+                                    <button
+                                        onClick={() => setDuplicateSaleWarning(null)}
+                                        className="flex-1 py-3 rounded-xl border-2 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 font-bold hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                                    >
+                                        ← Cancelar
+                                    </button>
+                                    <button
+                                        onClick={() => duplicateSaleWarning.pendingConfirm()}
+                                        className="flex-1 py-3 rounded-xl bg-amber-400 hover:bg-amber-500 text-gray-900 font-black shadow-md transition-all active:scale-95"
+                                    >
+                                        ✅ Confirmar mesmo assim
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                );
+            })()}
 
             {/* ── FULL PDV EDIT MODAL ── */}
             {isFullEditModalOpen && editSaleTarget && (() => {
