@@ -102,8 +102,15 @@ const Dashboard: React.FC<DashboardProps> = ({ user, users = [], salesGoals, onN
     // --- DASHBOARD CALCULATIONS ---
     const lowStockCount = products.filter(p => p.stock <= p.minStock).length;
 
-    // Data de hoje (comparação correta)
-    const today = new Date().toISOString().split('T')[0];
+    // Data de hoje em horário LOCAL (evita bug de UTC-3: venda às 21h aparece como amanhã)
+    const todayLocal = (() => {
+        const d = new Date();
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    })();
+    const today = todayLocal; // alias para compatibilidade com código existente
 
     // Vendas de hoje (corrigido: usar startsWith para comparar datas)
     const salesToday = transactions
@@ -122,50 +129,74 @@ const Dashboard: React.FC<DashboardProps> = ({ user, users = [], salesGoals, onN
     // Mês atual (corrigido: usar mês atual dinamicamente)
     const currentMonth = new Date().toISOString().slice(0, 7); // "2026-01"
 
-    // Commission Calculation (UPDATED LOGIC: Tiered System)
+    // Commission Calculation — DIÁRIA: 2% se bater R$ 3.000 no dia, senão 1%. Reseta à meia-noite.
     const currentMonthSales = transactions
         .filter(t => t.date.startsWith(currentMonth) && t.status === 'Completed')
         .reduce((acc, curr) => acc + curr.total - (curr.deliveryFee ?? 0), 0);
 
-    // Vendas específicas do vendedor logado
+    // Vendas de HOJE do vendedor logado (sem entrega)
+    const myPersonalSalesToday = isSalesperson
+        ? transactions
+            .filter(t => t.date.startsWith(today) && t.status === 'Completed' && t.sellerId === user.id)
+            .reduce((acc, curr) => acc + curr.total - (curr.deliveryFee ?? 0), 0)
+        : 0;
+
+    // Vendas do mês do vendedor logado (sem entrega) — usado só para exibição de total vendido
     const myPersonalSalesMonth = isSalesperson
         ? transactions
             .filter(t => t.date.startsWith(currentMonth) && t.status === 'Completed' && t.sellerId === user.id)
             .reduce((acc, curr) => acc + curr.total - (curr.deliveryFee ?? 0), 0)
         : 0;
 
-    const COMMISSION_THRESHOLD = 3000;
+    const COMMISSION_DAILY_THRESHOLD = 3000;
 
-    // Helper: calcular comissão por faixa
-    const calcCommission = (salesTotal: number) => {
-        const rate = salesTotal > COMMISSION_THRESHOLD ? 0.02 : 0.01;
-        return salesTotal * rate;
+    // Helper: calcular comissão diária para um conjunto de transações de UM vendedor
+    // Agrupa por dia e aplica 2% nos dias que bateram R$ 3.000, 1% nos demais
+    const calcDailyCommission = (sellerTransactions: typeof transactions) => {
+        // Agrupar por dia (YYYY-MM-DD)
+        const salesByDay: Record<string, number> = {};
+        sellerTransactions.forEach(t => {
+            const day = new Date(t.date).toLocaleDateString('pt-BR', {
+                year: 'numeric', month: '2-digit', day: '2-digit'
+            }); // chave única por dia local
+            const valor = t.total - (t.deliveryFee ?? 0);
+            salesByDay[day] = (salesByDay[day] || 0) + valor;
+        });
+        // Somar comissão de cada dia com sua taxa correta
+        return Object.values(salesByDay).reduce((acc, dayTotal) => {
+            const rate = dayTotal >= COMMISSION_DAILY_THRESHOLD ? 0.02 : 0.01;
+            return acc + dayTotal * rate;
+        }, 0);
     };
 
-    // Para vendedor: comissão sobre suas vendas pessoais
+    // Para vendedor: comissão sobre suas vendas pessoais (cálculo diário)
     // Para admin: soma das comissões de todos os vendedores (exclui admin)
     let commission = 0;
     let commissionSubtext = '';
 
     if (isSalesperson) {
-        commission = calcCommission(myPersonalSalesMonth);
-        const isHighTier = myPersonalSalesMonth > COMMISSION_THRESHOLD;
-        commissionSubtext = isHighTier
-            ? "Tier 2 (2%) Ativo! Parabéns!"
-            : `Tier 1 (1%). Faltam R$ ${Math.max(0, COMMISSION_THRESHOLD - myPersonalSalesMonth).toFixed(2)} p/ 2%`;
+        const myMonthTransactions = transactions.filter(
+            t => t.date.startsWith(currentMonth) && t.status === 'Completed' && t.sellerId === user.id
+        );
+        commission = calcDailyCommission(myMonthTransactions);
+        const todayOnTrack = myPersonalSalesToday >= COMMISSION_DAILY_THRESHOLD;
+        commissionSubtext = todayOnTrack
+            ? `🔥 Hoje em 2%! Vendido hoje: R$ ${myPersonalSalesToday.toFixed(2)}`
+            : `Hoje: R$ ${myPersonalSalesToday.toFixed(2)} / R$ ${COMMISSION_DAILY_THRESHOLD.toLocaleString('pt-BR')} (2% ao bater)`;
     } else {
-        // Admin: somar comissões de cada vendedor individualmente
+        // Admin: somar comissões de cada vendedor individualmente (por dia)
         const salespeople = users.filter(u => u.active && u.role === 'Vendedor');
         let totalOwed = 0;
         salespeople.forEach(sp => {
-            const spSales = transactions
-                .filter(t => t.date.startsWith(currentMonth) && t.status === 'Completed' && t.sellerId === sp.id)
-                .reduce((acc, curr) => acc + curr.total - (curr.deliveryFee ?? 0), 0);
-            totalOwed += calcCommission(spSales);
+            const spTransactions = transactions.filter(
+                t => t.date.startsWith(currentMonth) && t.status === 'Completed' && t.sellerId === sp.id
+            );
+            totalOwed += calcDailyCommission(spTransactions);
         });
         commission = totalOwed;
         commissionSubtext = `${salespeople.length} vendedor(as) ativo(as)`;
     }
+
 
     // Helper for Stalled Products
     const getDaysSinceUpdate = (dateString?: string) => {
@@ -197,13 +228,24 @@ const Dashboard: React.FC<DashboardProps> = ({ user, users = [], salesGoals, onN
         const dailyTarget = goalType === 'daily' ? rawGoal : rawGoal / 30;
 
         // Calcular Vendas Reais por Usuário via sellerId (excluindo taxa de entrega)
-        const salesMonth = transactions
-            .filter(t => t.date.startsWith(currentMonth) && t.status === 'Completed' && t.sellerId === u.id)
+        const sellerMonthTx = transactions.filter(
+            t => t.date.startsWith(currentMonth) && t.status === 'Completed' && t.sellerId === u.id
+        );
+        const salesMonth = sellerMonthTx.reduce((acc, curr) => acc + curr.total - (curr.deliveryFee ?? 0), 0);
+
+        // salesToday: usar data LOCAL para evitar bug de fuso UTC-3 (reseta corretamente à meia-noite)
+        const salesToday = transactions
+            .filter(t => {
+                if (t.status !== 'Completed' || t.sellerId !== u.id) return false;
+                const d = new Date(t.date);
+                const txLocal = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+                return txLocal === todayLocal;
+            })
             .reduce((acc, curr) => acc + curr.total - (curr.deliveryFee ?? 0), 0);
 
-        const salesToday = transactions
-            .filter(t => t.date.startsWith(today) && t.status === 'Completed' && t.sellerId === u.id)
-            .reduce((acc, curr) => acc + curr.total - (curr.deliveryFee ?? 0), 0);
+        // Comissão acumulada no mês (regra diária: 2% se bater R$3.000 no dia, 1% caso contrário)
+        const commission = calcDailyCommission(sellerMonthTx);
+        const todayRate = salesToday >= COMMISSION_DAILY_THRESHOLD ? '2%' : '1%';
 
         return {
             id: u.id,
@@ -212,6 +254,8 @@ const Dashboard: React.FC<DashboardProps> = ({ user, users = [], salesGoals, onN
             salesToday,
             monthlyTarget,
             dailyTarget,
+            commission,
+            todayRate,
             avatar: u.avatarUrl || `https://ui-avatars.com/api/?name=${u.name}&background=random`
         };
     }).sort((a, b) => b.salesMonth - a.salesMonth);
@@ -591,6 +635,18 @@ const Dashboard: React.FC<DashboardProps> = ({ user, users = [], salesGoals, onN
                                                         <div className="flex justify-between mt-1 text-[10px] text-gray-400">
                                                             <span>R$ {seller.salesMonth.toLocaleString('pt-BR')}</span>
                                                             <span>Meta: R$ {seller.monthlyTarget.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</span>
+                                                        </div>
+                                                        {/* Comissão acumulada no mês */}
+                                                        <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-600 flex items-center justify-between">
+                                                            <div>
+                                                                <p className="text-[10px] font-bold text-gray-400 uppercase">Comissão do Mês</p>
+                                                                <p className="text-base font-black text-purple-600 dark:text-purple-400">
+                                                                    R$ {((seller as any).commission ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                                                </p>
+                                                            </div>
+                                                            <span className={`text-xs font-bold px-2 py-1 rounded-full ${(seller as any).todayRate === '2%' ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>
+                                                                Hoje: {(seller as any).todayRate ?? '1%'}
+                                                            </span>
                                                         </div>
                                                     </div>
                                                 </div>
