@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { Search, ShoppingCart, Trash2, Plus, Minus, CreditCard, Banknote, QrCode, User as UserIcon, MapPin, Phone, Barcode, Printer, CheckCircle, X, ChevronRight, Wallet, DollarSign, Save, FileText, Calendar, Home, Camera, Store, Bike, Truck, Search as SearchIcon, Package, Percent, ArrowRight, ArrowLeft, Mail, AlertCircle, History, LayoutGrid, Clock as ClockIcon } from 'lucide-react';
+import { Search, ShoppingCart, Trash2, Plus, Minus, CreditCard, Banknote, QrCode, User as UserIcon, MapPin, Phone, Barcode, Printer, CheckCircle, X, ChevronRight, Wallet, DollarSign, Save, FileText, Calendar, Home, Camera, Store, Bike, Truck, Search as SearchIcon, Package, Percent, ArrowRight, ArrowLeft, Mail, AlertCircle, History, LayoutGrid, Clock as ClockIcon, ClipboardList } from 'lucide-react';
 import { MOCK_PRODUCTS, MOCK_CUSTOMERS, MOCK_TRANSACTIONS } from '../constants';
 import { Product, CartItem, Customer, DeliveryOrder, Transaction, ProductCategory, ProductVariation } from '../types';
 import BarcodeScanner from '../components/BarcodeScanner';
@@ -59,6 +59,7 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
     const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
     const [paymentStep, setPaymentStep] = useState<1 | 2>(1);
     const [selectedMotoboy, setSelectedMotoboy] = useState('');
+    const [selectedPOSSeller, setSelectedPOSSeller] = useState(''); // Selection of seller by Admin
     const [deliveryFee, setDeliveryFee] = useState('');
     const [isReceiptOpen, setIsReceiptOpen] = useState(false);
     const [completedSale, setCompletedSale] = useState<any>(null);
@@ -81,6 +82,7 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
     const [isVariationModalOpen, setIsVariationModalOpen] = useState(false);
     const [currentVariations, setCurrentVariations] = useState<ProductVariation[]>([]);
     const [selectedProductForVariation, setSelectedProductForVariation] = useState<Product | null>(null);
+    const [storeNotes, setStoreNotes] = useState(''); // Observações para Retirada na Loja
 
 
     // Sort and Filter Customers
@@ -498,6 +500,18 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
 
         const calculatedChange = selectedMethod === 'money' && cashReceived ? Math.max(0, parseFloat(cashReceived) - finalTotal) : 0;
 
+        // Determinar Vendedora (Admin pode sobrescrever)
+        let finalSellerId = user?.id;
+        let finalSellerName = user?.name || 'N/A';
+
+        if ((user?.role === 'Administrador' || user?.role === 'Gerente') && selectedPOSSeller) {
+            const chosenSeller = users.find(u => u.id === selectedPOSSeller);
+            if (chosenSeller) {
+                finalSellerId = chosenSeller.id;
+                finalSellerName = chosenSeller.name;
+            }
+        }
+
         try {
             // 1. Capture Sale Data for Receipt
             const receiptCustomer = selectedCustomer
@@ -518,7 +532,8 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
                 date: new Date().toLocaleString('pt-BR'),
                 isDelivery: saleType === 'delivery',
                 motoboy: selectedMotoboy,
-                sellerName: user?.name || 'N/A'
+                sellerName: finalSellerName,
+                notes: storeNotes
             };
             setCompletedSale(currentSaleData);
 
@@ -540,8 +555,8 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
                 motoboy: selectedMotoboy,
                 customerId: selectedCustomer?.id,
                 customerSnapshot: receiptCustomer,
-                sellerId: user?.id,
-                sellerName: user?.name
+                sellerId: finalSellerId,
+                sellerName: finalSellerName
             });
 
             // 📦 CRIAR ENTREGA (se for delivery)
@@ -644,6 +659,8 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
             setDeliveryFee('');
             setDiscountPercent('');
             setSelectedMotoboy('');
+            setSelectedPOSSeller('');
+            setStoreNotes('');
             setPaymentParts([]);
             setSplitAmount('');
             setPaymentStep(1);
@@ -1678,6 +1695,24 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
                                             </button>
                                         </div>
 
+                                        {/* Store Pickup Observations (Only if Store selected) */}
+                                        {saleType === 'store' && (
+                                            <div className="space-y-4 animate-in fade-in slide-in-from-top-2">
+                                                <div>
+                                                    <label className="block text-sm font-bold text-gray-500 uppercase mb-2 flex items-center gap-1">
+                                                        <ClipboardList size={16} /> Observações
+                                                    </label>
+                                                    <textarea
+                                                        className="w-full p-3 rounded-xl border border-gray-300 dark:border-gray-600 focus:border-pink-500 outline-none bg-white dark:bg-gray-800 text-gray-800 dark:text-white font-medium resize-none shadow-sm transition-all"
+                                                        rows={3}
+                                                        placeholder="Ex: Cliente vai buscar após as 18h, embalagem para presente..."
+                                                        value={storeNotes}
+                                                        onChange={(e) => setStoreNotes(e.target.value)}
+                                                    />
+                                                </div>
+                                            </div>
+                                        )}
+
                                         {/* Delivery Details (Only if Delivery selected) */}
                                         {saleType === 'delivery' && (
                                             <div className="space-y-4 animate-in fade-in slide-in-from-top-2">
@@ -1799,6 +1834,25 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
                                                         />
                                                     </div>
                                                 </div>
+                                            </div>
+                                        )}
+
+                                        {/* ADMIN SELLER OVERRIDE */}
+                                        {(user?.role === 'Administrador' || user?.role === 'Gerente') && (
+                                            <div className="mt-4 animate-in fade-in slide-in-from-top-2 p-4 bg-purple-50 dark:bg-purple-900/20 rounded-xl border border-purple-100 dark:border-purple-800/50">
+                                                <label className="block text-sm font-bold text-gray-500 uppercase mb-2 flex items-center gap-1">
+                                                    <UserIcon size={16} className="text-purple-500" /> Atribuir Venda a Vendedora
+                                                </label>
+                                                <select
+                                                    className="w-full p-3 rounded-xl border border-purple-200 dark:border-purple-800/50 focus:border-purple-500 outline-none bg-white dark:bg-gray-800 text-gray-800 dark:text-white font-medium"
+                                                    value={selectedPOSSeller}
+                                                    onChange={(e) => setSelectedPOSSeller(e.target.value)}
+                                                >
+                                                    <option value="">Nenhuma / Eu Mesmo(a)</option>
+                                                    {users.filter(u => u.active && u.role !== 'Administrador' && u.role !== 'Gerente' && u.role !== 'Motoboy').map(u => (
+                                                        <option key={u.id} value={u.id}>{u.name}</option>
+                                                    ))}
+                                                </select>
                                             </div>
                                         )}
 
