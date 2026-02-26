@@ -6,6 +6,7 @@ import { Product, CartItem, Customer, DeliveryOrder, Transaction, ProductCategor
 import BarcodeScanner from '../components/BarcodeScanner';
 import { useProducts, useTransactions, useCustomers, useUsers } from '../lib/hooks';
 import { DeliveryService, ProductService, CashService, TransactionService, validateAdminPassword } from '../lib/database';
+import { supabase } from '../lib/supabase';
 
 import { User } from '../types';
 
@@ -908,20 +909,8 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
         setAdminAction(action);
         setAdminPasswordInput('');
         setAdminPasswordError('');
-
-        // If already logged-in as admin/gerente, skip password prompt
-        if (user?.role === 'Administrador' || user?.role === 'Gerente') {
-            if (action === 'edit') {
-                openFullEditModal(transaction);
-            } else {
-                // Delete: confirm then execute
-                if (window.confirm(`Deletar venda de "${transaction.customerName}" (R$ ${transaction.total.toFixed(2)})? Esta ação é irreversível.`)) {
-                    handleDeleteSale(transaction.id);
-                }
-            }
-        } else {
-            setIsAdminPasswordModalOpen(true);
-        }
+        // Sempre pedir senha padrão, independente do perfil
+        setIsAdminPasswordModalOpen(true);
     };
 
     // Shortcut aliases for clarity
@@ -931,28 +920,8 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
     const handleAdminPasswordSubmit = async () => {
         setIsValidatingAdmin(true);
         try {
-            const inputLower = adminPasswordInput.trim().toLowerCase();
-            const adminUsers = users.filter(u =>
-                (u.role === 'Administrador' || u.role === 'Gerente') && u.active
-            );
-
-            if (adminUsers.length === 0) {
-                setAdminPasswordError('Nenhum administrador cadastrado no sistema.');
-                return;
-            }
-
-            let isValid = false;
-            try {
-                const result = await validateAdminPassword(adminPasswordInput.trim());
-                isValid = result.ok;
-            } catch { /* ignore */ }
-
-            if (!isValid) {
-                isValid = adminUsers.some(u =>
-                    u.name.toLowerCase() === inputLower ||
-                    u.email.toLowerCase() === inputLower
-                );
-            }
+            const FIXED_PASSWORD = 'Primake2026';
+            const isValid = adminPasswordInput.trim() === FIXED_PASSWORD;
 
             if (isValid) {
                 setIsAdminPasswordModalOpen(false);
@@ -962,13 +931,12 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
                 if (adminAction === 'edit') {
                     openFullEditModal(t);
                 } else {
-                    // Delete action
                     if (window.confirm(`Deletar venda de "${t.customerName}" (R$ ${t.total.toFixed(2)})? Esta ação é irreversível.`)) {
                         handleDeleteSale(t.id);
                     }
                 }
             } else {
-                setAdminPasswordError(`Não autorizado. Digite o nome, e-mail ou senha de um administrador.`);
+                setAdminPasswordError('Senha incorreta. Tente novamente.');
             }
         } finally {
             setIsValidatingAdmin(false);
@@ -996,27 +964,47 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
             const editDiscountVal = parseFloat(editDiscount) || 0;
             const editFeeVal = parseFloat(editDeliveryFee) || 0;
             const editTotal = Math.max(0, editSubTotal - editDiscountVal + editFeeVal);
-            const itemsSummary = editCart.map(i => `${i.quantity}x ${i.name}`).join(', ');
+
+            // Atualizar somente campos suportados pelo TransactionService.update
             await TransactionService.update(editSaleTarget.id, {
                 customerName: editCustomerName,
                 paymentMethod: editPaymentMethod,
                 status: editStatus as any,
-                notes: editNotes,
-                items: editCart,
-                subTotal: editSubTotal,
+                notes: editNotes || undefined,
                 discountValue: editDiscountVal,
-                deliveryFee: editFeeVal,
                 total: editTotal,
-                motoboy: editMotoboy || null,
-                isDelivery: editFeeVal > 0 || !!editMotoboy,
-                itemsSummary,
-            } as any);
+            });
+
+            // Atualizar itens separadamente via transaction_items
+            if (editCart.length > 0) {
+                try {
+                    // Deletar itens antigos
+                    await supabase.from('transaction_items').delete().eq('transaction_id', editSaleTarget.id);
+                    // Inserir novos itens
+                    const newItems = editCart.map((item: any) => ({
+                        transaction_id: editSaleTarget.id,
+                        product_id: item.id,
+                        variation_id: item.variationId || null,
+                        variation_name: item.variationName || null,
+                        product_name: item.name,
+                        product_sku: item.sku,
+                        product_category: item.category,
+                        quantity: item.quantity,
+                        unit_price: item.priceSale,
+                        total_price: item.priceSale * item.quantity,
+                    }));
+                    await supabase.from('transaction_items').insert(newItems);
+                } catch (itemsErr) {
+                    console.error('⚠️ Erro ao atualizar itens:', itemsErr);
+                }
+            }
+
             setIsFullEditModalOpen(false);
             setEditSaleTarget(null);
             window.location.reload();
         } catch (err) {
             console.error('Erro ao editar venda:', err);
-            alert('Erro ao salvar edição. Tente novamente.');
+            alert('Erro ao salvar edição: ' + (err as any)?.message || 'Tente novamente.');
         } finally {
             setIsSavingEditSale(false);
         }
@@ -2486,8 +2474,8 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
                                 <AlertCircle size={20} className="text-amber-600 dark:text-amber-400" />
                             </div>
                             <div>
-                                <h3 className="font-black text-gray-900 dark:text-white text-base">Autorização de Administrador</h3>
-                                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Digite o <strong>nome</strong>, <strong>e-mail</strong> ou senha de um admin/gerente.</p>
+                                <h3 className="font-black text-gray-900 dark:text-white text-base">Autorização Necessária</h3>
+                                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Digite a senha para {adminAction === 'edit' ? 'editar' : 'excluir'} esta venda.</p>
                             </div>
                         </div>
 
@@ -2499,11 +2487,11 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
                         )}
 
                         <input
-                            type="text"
+                            type="password"
                             value={adminPasswordInput}
                             onChange={(e) => { setAdminPasswordInput(e.target.value); setAdminPasswordError(''); }}
                             onKeyDown={(e) => e.key === 'Enter' && handleAdminPasswordSubmit()}
-                            placeholder="Nome, e-mail ou senha do admin..."
+                            placeholder="Senha de autorização..."
                             autoFocus
                             className={`w-full px-4 py-3 rounded-xl border-2 text-gray-900 dark:text-white bg-white dark:bg-gray-700 text-base text-center transition-colors ${adminPasswordError ? 'border-red-400 dark:border-red-500' : 'border-gray-200 dark:border-gray-600 focus:border-amber-400 dark:focus:border-amber-500'} outline-none`}
                         />
