@@ -581,6 +581,7 @@ export const TransactionService = {
         total?: number;
         sellerName?: string;
         sellerId?: string;
+        source?: 'store' | 'whatsapp' | 'online';
     }): Promise<void> {
         const updateData: any = { updated_at: new Date().toISOString() };
         if (updates.customerName !== undefined) updateData.customer_name = updates.customerName;
@@ -591,6 +592,7 @@ export const TransactionService = {
         if (updates.total !== undefined) updateData.total = updates.total;
         if (updates.sellerName !== undefined) updateData.seller_name = updates.sellerName;
         if (updates.sellerId !== undefined) updateData.seller_id = updates.sellerId;
+        if (updates.source !== undefined) updateData.source = updates.source;
 
         const { error } = await supabase
             .from('transactions')
