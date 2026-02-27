@@ -68,6 +68,15 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
     // Cash Register Closed Modal
     const [isCashClosedModalOpen, setIsCashClosedModalOpen] = useState(false);
     const [openingCashValue, setOpeningCashValue] = useState('');
+    const [cashOpenPassword, setCashOpenPassword] = useState('');
+    const [cashOpenPasswordError, setCashOpenPasswordError] = useState('');
+    const [lastClosedBalance, setLastClosedBalance] = useState<number | null>(null);
+    const [sangriaSuggestion, setSangriaSuggestion] = useState<number | null>(null);
+    const [isOpeningCash, setIsOpeningCash] = useState(false);
+    // Cash History Modal
+    const [isCashHistoryModalOpen, setIsCashHistoryModalOpen] = useState(false);
+    const [cashHistory, setCashHistory] = useState<any[]>([]);
+    const [cashHistoryLoading, setCashHistoryLoading] = useState(false);
 
     // ── Duplicate Sale Warning ──
     const [duplicateSaleWarning, setDuplicateSaleWarning] = useState<{
@@ -451,7 +460,7 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
             console.log('🔍 Checando caixa antes da venda:', currentCash);
 
             if (!currentCash) {
-                setIsCashClosedModalOpen(true);
+                openCashModal();
                 return; // BLOQUEIA A VENDA TOTALMENTE
             }
         } catch (error) {
@@ -876,16 +885,84 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
     };
 
     // --- OPEN CASH REGISTER FROM POS ---
-    const handleOpenCashFromPOS = async () => {
-        const value = parseFloat(openingCashValue) || 0;
+    const openCashModal = async () => {
+        // Busca o último caixa fechado para mostrar o saldo anterior
         try {
-            await CashService.openRegister(value, user?.name || 'PDV');
+            const last = await CashService.getLastClosedRegister();
+            if (last && last.closingBalance != null) {
+                setLastClosedBalance(last.closingBalance);
+            } else {
+                setLastClosedBalance(null);
+            }
+        } catch {
+            setLastClosedBalance(null);
+        }
+        setCashOpenPassword('');
+        setCashOpenPasswordError('');
+        setOpeningCashValue('');
+        setSangriaSuggestion(null);
+        setIsCashClosedModalOpen(true);
+    };
+
+    const handleOpenCashFromPOS = async () => {
+        const CASH_PASSWORD = 'Primake2026';
+        const isVendedora = user?.role === 'Vendedor';
+
+        // Verificar senha para Vendedoras
+        if (isVendedora && cashOpenPassword.trim() !== CASH_PASSWORD) {
+            setCashOpenPasswordError('Senha incorreta. Solicite ao administrador.');
+            return;
+        }
+
+        const value = parseFloat(openingCashValue) || 0;
+        setIsOpeningCash(true);
+        try {
+            const newCash = await CashService.openRegister(value, user?.name || 'PDV');
+
+            // Sangria automática se abriu com menos que o fechamento anterior
+            if (lastClosedBalance !== null && lastClosedBalance > value) {
+                const diff = lastClosedBalance - value;
+                setSangriaSuggestion(diff);
+                // Registrar sangria automaticamente
+                await CashService.addMovement({
+                    cashRegisterId: newCash.id,
+                    type: 'withdrawal',
+                    description: `Sangria automática — diferença entre saldo anterior (R$ ${lastClosedBalance.toFixed(2)}) e abertura (R$ ${value.toFixed(2)})`,
+                    amount: diff,
+                    paymentMethod: 'cash',
+                    createdBy: user?.name || 'Sistema'
+                });
+            }
+
             setIsCashClosedModalOpen(false);
             setOpeningCashValue('');
-            alert('✅ Caixa aberto com sucesso! Agora pode finalizar a venda.');
+            setCashOpenPassword('');
+            setSangriaSuggestion(null);
+            setLastClosedBalance(null);
+            if (lastClosedBalance !== null && lastClosedBalance > value) {
+                const diff = lastClosedBalance - value;
+                alert(`✅ Caixa aberto!\n\n💰 Sangria de R$ ${diff.toFixed(2)} registrada automaticamente (diferença do caixa anterior).`);
+            } else {
+                alert('✅ Caixa aberto com sucesso! Agora pode finalizar a venda.');
+            }
         } catch (error: any) {
             console.error('Erro ao abrir caixa:', error);
             alert('❌ Erro ao abrir caixa: ' + error.message);
+        } finally {
+            setIsOpeningCash(false);
+        }
+    };
+
+    const openCashHistoryModal = async () => {
+        setIsCashHistoryModalOpen(true);
+        setCashHistoryLoading(true);
+        try {
+            const history = await CashService.getHistory(30);
+            setCashHistory(history);
+        } catch (err: any) {
+            console.error('Erro ao buscar histórico de caixa:', err);
+        } finally {
+            setCashHistoryLoading(false);
         }
     };
 
@@ -1426,13 +1503,24 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
                 <div className="p-4 bg-pink-50/50 dark:bg-pink-900/20 border-b border-[#ffc8cb] dark:border-pink-800/30">
                     <label className="text-xs font-bold text-gray-500 uppercase mb-1 flex justify-between">
                         <span>Cliente</span>
-                        {/* Mobile History Button */}
-                        <button
-                            onClick={() => setIsMobileHistoryOpen(true)}
-                            className="lg:hidden text-indigo-600 dark:text-indigo-400 flex items-center gap-1 hover:underline"
-                        >
-                            <History size={12} /> Histórico
-                        </button>
+                        <div className="flex items-center gap-3">
+                            {/* Mobile History Button */}
+                            <button
+                                onClick={() => setIsMobileHistoryOpen(true)}
+                                className="lg:hidden text-indigo-600 dark:text-indigo-400 flex items-center gap-1 hover:underline"
+                            >
+                                <History size={12} /> Histórico
+                            </button>
+                            {/* Cash History Button — Admin/Gerente only */}
+                            {user?.role !== 'Vendedor' && (
+                                <button
+                                    onClick={openCashHistoryModal}
+                                    className="text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-1 hover:underline font-bold"
+                                >
+                                    <ClipboardList size={12} /> Caixa
+                                </button>
+                            )}
+                        </div>
                     </label>
                     <div className="flex flex-col gap-2">
                         {/* Inline Customer Combobox (Sidebar) */}
@@ -2403,15 +2491,37 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
                 <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
                     <div className="absolute inset-0 bg-gray-900/70 backdrop-blur-sm" onClick={() => setIsCashClosedModalOpen(false)}></div>
                     <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-sm relative animate-in fade-in zoom-in-95 duration-200 overflow-hidden">
-                        <div className="p-6 text-center">
-                            <div className="w-16 h-16 mx-auto mb-4 bg-red-100 dark:bg-red-900/30 rounded-full flex items-center justify-center">
-                                <DollarSign size={32} className="text-red-500" />
+                        {/* Header */}
+                        <div className="bg-gradient-to-br from-emerald-500 to-teal-600 p-5 text-white">
+                            <div className="flex items-center gap-3">
+                                <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center">
+                                    <DollarSign size={24} />
+                                </div>
+                                <div>
+                                    <h3 className="font-black text-lg">Caixa Fechado</h3>
+                                    <p className="text-xs text-white/80">Informe o valor para abrir</p>
+                                </div>
                             </div>
-                            <h3 className="font-bold text-xl text-gray-800 dark:text-white mb-2">Caixa Fechado!</h3>
-                            <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">O caixa precisa estar aberto para registrar vendas. Deseja abrir agora?</p>
+                        </div>
 
-                            <div className="mb-5">
-                                <label className="block text-xs font-bold text-gray-600 dark:text-gray-300 mb-2 text-left">Valor Inicial do Caixa (R$)</label>
+                        <div className="p-5 space-y-4">
+                            {/* Aviso saldo anterior */}
+                            {lastClosedBalance !== null && (
+                                <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-xl p-3">
+                                    <p className="text-xs font-bold text-amber-700 dark:text-amber-300 flex items-center gap-1">
+                                        <AlertCircle size={13} /> Saldo do caixa anterior
+                                    </p>
+                                    <p className="text-lg font-black text-amber-800 dark:text-amber-200 mt-0.5">
+                                        R$ {lastClosedBalance.toFixed(2)}
+                                    </p>
+                                </div>
+                            )}
+
+                            {/* Valor inicial */}
+                            <div>
+                                <label className="block text-xs font-bold text-gray-600 dark:text-gray-300 mb-2">
+                                    Valor Inicial do Caixa (R$)
+                                </label>
                                 <div className="relative">
                                     <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
                                     <input
@@ -2419,13 +2529,58 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
                                         className="w-full pl-10 pr-4 py-3 border-2 border-gray-200 dark:border-gray-600 rounded-xl focus:border-emerald-500 outline-none text-lg font-bold bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white"
                                         placeholder="0.00"
                                         value={openingCashValue}
-                                        onChange={(e) => setOpeningCashValue(e.target.value)}
+                                        onChange={(e) => {
+                                            setOpeningCashValue(e.target.value);
+                                            // Atualizar aviso de sangria em tempo real
+                                            const val = parseFloat(e.target.value) || 0;
+                                            if (lastClosedBalance !== null && lastClosedBalance > val) {
+                                                setSangriaSuggestion(lastClosedBalance - val);
+                                            } else {
+                                                setSangriaSuggestion(null);
+                                            }
+                                        }}
                                         autoFocus
                                     />
                                 </div>
                             </div>
 
-                            <div className="flex gap-3">
+                            {/* Aviso de sangria automática */}
+                            {sangriaSuggestion !== null && sangriaSuggestion > 0 && (
+                                <div className="bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-700 rounded-xl p-3">
+                                    <p className="text-xs font-bold text-rose-700 dark:text-rose-300 flex items-center gap-1">
+                                        <AlertCircle size={13} /> Sangria automática será registrada
+                                    </p>
+                                    <p className="text-sm text-rose-600 dark:text-rose-400 mt-1">
+                                        Diferença de <span className="font-black">R$ {sangriaSuggestion.toFixed(2)}</span> entre o saldo anterior
+                                        (R$ {lastClosedBalance?.toFixed(2)}) e o valor de abertura (R$ {(parseFloat(openingCashValue) || 0).toFixed(2)}) será lançada como sangria no histórico.
+                                    </p>
+                                </div>
+                            )}
+
+                            {/* Campo de senha — apenas para Vendedoras */}
+                            {user?.role === 'Vendedor' && (
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-600 dark:text-gray-300 mb-2 flex items-center gap-1">
+                                        🔒 Senha de Autorização
+                                    </label>
+                                    <input
+                                        type="password"
+                                        className={`w-full px-4 py-3 border-2 rounded-xl focus:outline-none text-sm font-medium bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white transition-colors ${cashOpenPasswordError ? 'border-rose-400 focus:border-rose-500' : 'border-gray-200 dark:border-gray-600 focus:border-emerald-500'}`}
+                                        placeholder="Digite a senha para abrir o caixa..."
+                                        value={cashOpenPassword}
+                                        onChange={(e) => { setCashOpenPassword(e.target.value); setCashOpenPasswordError(''); }}
+                                        onKeyDown={(e) => e.key === 'Enter' && handleOpenCashFromPOS()}
+                                    />
+                                    {cashOpenPasswordError && (
+                                        <p className="text-xs text-rose-500 mt-1 font-medium flex items-center gap-1">
+                                            <AlertCircle size={12} /> {cashOpenPasswordError}
+                                        </p>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* Buttons */}
+                            <div className="flex gap-3 pt-1">
                                 <button
                                     onClick={() => setIsCashClosedModalOpen(false)}
                                     className="flex-1 py-3 border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 rounded-xl font-medium hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
@@ -2434,11 +2589,114 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
                                 </button>
                                 <button
                                     onClick={handleOpenCashFromPOS}
-                                    className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold shadow-lg shadow-emerald-200 dark:shadow-none transition-all flex items-center justify-center gap-2"
+                                    disabled={isOpeningCash}
+                                    className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white rounded-xl font-bold shadow-lg transition-all flex items-center justify-center gap-2"
                                 >
-                                    <DollarSign size={18} /> Abrir Caixa
+                                    {isOpeningCash ? (
+                                        <span className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full" />
+                                    ) : (
+                                        <DollarSign size={18} />
+                                    )}
+                                    {isOpeningCash ? 'Abrindo...' : 'Abrir Caixa'}
                                 </button>
                             </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* --- CASH HISTORY MODAL --- */}
+            {isCashHistoryModalOpen && (
+                <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+                    <div className="absolute inset-0 bg-gray-900/70 backdrop-blur-sm" onClick={() => setIsCashHistoryModalOpen(false)}></div>
+                    <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-lg relative animate-in fade-in zoom-in-95 duration-200 overflow-hidden flex flex-col max-h-[85vh]">
+                        {/* Header */}
+                        <div className="bg-gradient-to-br from-indigo-600 to-purple-700 p-5 text-white flex justify-between items-center">
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center">
+                                    <ClipboardList size={20} />
+                                </div>
+                                <div>
+                                    <h3 className="font-black text-lg">Histórico de Caixa</h3>
+                                    <p className="text-xs text-white/80">Últimos 30 registros</p>
+                                </div>
+                            </div>
+                            <button onClick={() => setIsCashHistoryModalOpen(false)} className="bg-white/20 hover:bg-white/30 p-1.5 rounded-full transition-colors">
+                                <X size={18} />
+                            </button>
+                        </div>
+
+                        {/* Body */}
+                        <div className="overflow-y-auto flex-1 p-4 space-y-3">
+                            {cashHistoryLoading ? (
+                                <div className="flex items-center justify-center py-12 text-gray-400">
+                                    <span className="animate-spin w-8 h-8 border-2 border-indigo-400 border-t-transparent rounded-full mr-3" />
+                                    Carregando...
+                                </div>
+                            ) : cashHistory.length === 0 ? (
+                                <div className="text-center py-12 text-gray-400">
+                                    <ClipboardList size={40} className="mx-auto mb-2 opacity-20" />
+                                    <p className="text-sm">Nenhum caixa registrado ainda.</p>
+                                </div>
+                            ) : (
+                                cashHistory.map((register: any) => {
+                                    const isOpen = register.status === 'open';
+                                    const openedAt = register.openedAt ? new Date(register.openedAt) : null;
+                                    const closedAt = register.closedAt ? new Date(register.closedAt) : null;
+                                    return (
+                                        <div key={register.id} className={`rounded-xl border overflow-hidden ${isOpen ? 'border-emerald-200 dark:border-emerald-800' : 'border-gray-100 dark:border-gray-700'}`}>
+                                            {/* Status bar */}
+                                            <div className={`px-4 py-2 flex justify-between items-center ${isOpen ? 'bg-emerald-50 dark:bg-emerald-900/20' : 'bg-gray-50 dark:bg-gray-700/30'}`}>
+                                                <span className={`text-xs font-black uppercase px-2 py-0.5 rounded-full ${isOpen ? 'bg-emerald-500 text-white' : 'bg-gray-300 dark:bg-gray-600 text-gray-700 dark:text-gray-300'}`}>
+                                                    {isOpen ? '● Aberto' : '○ Fechado'}
+                                                </span>
+                                                <span className="text-[10px] text-gray-400 font-mono">{register.id?.slice(0, 8)}...</span>
+                                            </div>
+                                            {/* Details */}
+                                            <div className="p-3 grid grid-cols-2 gap-2 text-xs bg-white dark:bg-gray-800">
+                                                <div>
+                                                    <p className="text-gray-400 font-medium">📅 Abertura</p>
+                                                    <p className="font-bold text-gray-800 dark:text-white">
+                                                        {openedAt ? openedAt.toLocaleDateString('pt-BR') : '--'}
+                                                    </p>
+                                                    <p className="text-gray-500">
+                                                        {openedAt ? openedAt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '--'}
+                                                    </p>
+                                                </div>
+                                                <div>
+                                                    <p className="text-gray-400 font-medium">🔒 Fechamento</p>
+                                                    <p className="font-bold text-gray-800 dark:text-white">
+                                                        {closedAt ? closedAt.toLocaleDateString('pt-BR') : '--'}
+                                                    </p>
+                                                    <p className="text-gray-500">
+                                                        {closedAt ? closedAt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : 'Em aberto'}
+                                                    </p>
+                                                </div>
+                                                <div>
+                                                    <p className="text-gray-400 font-medium">💰 Saldo Inicial</p>
+                                                    <p className="font-bold text-emerald-600 dark:text-emerald-400">R$ {(register.openingBalance || 0).toFixed(2)}</p>
+                                                </div>
+                                                <div>
+                                                    <p className="text-gray-400 font-medium">💵 Saldo Final</p>
+                                                    <p className={`font-bold ${register.closingBalance != null ? 'text-indigo-600 dark:text-indigo-400' : 'text-gray-400'}`}>
+                                                        {register.closingBalance != null ? `R$ ${register.closingBalance.toFixed(2)}` : '--'}
+                                                    </p>
+                                                </div>
+                                                <div className="col-span-2">
+                                                    <p className="text-gray-400 font-medium">👤 Aberto por</p>
+                                                    <p className="font-bold text-gray-700 dark:text-gray-300">{register.openedBy || '--'}</p>
+                                                </div>
+                                                {register.notes && (
+                                                    <div className="col-span-2">
+                                                        <p className="text-gray-400 font-medium">📝 Obs.</p>
+                                                        <p className="text-gray-600 dark:text-gray-400">{register.notes}</p>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    );
+                                })
+                            )}
                         </div>
                     </div>
                 </div>
