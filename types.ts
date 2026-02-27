@@ -153,6 +153,8 @@ export interface Transaction {
     // Vendedor responsável
     sellerId?: string;
     sellerName?: string;
+    // Origem da venda
+    source?: 'store' | 'whatsapp' | 'online';
 
     created_at?: string;
     updated_at?: string;

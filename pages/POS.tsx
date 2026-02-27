@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { Search, ShoppingCart, Trash2, Plus, Minus, CreditCard, Banknote, QrCode, User as UserIcon, MapPin, Phone, Barcode, Printer, CheckCircle, X, ChevronRight, Wallet, DollarSign, Save, FileText, Calendar, Home, Camera, Store, Bike, Truck, Search as SearchIcon, Package, Percent, ArrowRight, ArrowLeft, Mail, AlertCircle, History, LayoutGrid, Clock as ClockIcon, ClipboardList } from 'lucide-react';
+import { Search, ShoppingCart, Trash2, Plus, Minus, CreditCard, Banknote, QrCode, User as UserIcon, MapPin, Phone, Barcode, Printer, CheckCircle, X, ChevronRight, Wallet, DollarSign, Save, FileText, Calendar, Home, Camera, Store, Globe, Bike, Truck, Search as SearchIcon, Package, Percent, ArrowRight, ArrowLeft, Mail, AlertCircle, History, LayoutGrid, Clock as ClockIcon, ClipboardList } from 'lucide-react';
 import { MOCK_PRODUCTS, MOCK_CUSTOMERS, MOCK_TRANSACTIONS } from '../constants';
 import { Product, CartItem, Customer, DeliveryOrder, Transaction, ProductCategory, ProductVariation } from '../types';
 import BarcodeScanner from '../components/BarcodeScanner';
@@ -120,6 +120,7 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
 
     // --- SALE TYPE & DISCOUNTS ---
     const [saleType, setSaleType] = useState<'store' | 'delivery'>('store');
+    const [selectedSource, setSelectedSource] = useState<'store' | 'whatsapp' | 'online'>('store');
 
     const [discountPercent, setDiscountPercent] = useState<string>('');
 
@@ -557,7 +558,8 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
                 customerId: selectedCustomer?.id,
                 customerSnapshot: receiptCustomer,
                 sellerId: finalSellerId,
-                sellerName: finalSellerName
+                sellerName: finalSellerName,
+                source: selectedSource
             });
 
             // 📦 CRIAR ENTREGA (se for delivery)
@@ -1140,7 +1142,7 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
                             {user?.role !== 'Vendedor' && (
                                 <div className="flex-1 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-800 rounded-xl px-3 py-2">
                                     <p className="text-[10px] font-bold text-emerald-400 uppercase flex items-center gap-1">
-                                        Comissão
+                                        Comissão do dia
                                         <span className={`ml-1 px-1.5 py-0.5 rounded text-[9px] font-black ${sellerRate === '2%'
                                             ? 'bg-emerald-200 text-emerald-800 dark:bg-emerald-800 dark:text-emerald-200'
                                             : 'bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300'
@@ -1149,6 +1151,14 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
                                     <p className="text-base font-black text-emerald-700 dark:text-emerald-300">
                                         R$ {sellerDayCommission.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                     </p>
+                                    {sellerDayTotal < COMMISSION_THRESHOLD_POS && (
+                                        <p className="text-[9px] text-gray-400 mt-0.5">
+                                            Faltam R$ {(COMMISSION_THRESHOLD_POS - sellerDayTotal).toFixed(2)} p/ 2%
+                                        </p>
+                                    )}
+                                    {sellerDayTotal > COMMISSION_THRESHOLD_POS && (
+                                        <p className="text-[9px] text-emerald-500 mt-0.5 font-bold">✅ Meta diária superada!</p>
+                                    )}
                                 </div>
                             )}
                         </div>
@@ -1161,54 +1171,56 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
                 <div className="p-4 space-y-3 overflow-y-auto flex-1">
                     {visibleTransactions.length > 0 ? (
                         visibleTransactions.map((transaction) => (
-                            <div key={transaction.id} className="bg-white dark:bg-gray-700 p-4 rounded-xl shadow-sm border border-gray-100 dark:border-gray-600 flex justify-between items-center hover:border-[#ffc8cb] transition-colors cursor-pointer group">
-                                <div className="flex flex-col gap-1">
-                                    <div className="flex items-center gap-2">
-                                        <span className="font-mono text-xs font-bold text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded">{transaction.id}</span>
-                                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${transaction.status === 'Completed' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' :
-                                            transaction.status === 'Cancelled' ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400' : 'bg-amber-100 text-amber-700'
-                                            }`}>
-                                            {transaction.status === 'Completed' ? 'Concluído' : transaction.status === 'Cancelled' ? 'Cancelado' : 'Pendente'}
-                                        </span>
-                                    </div>
-                                    <p className="font-bold text-gray-800 dark:text-white line-clamp-1">{transaction.customerName}</p>
-                                    <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
-                                        <Calendar size={12} /> {new Date(transaction.date).toLocaleDateString('pt-BR')}
-                                        {(transaction as any).sellerName && (
-                                            <span className="flex items-center gap-1 text-purple-500 dark:text-purple-400">
-                                                <UserIcon size={11} /> {(transaction as any).sellerName}
+                            <div key={transaction.id} className="bg-white dark:bg-gray-700 rounded-xl shadow-sm border border-gray-100 dark:border-gray-600 overflow-hidden hover:border-[#ffc8cb] transition-colors group">
+                                {/* TOP: Info row */}
+                                <div className="p-3 flex justify-between items-start gap-2">
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex items-center gap-1.5 mb-1">
+                                            <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${transaction.status === 'Completed' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' : transaction.status === 'Cancelled' ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400' : 'bg-amber-100 text-amber-700'}`}>
+                                                {transaction.status === 'Completed' ? '✓ Concluído' : transaction.status === 'Cancelled' ? '✕ Cancelado' : '⏳ Pendente'}
                                             </span>
-                                        )}
+                                            {(transaction as any).source === 'online' ? (
+                                                <span className="text-[10px] flex items-center gap-0.5 text-indigo-500 font-bold"><Globe size={10} /> Online</span>
+                                            ) : (transaction as any).source === 'whatsapp' ? (
+                                                <span className="text-[10px] flex items-center gap-0.5 text-emerald-500 font-bold">💬 WhatsApp</span>
+                                            ) : (
+                                                <span className="text-[10px] flex items-center gap-0.5 text-[#e0888b] font-bold"><Store size={10} /> Loja</span>
+                                            )}
+                                        </div>
+                                        <p className="font-bold text-gray-800 dark:text-white text-sm line-clamp-1">{transaction.customerName}</p>
+                                        <div className="flex items-center gap-2 text-xs text-gray-400 mt-0.5">
+                                            <span className="flex items-center gap-1"><Calendar size={11} /> {new Date(transaction.date).toLocaleDateString('pt-BR')}</span>
+                                            {(transaction as any).sellerName && (
+                                                <span className="flex items-center gap-1 text-purple-500 dark:text-purple-400 font-medium">
+                                                    <UserIcon size={10} /> {(transaction as any).sellerName}
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <div className="text-right flex-shrink-0">
+                                        <p className="text-lg font-black text-gray-900 dark:text-white leading-none">R$ {transaction.total.toFixed(2)}</p>
+                                        <p className="text-[10px] text-gray-400 mt-0.5">{(transaction as any).paymentMethod || '--'}</p>
                                     </div>
                                 </div>
-                                <div className="text-right flex flex-col items-end gap-1">
-                                    <p className="text-lg font-black text-gray-900 dark:text-white">R$ {transaction.total.toFixed(2)}</p>
+                                {/* BOTTOM: Action buttons */}
+                                <div className="border-t border-gray-100 dark:border-gray-600 bg-gray-50 dark:bg-gray-800/50 flex divide-x divide-gray-100 dark:divide-gray-600">
                                     <button
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            handleViewHistoryReceipt(transaction);
-                                        }}
-                                        className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline flex items-center justify-end gap-1 bg-indigo-50 dark:bg-indigo-900/20 px-2 py-1 rounded transition-colors"
+                                        onClick={(e) => { e.stopPropagation(); handleViewHistoryReceipt(transaction); }}
+                                        className="flex-1 py-2 text-[11px] font-bold text-indigo-600 dark:text-indigo-400 flex items-center justify-center gap-1 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-colors"
                                     >
-                                        <FileText size={12} /> Ver Recibo
+                                        <FileText size={13} /> Recibo
                                     </button>
                                     <button
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            openEditSaleFlow(transaction);
-                                        }}
-                                        className="text-xs text-amber-600 dark:text-amber-400 hover:underline flex items-center justify-end gap-1 bg-amber-50 dark:bg-amber-900/20 px-2 py-1 rounded transition-colors"
+                                        onClick={(e) => { e.stopPropagation(); openEditSaleFlow(transaction); }}
+                                        className="flex-1 py-2 text-[11px] font-bold text-amber-600 dark:text-amber-400 flex items-center justify-center gap-1 hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors"
                                     >
-                                        <Save size={12} /> Editar
+                                        <Save size={13} /> Editar
                                     </button>
                                     <button
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            openDeleteSaleFlow(transaction);
-                                        }}
-                                        className="text-xs text-rose-600 dark:text-rose-400 hover:underline flex items-center justify-end gap-1 bg-rose-50 dark:bg-rose-900/20 px-2 py-1 rounded transition-colors"
+                                        onClick={(e) => { e.stopPropagation(); openDeleteSaleFlow(transaction); }}
+                                        className="flex-1 py-2 text-[11px] font-bold text-rose-600 dark:text-rose-400 flex items-center justify-center gap-1 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-colors"
                                     >
-                                        <Trash2 size={12} /> Deletar
+                                        <Trash2 size={13} /> Excluir
                                     </button>
                                 </div>
                             </div>
@@ -1843,6 +1855,36 @@ const POS: React.FC<POSProps> = ({ onAddDelivery, user }) => {
                                                 </select>
                                             </div>
                                         )}
+
+                                        {/* Origem da Venda */}
+                                        <div className="animate-in fade-in">
+                                            <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-2 flex items-center gap-1">
+                                                <Store size={12} /> Origem da Venda
+                                            </label>
+                                            <div className="grid grid-cols-3 gap-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setSelectedSource('store')}
+                                                    className={`p-2.5 rounded-xl border-2 flex flex-col items-center justify-center gap-1 text-xs font-bold transition-all ${selectedSource === 'store' ? 'border-[#ffc8cb] bg-[#ffc8cb]/20 text-[#c86065] dark:text-[#ffc8cb]' : 'border-gray-200 dark:border-gray-600 text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800'}`}
+                                                >
+                                                    <Store size={18} /> Loja
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setSelectedSource('whatsapp')}
+                                                    className={`p-2.5 rounded-xl border-2 flex flex-col items-center justify-center gap-1 text-xs font-bold transition-all ${selectedSource === 'whatsapp' ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400' : 'border-gray-200 dark:border-gray-600 text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800'}`}
+                                                >
+                                                    <span className="text-base leading-none">💬</span> WhatsApp
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setSelectedSource('online')}
+                                                    className={`p-2.5 rounded-xl border-2 flex flex-col items-center justify-center gap-1 text-xs font-bold transition-all ${selectedSource === 'online' ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400' : 'border-gray-200 dark:border-gray-600 text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800'}`}
+                                                >
+                                                    <Globe size={18} /> Online
+                                                </button>
+                                            </div>
+                                        </div>
 
                                         {/* Action Button - Moved from sticky to normal flow for mobile robustness */}
                                         <div className="pt-6 pb-2 mt-4">

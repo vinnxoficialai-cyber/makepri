@@ -868,21 +868,20 @@ const Delivery: React.FC<DeliveryProps> = ({ user }) => {
                 <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
                     <div className="absolute inset-0 bg-gray-900/70 backdrop-blur-sm" onClick={() => setReceiptDelivery(null)} />
                     <div className="bg-white dark:bg-gray-800 w-full max-w-sm rounded-2xl shadow-2xl relative flex flex-col max-h-[90vh] animate-in fade-in zoom-in-95 duration-200 overflow-hidden">
-                        {/* Receipt Header */}
-                        <div className="bg-gradient-to-br from-indigo-600 to-purple-600 p-4 text-white">
+                        <div className="bg-[#ffc8cb] p-4 text-gray-900">
                             <div className="flex justify-between items-start">
                                 <div>
                                     <p className="text-xs font-bold uppercase tracking-widest opacity-70">Comprovante de Pedido</p>
                                     <h3 className="text-lg font-black mt-0.5">{receiptDelivery.customerName}</h3>
                                     <p className="text-xs opacity-80 mt-0.5">{receiptDelivery.id}</p>
                                 </div>
-                                <button onClick={() => setReceiptDelivery(null)} className="bg-white/20 hover:bg-white/30 p-1.5 rounded-full transition-colors">
+                                <button onClick={() => setReceiptDelivery(null)} className="bg-black/10 hover:bg-black/20 p-1.5 rounded-full transition-colors">
                                     <X size={16} />
                                 </button>
                             </div>
                             {/* Status badge */}
                             <div className="mt-3">
-                                <span className={`px-2.5 py-1 rounded-full text-[11px] font-black uppercase tracking-wide ${receiptDelivery.status === 'Entregue' ? 'bg-emerald-400/30 text-emerald-100' : receiptDelivery.status === 'Cancelado' ? 'bg-rose-400/30 text-rose-100' : receiptDelivery.status === 'Problema' ? 'bg-amber-400/30 text-amber-100' : receiptDelivery.status === 'Em Rota' ? 'bg-blue-400/30 text-blue-100' : 'bg-white/20 text-white'}`}>
+                                <span className={`px-2.5 py-1 rounded-full text-[11px] font-black uppercase tracking-wide ${receiptDelivery.status === 'Entregue' ? 'bg-emerald-400/30 text-emerald-900' : receiptDelivery.status === 'Cancelado' ? 'bg-rose-400/30 text-rose-900' : receiptDelivery.status === 'Problema' ? 'bg-amber-400/30 text-amber-900' : receiptDelivery.status === 'Em Rota' ? 'bg-blue-400/30 text-blue-900' : 'bg-white/40 text-gray-900'}`}>
                                     {receiptDelivery.status}
                                 </span>
                             </div>

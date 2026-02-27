@@ -38,6 +38,7 @@ const Team: React.FC<TeamProps> = ({ users, currentUser, salesGoals, onUpdateGoa
     // --- GOALS STATE ---
     const [selectedDate, setSelectedDate] = useState(new Date());
     const [salesBySeller, setSalesBySeller] = useState<Record<string, number>>({});
+    const [salesBySellerToday, setSalesBySellerToday] = useState<Record<string, number>>({}); // For commission (daily)
     const currentMonth = selectedDate.getMonth();
     const currentYear = selectedDate.getFullYear();
 
@@ -79,7 +80,7 @@ const Team: React.FC<TeamProps> = ({ users, currentUser, salesGoals, onUpdateGoa
 
     // --- EFFECTS ---
     useEffect(() => {
-        // Calculate real sales per seller from transactions for the selected month
+        // Calculate real sales per seller from transactions for the selected month (for GOALS progress)
         const monthPrefix = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}`;
         const realSales: Record<string, number> = {};
         allSalesUsers.forEach(u => {
@@ -89,6 +90,21 @@ const Team: React.FC<TeamProps> = ({ users, currentUser, salesGoals, onUpdateGoa
         });
         setSalesBySeller(realSales);
     }, [currentMonth, currentYear, transactions, users.length]);
+
+    useEffect(() => {
+        // Calculate today's sales per seller (for COMMISSIONS — resets daily)
+        const todayStr = new Date().toISOString().split('T')[0];
+        const todaySales: Record<string, number> = {};
+        allSalesUsers.forEach(u => {
+            todaySales[u.id] = transactions
+                .filter(t => {
+                    const txDate = new Date(t.date).toISOString().split('T')[0];
+                    return txDate === todayStr && t.status === 'Completed' && t.sellerId === u.id;
+                })
+                .reduce((acc, curr) => acc + curr.total, 0);
+        });
+        setSalesBySellerToday(todaySales);
+    }, [transactions, users.length]);
 
     // --- GOAL HANDLERS ---
     const changeMonth = (delta: number) => {
@@ -207,16 +223,17 @@ const Team: React.FC<TeamProps> = ({ users, currentUser, salesGoals, onUpdateGoa
                             <div className="p-5 pt-2 bg-gray-50 dark:bg-gray-900/30 border-t border-gray-100 dark:border-gray-700">
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                                     {users.filter(u => u.role === 'Vendedor').map(user => {
-                                        const currentSales = salesBySeller[user.id] || 0;
+                                        const currentSales = salesBySeller[user.id] || 0;  // Mensal (para progresso da meta)
+                                        const todaySales = salesBySellerToday[user.id] || 0; // Diário (para comissão)
                                         const goalVal = salesGoals.userGoals[user.id] || 0;
                                         const type = salesGoals.goalTypes[user.id] || 'monthly';
                                         const monthlyTarget = type === 'daily' ? goalVal * 30 : goalVal;
                                         const progress = monthlyTarget > 0 ? (currentSales / monthlyTarget) * 100 : 0;
                                         const pendingTasks = tasks.filter(t => t.assignedTo === user.id && t.status === 'pending').length;
+                                        // Comissão DIÁRIA: zera todo dia. 1% se até R$3000/dia, 2% se passou R$3000/dia
                                         const COMMISSION_THRESHOLD = 3000;
-                                        const commRate = currentSales > COMMISSION_THRESHOLD ? 0.02 : 0.01;
-                                        const commValue = currentSales * commRate;
-                                        const tierLabel = currentSales > COMMISSION_THRESHOLD ? 'Tier 2 (2%)' : 'Tier 1 (1%)';
+                                        const commRate = todaySales > COMMISSION_THRESHOLD ? 0.02 : 0.01;
+                                        const commValue = todaySales * commRate;
 
                                         return (
                                             <div
@@ -258,10 +275,14 @@ const Team: React.FC<TeamProps> = ({ users, currentUser, salesGoals, onUpdateGoa
                                                         </div>
                                                     </div>
                                                     <div className="flex items-center justify-between p-2.5 rounded-lg bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800">
-                                                        <div className="flex items-center gap-2">
-                                                            <span className="text-purple-600 dark:text-purple-400 text-sm font-bold">💰 Comissão:</span>
-                                                            <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${currentSales > COMMISSION_THRESHOLD ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' : 'bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400'}`}>
-                                                                {tierLabel}
+                                                        <div className="flex flex-col">
+                                                            <span className="text-purple-600 dark:text-purple-400 text-sm font-bold">💰 Comissão Hoje ({(commRate * 100).toFixed(0)}%)</span>
+                                                            <span className="text-[10px] text-purple-400/70 font-medium">
+                                                                Hoje: R$ {todaySales.toFixed(2)} vendido
+                                                                {todaySales > COMMISSION_THRESHOLD
+                                                                    ? ' ✅ Meta diária superada!'
+                                                                    : ` · faltam R$ ${(COMMISSION_THRESHOLD - todaySales).toFixed(2)} p/ 2%`
+                                                                }
                                                             </span>
                                                         </div>
                                                         <span className="text-sm font-black text-purple-700 dark:text-purple-300">

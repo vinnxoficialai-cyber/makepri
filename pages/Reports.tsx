@@ -329,7 +329,7 @@ const Reports: React.FC = () => {
                                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
                                         <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#9ca3af', fontSize: 12 }} />
                                         <YAxis axisLine={false} tickLine={false} tick={{ fill: '#9ca3af', fontSize: 12 }} />
-                                        <Tooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                                        <Tooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} formatter={(value: any) => [`R$ ${Number(value).toFixed(2)}`, 'Total']} />
                                         <Area type="monotone" dataKey="total" stroke="#ec4899" fillOpacity={1} fill="url(#colorTotal)" strokeWidth={2} />
                                     </AreaChart>
                                 </ResponsiveContainer>
