@@ -164,6 +164,93 @@ export const ProductService = {
         return toCamelCase(data) as Product;
     },
 
+    // Excluir produto permanentemente
+    async deletePermanently(id: string): Promise<void> {
+        // Primeiro remover variacoes
+        await supabase.from('product_variations').delete().eq('product_id', id);
+        // Depois remover o produto
+        const { error } = await supabase.from('products').delete().eq('id', id);
+        if (error) throw error;
+        dataCache.invalidate('products:all');
+    },
+
+    // Buscar produtos sem vendas ha N dias (ativos)
+    async getStaleProducts(days: number): Promise<Product[]> {
+        const cutoff = new Date();
+        cutoff.setDate(cutoff.getDate() - days);
+        // Buscar todos ativos
+        const { data: products, error } = await supabase
+            .from('products')
+            .select('*')
+            .eq('is_active', true)
+            .order('name');
+        if (error) throw error;
+        // Buscar transacoes recentes para identificar quais venderam
+        const { data: recentItems } = await supabase
+            .from('transaction_items')
+            .select('product_id, created_at')
+            .gte('created_at', cutoff.toISOString());
+        const recentProductIds = new Set((recentItems || []).map(i => i.product_id).filter(Boolean));
+        // Filtrar: produtos que NAO venderam no periodo
+        const stale = (products || []).filter(p => !recentProductIds.has(p.id));
+        return toCamelCase(stale) as Product[];
+    },
+
+    // Buscar produtos com estoque zero ha N dias (ativos)
+    async getZeroStockSince(days: number): Promise<Product[]> {
+        const cutoff = new Date();
+        cutoff.setDate(cutoff.getDate() - days);
+        const { data, error } = await supabase
+            .from('products')
+            .select('*')
+            .eq('is_active', true)
+            .lte('stock', 0)
+            .lte('updated_at', cutoff.toISOString())
+            .order('name');
+        if (error) throw error;
+        return toCamelCase(data) as Product[];
+    },
+
+    // Buscar produtos ativos com preco zero
+    async getZeroPriceProducts(): Promise<Product[]> {
+        const { data, error } = await supabase
+            .from('products')
+            .select('*')
+            .eq('is_active', true)
+            .or('price_sale.is.null,price_sale.lte.0')
+            .order('name');
+        if (error) throw error;
+        return toCamelCase(data) as Product[];
+    },
+
+    // Inativar multiplos produtos
+    async bulkInactivate(ids: string[]): Promise<void> {
+        const { error } = await supabase
+            .from('products')
+            .update({ is_active: false })
+            .in('id', ids);
+        if (error) throw error;
+        dataCache.invalidate('products:all');
+    },
+
+    // Reativar multiplos produtos
+    async bulkReactivate(ids: string[]): Promise<void> {
+        const { error } = await supabase
+            .from('products')
+            .update({ is_active: true })
+            .in('id', ids);
+        if (error) throw error;
+        dataCache.invalidate('products:all');
+    },
+
+    // Excluir multiplos produtos permanentemente
+    async bulkDeletePermanently(ids: string[]): Promise<void> {
+        await supabase.from('product_variations').delete().in('product_id', ids);
+        const { error } = await supabase.from('products').delete().in('id', ids);
+        if (error) throw error;
+        dataCache.invalidate('products:all');
+    },
+
     // Atualizar estoque
     async updateStock(id: string, quantity: number): Promise<Product> {
         const { data: product } = await supabase
@@ -340,6 +427,54 @@ export const CustomerService = {
         if (error) throw error;
         dataCache.invalidate('customers:all');
         return toCamelCase(data) as Customer;
+    },
+
+    // Excluir cliente permanentemente
+    async deletePermanently(id: string): Promise<void> {
+        const { error } = await supabase.from('customers').delete().eq('id', id);
+        if (error) throw error;
+        dataCache.invalidate('customers:all');
+    },
+
+    // Buscar clientes sem compra ha N dias (ativos)
+    async getStaleCustomers(days: number): Promise<Customer[]> {
+        const cutoff = new Date();
+        cutoff.setDate(cutoff.getDate() - days);
+        const { data, error } = await supabase
+            .from('customers')
+            .select('*')
+            .eq('is_active', true)
+            .or(`last_purchase.is.null,last_purchase.lte.${cutoff.toISOString()}`)
+            .order('name');
+        if (error) throw error;
+        return toCamelCase(data) as Customer[];
+    },
+
+    // Inativar multiplos clientes
+    async bulkInactivate(ids: string[]): Promise<void> {
+        const { error } = await supabase
+            .from('customers')
+            .update({ is_active: false })
+            .in('id', ids);
+        if (error) throw error;
+        dataCache.invalidate('customers:all');
+    },
+
+    // Reativar multiplos clientes
+    async bulkReactivate(ids: string[]): Promise<void> {
+        const { error } = await supabase
+            .from('customers')
+            .update({ is_active: true })
+            .in('id', ids);
+        if (error) throw error;
+        dataCache.invalidate('customers:all');
+    },
+
+    // Excluir multiplos clientes permanentemente
+    async bulkDeletePermanently(ids: string[]): Promise<void> {
+        const { error } = await supabase.from('customers').delete().in('id', ids);
+        if (error) throw error;
+        dataCache.invalidate('customers:all');
     },
 
     // Atualizar total gasto

@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { User, UserRole, ModuleType, CompanySettings, SalesGoal, Product, Customer } from '../types';
-import { Users, Shield, Plus, X, Save, Trash2, Check, UserCircle, Image, Building, Upload, Edit, Camera, Lock, Target, MapPin, Phone, Globe, FileText, Calendar, Clock, RotateCcw, Package, Search } from 'lucide-react';
+import { Users, Shield, Plus, X, Save, Trash2, Check, UserCircle, Image, Building, Upload, Edit, Camera, Lock, Target, MapPin, Phone, Globe, FileText, Calendar, Clock, RotateCcw, Package, Search, Zap, AlertTriangle, ChevronDown } from 'lucide-react';
 import { useSettings } from '../lib/hooks';
 import { useImageUpload } from '../lib/images';
 import { UserService, ProductService, CustomerService } from '../lib/database';
@@ -29,6 +29,22 @@ const Settings: React.FC<SettingsProps> = ({
     const [inactiveCustomers, setInactiveCustomers] = useState<Customer[]>([]);
     const [inactiveLoading, setInactiveLoading] = useState(false);
     const [inactiveSearch, setInactiveSearch] = useState('');
+    // Bulk selection
+    const [selectedProductIds, setSelectedProductIds] = useState<Set<string>>(new Set());
+    const [selectedCustomerIds, setSelectedCustomerIds] = useState<Set<string>>(new Set());
+    // Admin password for permanent delete
+    const [isDeletePasswordModalOpen, setIsDeletePasswordModalOpen] = useState(false);
+    const [deletePasswordInput, setDeletePasswordInput] = useState('');
+    const [deletePasswordError, setDeletePasswordError] = useState('');
+    const [pendingDeleteAction, setPendingDeleteAction] = useState<(() => Promise<void>) | null>(null);
+    // Inactivation rules
+    const [rulesExpanded, setRulesExpanded] = useState(false);
+    const [ruleStaleProductsDays, setRuleStaleProductsDays] = useState('60');
+    const [ruleZeroStockDays, setRuleZeroStockDays] = useState('30');
+    const [ruleStaleCustomersDays, setRuleStaleCustomersDays] = useState('90');
+    const [ruleSuggestions, setRuleSuggestions] = useState<{ type: string; items: any[]; label: string }[]>([]);
+    const [rulesLoading, setRulesLoading] = useState(false);
+    const [isBulkProcessing, setIsBulkProcessing] = useState(false);
 
     // Default form state for new user
     const [userForm, setUserForm] = useState<Partial<User> & { login?: string; password?: string; customGoal?: string; goalType?: 'daily' | 'monthly' }>({
@@ -99,6 +115,160 @@ const Settings: React.FC<SettingsProps> = ({
             alert('✅ Cliente reativado!');
         } catch (error: any) {
             alert('❌ Erro ao reativar: ' + error.message);
+        }
+    };
+
+    // Toggle product selection
+    const toggleProductSelection = (id: string) => {
+        setSelectedProductIds(prev => {
+            const next = new Set(prev);
+            next.has(id) ? next.delete(id) : next.add(id);
+            return next;
+        });
+    };
+    const toggleCustomerSelection = (id: string) => {
+        setSelectedCustomerIds(prev => {
+            const next = new Set(prev);
+            next.has(id) ? next.delete(id) : next.add(id);
+            return next;
+        });
+    };
+    const toggleAllProducts = () => {
+        const filtered = inactiveProducts.filter(p => p.name?.toLowerCase().includes(inactiveSearch.toLowerCase()));
+        if (selectedProductIds.size === filtered.length) {
+            setSelectedProductIds(new Set());
+        } else {
+            setSelectedProductIds(new Set(filtered.map(p => p.id)));
+        }
+    };
+    const toggleAllCustomers = () => {
+        const filtered = inactiveCustomers.filter(c => c.name?.toLowerCase().includes(inactiveSearch.toLowerCase()));
+        if (selectedCustomerIds.size === filtered.length) {
+            setSelectedCustomerIds(new Set());
+        } else {
+            setSelectedCustomerIds(new Set(filtered.map(c => c.id)));
+        }
+    };
+
+    // Bulk reactivate
+    const handleBulkReactivateProducts = async () => {
+        if (selectedProductIds.size === 0) return;
+        if (!window.confirm(`Reativar ${selectedProductIds.size} produto(s)?`)) return;
+        setIsBulkProcessing(true);
+        try {
+            await ProductService.bulkReactivate(Array.from(selectedProductIds));
+            setInactiveProducts(prev => prev.filter(p => !selectedProductIds.has(p.id)));
+            setSelectedProductIds(new Set());
+            alert(`✅ ${selectedProductIds.size} produto(s) reativado(s)!`);
+        } catch (error: any) {
+            alert('❌ Erro: ' + error.message);
+        } finally {
+            setIsBulkProcessing(false);
+        }
+    };
+    const handleBulkReactivateCustomers = async () => {
+        if (selectedCustomerIds.size === 0) return;
+        if (!window.confirm(`Reativar ${selectedCustomerIds.size} cliente(s)?`)) return;
+        setIsBulkProcessing(true);
+        try {
+            await CustomerService.bulkReactivate(Array.from(selectedCustomerIds));
+            setInactiveCustomers(prev => prev.filter(c => !selectedCustomerIds.has(c.id)));
+            setSelectedCustomerIds(new Set());
+            alert(`✅ ${selectedCustomerIds.size} cliente(s) reativado(s)!`);
+        } catch (error: any) {
+            alert('❌ Erro: ' + error.message);
+        } finally {
+            setIsBulkProcessing(false);
+        }
+    };
+
+    // Permanent delete with admin password
+    const requestPermanentDelete = (type: 'products' | 'customers') => {
+        const ids = type === 'products' ? selectedProductIds : selectedCustomerIds;
+        if (ids.size === 0) { alert('Selecione ao menos um item.'); return; }
+        const action = async () => {
+            setIsBulkProcessing(true);
+            try {
+                if (type === 'products') {
+                    await ProductService.bulkDeletePermanently(Array.from(selectedProductIds));
+                    setInactiveProducts(prev => prev.filter(p => !selectedProductIds.has(p.id)));
+                    setSelectedProductIds(new Set());
+                } else {
+                    await CustomerService.bulkDeletePermanently(Array.from(selectedCustomerIds));
+                    setInactiveCustomers(prev => prev.filter(c => !selectedCustomerIds.has(c.id)));
+                    setSelectedCustomerIds(new Set());
+                }
+                alert(`✅ ${ids.size} item(ns) excluido(s) permanentemente!`);
+            } catch (error: any) {
+                alert('❌ Erro: ' + error.message);
+            } finally {
+                setIsBulkProcessing(false);
+            }
+        };
+        setPendingDeleteAction(() => action);
+        setDeletePasswordInput('');
+        setDeletePasswordError('');
+        setIsDeletePasswordModalOpen(true);
+    };
+    const handleDeletePasswordSubmit = async () => {
+        const FIXED_PASSWORD = 'Primake2026';
+        if (deletePasswordInput.trim() !== FIXED_PASSWORD) {
+            setDeletePasswordError('Senha incorreta.');
+            return;
+        }
+        setIsDeletePasswordModalOpen(false);
+        if (pendingDeleteAction) await pendingDeleteAction();
+        setPendingDeleteAction(null);
+    };
+
+    // Analyze rules
+    const handleAnalyzeRules = async () => {
+        setRulesLoading(true);
+        setRuleSuggestions([]);
+        try {
+            const results: { type: string; items: any[]; label: string }[] = [];
+            const staleDays = parseInt(ruleStaleProductsDays) || 60;
+            const zeroDays = parseInt(ruleZeroStockDays) || 30;
+            const customerDays = parseInt(ruleStaleCustomersDays) || 90;
+
+            const [stale, zeroStock, zeroPrice, staleCust] = await Promise.all([
+                ProductService.getStaleProducts(staleDays),
+                ProductService.getZeroStockSince(zeroDays),
+                ProductService.getZeroPriceProducts(),
+                CustomerService.getStaleCustomers(customerDays)
+            ]);
+
+            if (stale.length > 0) results.push({ type: 'stale_products', items: stale, label: `${stale.length} produto(s) sem vendas ha ${staleDays} dias` });
+            if (zeroStock.length > 0) results.push({ type: 'zero_stock', items: zeroStock, label: `${zeroStock.length} produto(s) com estoque zerado ha ${zeroDays} dias` });
+            if (zeroPrice.length > 0) results.push({ type: 'zero_price', items: zeroPrice, label: `${zeroPrice.length} produto(s) com preco R$0,00` });
+            if (staleCust.length > 0) results.push({ type: 'stale_customers', items: staleCust, label: `${staleCust.length} cliente(s) sem compra ha ${customerDays} dias` });
+
+            setRuleSuggestions(results);
+            if (results.length === 0) alert('✅ Nenhum item encontrado para inativacao automatica.');
+        } catch (error: any) {
+            alert('❌ Erro ao analisar: ' + error.message);
+        } finally {
+            setRulesLoading(false);
+        }
+    };
+    const handleApplyRuleSuggestion = async (suggestion: { type: string; items: any[] }) => {
+        const count = suggestion.items.length;
+        if (!window.confirm(`Inativar ${count} item(ns)? Eles poderao ser reativados depois.`)) return;
+        setIsBulkProcessing(true);
+        try {
+            const ids = suggestion.items.map((i: any) => i.id);
+            if (suggestion.type === 'stale_customers') {
+                await CustomerService.bulkInactivate(ids);
+            } else {
+                await ProductService.bulkInactivate(ids);
+            }
+            setRuleSuggestions(prev => prev.filter(s => s.type !== suggestion.type));
+            await loadInactiveItems();
+            alert(`✅ ${count} item(ns) inativado(s)!`);
+        } catch (error: any) {
+            alert('❌ Erro: ' + error.message);
+        } finally {
+            setIsBulkProcessing(false);
         }
     };
 
@@ -677,7 +847,7 @@ const Settings: React.FC<SettingsProps> = ({
                                     <h3 className="text-lg font-bold text-gray-800 dark:text-white flex items-center gap-2">
                                         <RotateCcw size={20} className="text-amber-500" /> Itens Inativos
                                     </h3>
-                                    <p className="text-sm text-gray-500 dark:text-gray-400">Produtos e clientes que foram inativados. Reative-os quando necessário.</p>
+                                    <p className="text-sm text-gray-500 dark:text-gray-400">Gerencie produtos e clientes inativos. Reative, exclua ou aplique regras automaticas.</p>
                                 </div>
                                 <div className="relative w-full md:w-72">
                                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
@@ -690,6 +860,80 @@ const Settings: React.FC<SettingsProps> = ({
                                     />
                                 </div>
                             </div>
+
+                            {/* RULES SECTION */}
+                            {isAdmin && (
+                                <div className="bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-900/20 dark:to-purple-900/20 rounded-xl border border-indigo-100 dark:border-indigo-800/50 overflow-hidden">
+                                    <button
+                                        onClick={() => setRulesExpanded(!rulesExpanded)}
+                                        className="w-full p-4 flex items-center gap-3 text-left hover:bg-indigo-50/50 dark:hover:bg-indigo-900/10 transition-colors"
+                                    >
+                                        <div className="p-2 bg-indigo-100 dark:bg-indigo-900/40 rounded-lg">
+                                            <Zap size={18} className="text-indigo-600 dark:text-indigo-400" />
+                                        </div>
+                                        <div className="flex-1">
+                                            <h4 className="font-bold text-gray-800 dark:text-white text-sm">Regras de Inativacao Automatica</h4>
+                                            <p className="text-xs text-gray-500 dark:text-gray-400">Analise e inative itens que atendem criterios especificos</p>
+                                        </div>
+                                        <ChevronDown size={16} className={`text-gray-400 transition-transform ${rulesExpanded ? 'rotate-180' : ''}`} />
+                                    </button>
+                                    {rulesExpanded && (
+                                        <div className="p-4 pt-0 space-y-4">
+                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                                <div className="bg-white dark:bg-gray-800 rounded-lg p-3 border border-gray-200 dark:border-gray-700">
+                                                    <label className="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Produtos sem vendas ha</label>
+                                                    <div className="flex items-center gap-2 mt-1">
+                                                        <input type="number" min="7" max="365" className="w-20 px-2 py-1.5 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white outline-none focus:ring-1 focus:ring-indigo-300" value={ruleStaleProductsDays} onChange={e => setRuleStaleProductsDays(e.target.value)} />
+                                                        <span className="text-xs text-gray-500 dark:text-gray-400">dias</span>
+                                                    </div>
+                                                </div>
+                                                <div className="bg-white dark:bg-gray-800 rounded-lg p-3 border border-gray-200 dark:border-gray-700">
+                                                    <label className="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Estoque zerado ha</label>
+                                                    <div className="flex items-center gap-2 mt-1">
+                                                        <input type="number" min="7" max="365" className="w-20 px-2 py-1.5 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white outline-none focus:ring-1 focus:ring-indigo-300" value={ruleZeroStockDays} onChange={e => setRuleZeroStockDays(e.target.value)} />
+                                                        <span className="text-xs text-gray-500 dark:text-gray-400">dias</span>
+                                                    </div>
+                                                </div>
+                                                <div className="bg-white dark:bg-gray-800 rounded-lg p-3 border border-gray-200 dark:border-gray-700">
+                                                    <label className="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Clientes sem compra ha</label>
+                                                    <div className="flex items-center gap-2 mt-1">
+                                                        <input type="number" min="7" max="365" className="w-20 px-2 py-1.5 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white outline-none focus:ring-1 focus:ring-indigo-300" value={ruleStaleCustomersDays} onChange={e => setRuleStaleCustomersDays(e.target.value)} />
+                                                        <span className="text-xs text-gray-500 dark:text-gray-400">dias</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <button
+                                                onClick={handleAnalyzeRules}
+                                                disabled={rulesLoading}
+                                                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold transition-colors flex items-center gap-2 disabled:opacity-50"
+                                            >
+                                                {rulesLoading ? <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white" /> : <Zap size={14} />}
+                                                {rulesLoading ? 'Analisando...' : 'Analisar Agora'}
+                                            </button>
+                                            {/* Rule Results */}
+                                            {ruleSuggestions.length > 0 && (
+                                                <div className="space-y-2">
+                                                    {ruleSuggestions.map(s => (
+                                                        <div key={s.type} className="flex items-center justify-between bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/50 rounded-lg p-3">
+                                                            <div className="flex items-center gap-2">
+                                                                <AlertTriangle size={14} className="text-amber-600 dark:text-amber-400" />
+                                                                <span className="text-sm font-medium text-gray-800 dark:text-gray-200">{s.label}</span>
+                                                            </div>
+                                                            <button
+                                                                onClick={() => handleApplyRuleSuggestion(s)}
+                                                                disabled={isBulkProcessing}
+                                                                className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-xs font-bold transition-colors disabled:opacity-50"
+                                                            >
+                                                                Inativar
+                                                            </button>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
 
                             {inactiveLoading ? (
                                 <div className="flex justify-center py-12">
@@ -706,13 +950,32 @@ const Settings: React.FC<SettingsProps> = ({
                                                 {inactiveProducts.filter(p => p.name?.toLowerCase().includes(inactiveSearch.toLowerCase())).length}
                                             </span>
                                         </div>
+                                        {/* Bulk Action Bar - Products */}
+                                        {selectedProductIds.size > 0 && (
+                                            <div className="p-3 bg-indigo-50 dark:bg-indigo-900/20 border-b border-indigo-100 dark:border-indigo-900/30 flex items-center gap-2 flex-wrap">
+                                                <span className="text-xs font-bold text-indigo-700 dark:text-indigo-300">{selectedProductIds.size} selecionado(s)</span>
+                                                <button onClick={handleBulkReactivateProducts} disabled={isBulkProcessing} className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-xs font-bold transition-colors disabled:opacity-50 flex items-center gap-1">
+                                                    <RotateCcw size={12} /> Reativar
+                                                </button>
+                                                <button onClick={() => requestPermanentDelete('products')} disabled={isBulkProcessing} className="px-3 py-1 bg-rose-600 hover:bg-rose-500 text-white rounded text-xs font-bold transition-colors disabled:opacity-50 flex items-center gap-1">
+                                                    <Trash2 size={12} /> Excluir Permanente
+                                                </button>
+                                                <button onClick={() => setSelectedProductIds(new Set())} className="px-2 py-1 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 text-xs transition-colors">Limpar</button>
+                                            </div>
+                                        )}
                                         {inactiveProducts.filter(p => p.name?.toLowerCase().includes(inactiveSearch.toLowerCase())).length > 0 ? (
                                             <div className="divide-y divide-gray-100 dark:divide-gray-700">
+                                                {/* Select All */}
+                                                <div className="px-4 py-2 bg-gray-100/50 dark:bg-gray-700/20 flex items-center gap-3">
+                                                    <input type="checkbox" className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer" checked={selectedProductIds.size === inactiveProducts.filter(p => p.name?.toLowerCase().includes(inactiveSearch.toLowerCase())).length && selectedProductIds.size > 0} onChange={toggleAllProducts} />
+                                                    <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">Selecionar todos</span>
+                                                </div>
                                                 {inactiveProducts
                                                     .filter(p => p.name?.toLowerCase().includes(inactiveSearch.toLowerCase()))
                                                     .map(product => (
-                                                        <div key={product.id} className="flex items-center justify-between p-4 hover:bg-white dark:hover:bg-gray-700/50 transition-colors">
+                                                        <div key={product.id} className={`flex items-center justify-between p-4 hover:bg-white dark:hover:bg-gray-700/50 transition-colors ${selectedProductIds.has(product.id) ? 'bg-indigo-50/50 dark:bg-indigo-900/10' : ''}`}>
                                                             <div className="flex items-center gap-3">
+                                                                <input type="checkbox" className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer" checked={selectedProductIds.has(product.id)} onChange={() => toggleProductSelection(product.id)} />
                                                                 {product.imageUrl ? (
                                                                     <img src={product.imageUrl} alt={product.name} className="w-10 h-10 rounded-lg object-cover border border-gray-200 dark:border-gray-600" />
                                                                 ) : (
@@ -751,13 +1014,32 @@ const Settings: React.FC<SettingsProps> = ({
                                                 {inactiveCustomers.filter(c => c.name?.toLowerCase().includes(inactiveSearch.toLowerCase())).length}
                                             </span>
                                         </div>
+                                        {/* Bulk Action Bar - Customers */}
+                                        {selectedCustomerIds.size > 0 && (
+                                            <div className="p-3 bg-indigo-50 dark:bg-indigo-900/20 border-b border-indigo-100 dark:border-indigo-900/30 flex items-center gap-2 flex-wrap">
+                                                <span className="text-xs font-bold text-indigo-700 dark:text-indigo-300">{selectedCustomerIds.size} selecionado(s)</span>
+                                                <button onClick={handleBulkReactivateCustomers} disabled={isBulkProcessing} className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-xs font-bold transition-colors disabled:opacity-50 flex items-center gap-1">
+                                                    <RotateCcw size={12} /> Reativar
+                                                </button>
+                                                <button onClick={() => requestPermanentDelete('customers')} disabled={isBulkProcessing} className="px-3 py-1 bg-rose-600 hover:bg-rose-500 text-white rounded text-xs font-bold transition-colors disabled:opacity-50 flex items-center gap-1">
+                                                    <Trash2 size={12} /> Excluir Permanente
+                                                </button>
+                                                <button onClick={() => setSelectedCustomerIds(new Set())} className="px-2 py-1 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 text-xs transition-colors">Limpar</button>
+                                            </div>
+                                        )}
                                         {inactiveCustomers.filter(c => c.name?.toLowerCase().includes(inactiveSearch.toLowerCase())).length > 0 ? (
                                             <div className="divide-y divide-gray-100 dark:divide-gray-700">
+                                                {/* Select All */}
+                                                <div className="px-4 py-2 bg-gray-100/50 dark:bg-gray-700/20 flex items-center gap-3">
+                                                    <input type="checkbox" className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer" checked={selectedCustomerIds.size === inactiveCustomers.filter(c => c.name?.toLowerCase().includes(inactiveSearch.toLowerCase())).length && selectedCustomerIds.size > 0} onChange={toggleAllCustomers} />
+                                                    <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">Selecionar todos</span>
+                                                </div>
                                                 {inactiveCustomers
                                                     .filter(c => c.name?.toLowerCase().includes(inactiveSearch.toLowerCase()))
                                                     .map(customer => (
-                                                        <div key={customer.id} className="flex items-center justify-between p-4 hover:bg-white dark:hover:bg-gray-700/50 transition-colors">
+                                                        <div key={customer.id} className={`flex items-center justify-between p-4 hover:bg-white dark:hover:bg-gray-700/50 transition-colors ${selectedCustomerIds.has(customer.id) ? 'bg-indigo-50/50 dark:bg-indigo-900/10' : ''}`}>
                                                             <div className="flex items-center gap-3">
+                                                                <input type="checkbox" className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer" checked={selectedCustomerIds.has(customer.id)} onChange={() => toggleCustomerSelection(customer.id)} />
                                                                 <div className="w-10 h-10 rounded-full bg-indigo-50 dark:bg-indigo-900/20 flex items-center justify-center text-indigo-600 dark:text-indigo-400 font-bold text-sm border border-indigo-100 dark:border-indigo-800">
                                                                     {customer.name ? customer.name.substring(0, 2).toUpperCase() : '??'}
                                                                 </div>
@@ -940,6 +1222,48 @@ const Settings: React.FC<SettingsProps> = ({
                         <div className="p-4 border-t border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/30 flex justify-end gap-3">
                             <button onClick={() => setIsUserModalOpen(false)} className="px-4 py-2 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg text-sm font-medium transition-colors">Cancelar</button>
                             <button onClick={handleSaveUser} className="px-6 py-2 bg-[#ffc8cb] hover:bg-[#ffb6b9] text-gray-900 rounded-lg text-sm font-medium shadow-md shadow-pink-200 transition-all flex items-center gap-2"><Save size={16} /> {editingUserId ? 'Atualizar Usuário' : 'Salvar Usuário'}</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+            {/* Admin Password Modal for Permanent Delete */}
+            {isDeletePasswordModalOpen && (
+                <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+                    <div className="absolute inset-0 bg-gray-900/70 backdrop-blur-sm" onClick={() => { setIsDeletePasswordModalOpen(false); setPendingDeleteAction(null); }} />
+                    <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-sm relative animate-in fade-in zoom-in-95 duration-200 p-6">
+                        <div className="flex items-center gap-3 mb-4">
+                            <div className="p-2 bg-rose-100 dark:bg-rose-900/30 rounded-lg">
+                                <AlertTriangle size={20} className="text-rose-600 dark:text-rose-400" />
+                            </div>
+                            <div>
+                                <h3 className="font-bold text-gray-800 dark:text-white text-sm">Exclusao Permanente</h3>
+                                <p className="text-xs text-gray-500 dark:text-gray-400">Essa acao nao pode ser desfeita.</p>
+                            </div>
+                        </div>
+                        <div className="space-y-3">
+                            <div>
+                                <label className="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Senha do Administrador</label>
+                                <input
+                                    type="password"
+                                    className={`w-full mt-1 px-3 py-2.5 border-2 rounded-xl focus:outline-none text-sm font-medium bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white transition-colors ${deletePasswordError ? 'border-rose-400 focus:border-rose-500' : 'border-gray-200 dark:border-gray-600 focus:border-rose-500'}`}
+                                    placeholder="Digite a senha..."
+                                    value={deletePasswordInput}
+                                    onChange={e => { setDeletePasswordInput(e.target.value); setDeletePasswordError(''); }}
+                                    onKeyDown={e => e.key === 'Enter' && handleDeletePasswordSubmit()}
+                                    autoFocus
+                                />
+                                {deletePasswordError && (
+                                    <p className="text-xs text-rose-500 font-bold mt-1 flex items-center gap-1"><AlertTriangle size={10} /> {deletePasswordError}</p>
+                                )}
+                            </div>
+                            <div className="flex gap-2">
+                                <button onClick={() => { setIsDeletePasswordModalOpen(false); setPendingDeleteAction(null); }} className="flex-1 px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-xs font-bold hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors">
+                                    Cancelar
+                                </button>
+                                <button onClick={handleDeletePasswordSubmit} className="flex-1 px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-bold transition-colors">
+                                    Confirmar Exclusao
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
