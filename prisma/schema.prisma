@@ -1,0 +1,366 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// =====================================================
+// PRODUTOS
+// =====================================================
+model products {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sku             String   @unique @db.VarChar(100)
+  name            String   @db.VarChar(255)
+  category        String   @db.VarChar(50)
+  price_cost      Decimal  @default(0) @db.Decimal(10, 2)
+  price_sale      Decimal  @default(0) @db.Decimal(10, 2)
+  stock           Int      @default(0)
+  min_stock       Int      @default(0)
+  unit            String   @default("un") @db.VarChar(20)
+  image_url       String?
+  expiry_date     DateTime? @db.Date
+  brand           String?  @db.VarChar(100)
+  size            String?  @db.VarChar(50)
+  color           String?  @db.VarChar(50)
+  segment         String?  @db.VarChar(100)
+  collection      String?  @db.VarChar(100)
+  description     String?
+  supplier        String?  @db.VarChar(255)
+  commission_rate Decimal? @default(0) @db.Decimal(5, 2)
+  type            String   @default("single") @db.VarChar(20)
+  created_at      DateTime? @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime? @default(now()) @db.Timestamptz(6)
+
+  // Relations
+  bundle_components_as_bundle    bundle_components[] @relation("BundleProduct")
+  bundle_components_as_component bundle_components[] @relation("ComponentProduct")
+  transaction_items              transaction_items[]
+
+  @@index([sku])
+  @@index([category])
+  @@index([type])
+  @@index([stock])
+}
+
+// =====================================================
+// COMPONENTES DE KITS (BUNDLES)
+// =====================================================
+model bundle_components {
+  id           String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  bundle_id    String   @db.Uuid
+  component_id String   @db.Uuid
+  quantity     Int      @default(1)
+  created_at   DateTime? @default(now()) @db.Timestamptz(6)
+
+  // Relations
+  bundle    products @relation("BundleProduct", fields: [bundle_id], references: [id], onDelete: Cascade)
+  component products @relation("ComponentProduct", fields: [component_id], references: [id], onDelete: Cascade)
+
+  @@unique([bundle_id, component_id])
+  @@index([bundle_id])
+  @@index([component_id])
+}
+
+// =====================================================
+// CLIENTES
+// =====================================================
+model customers {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name          String    @db.VarChar(255)
+  email         String?   @db.VarChar(255)
+  phone         String?   @db.VarChar(20)
+  cpf           String?   @db.VarChar(14)
+  address       String?
+  city          String?   @db.VarChar(100)
+  state         String?   @db.VarChar(2)
+  birth_date    DateTime? @db.Date
+  total_spent   Decimal?  @default(0) @db.Decimal(10, 2)
+  last_purchase DateTime? @db.Timestamptz(6)
+  status        String    @default("Active") @db.VarChar(20)
+  notes         String?
+  created_at    DateTime? @default(now()) @db.Timestamptz(6)
+  updated_at    DateTime? @default(now()) @db.Timestamptz(6)
+
+  // Relations
+  transactions transactions[]
+
+  @@index([name])
+  @@index([email])
+  @@index([phone])
+  @@index([cpf])
+  @@index([status])
+}
+
+// =====================================================
+// USUARIOS / EQUIPE
+// =====================================================
+model users {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name        String   @db.VarChar(255)
+  email       String   @unique @db.VarChar(255)
+  role        String   @db.VarChar(50)
+  permissions String[] @default([])
+  avatar_url  String?
+  active      Boolean  @default(true)
+  created_at  DateTime? @default(now()) @db.Timestamptz(6)
+  updated_at  DateTime? @default(now()) @db.Timestamptz(6)
+
+  // Relations
+  transactions_as_seller transactions[]
+  tasks_assigned         tasks[]        @relation("TaskAssignedTo")
+  tasks_created          tasks[]        @relation("TaskCreatedBy")
+  sales_goals            sales_goals[]
+
+  @@index([email])
+  @@index([role])
+  @@index([active])
+}
+
+// =====================================================
+// TRANSACOES / VENDAS
+// =====================================================
+model transactions {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  date            DateTime? @default(now()) @db.Timestamptz(6)
+  customer_id     String?   @db.Uuid
+  customer_name   String    @db.VarChar(255)
+  total           Decimal   @db.Decimal(10, 2)
+  status          String    @default("Completed") @db.VarChar(20)
+  type            String    @default("Sale") @db.VarChar(20)
+  payment_method  String?   @db.VarChar(50)
+  installments    Int?      @default(1)
+  sub_total       Decimal?  @db.Decimal(10, 2)
+  discount_value  Decimal?  @default(0) @db.Decimal(10, 2)
+  delivery_fee    Decimal?  @default(0) @db.Decimal(10, 2)
+  change_amount   Decimal?  @default(0) @db.Decimal(10, 2)
+  is_delivery     Boolean?  @default(false)
+  motoboy         String?   @db.VarChar(255)
+  seller_id       String?   @db.Uuid
+  seller_name     String?   @db.VarChar(255)
+  created_at      DateTime? @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime? @default(now()) @db.Timestamptz(6)
+
+  // Relations
+  customer          customers?        @relation(fields: [customer_id], references: [id], onDelete: SetNull)
+  seller            users?            @relation(fields: [seller_id], references: [id], onDelete: SetNull)
+  transaction_items transaction_items[]
+  financial_records financial_records[]
+  cash_movements    cash_movements[]
+  deliveries        deliveries[]
+
+  @@index([date])
+  @@index([customer_id])
+  @@index([status])
+  @@index([type])
+  @@index([seller_id])
+}
+
+// =====================================================
+// ITENS DE TRANSACAO
+// =====================================================
+model transaction_items {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  transaction_id   String   @db.Uuid
+  product_id       String?  @db.Uuid
+  product_name     String   @db.VarChar(255)
+  product_sku      String?  @db.VarChar(100)
+  product_category String?  @db.VarChar(50)
+  quantity         Int
+  unit_price       Decimal  @db.Decimal(10, 2)
+  total_price      Decimal  @db.Decimal(10, 2)
+  created_at       DateTime? @default(now()) @db.Timestamptz(6)
+
+  // Relations
+  transaction transactions @relation(fields: [transaction_id], references: [id], onDelete: Cascade)
+  product     products?    @relation(fields: [product_id], references: [id], onDelete: SetNull)
+
+  @@index([transaction_id])
+  @@index([product_id])
+}
+
+// =====================================================
+// ENTREGAS
+// =====================================================
+model deliveries {
+  id             String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  order_id       String    @unique
+  customer_name  String
+  phone          String?
+  address        String
+  city           String?
+  source         String?
+  method         String
+  status         String    @default("Pendente")
+  items_summary  String?
+  total_value    Decimal?  @db.Decimal(10, 2)
+  fee            Decimal?  @db.Decimal(10, 2)
+  motoboy_name   String?
+  tracking_code  String?
+  notes          String?
+  transaction_id String?   @db.Uuid
+  created_at     DateTime? @default(now()) @db.Timestamptz(6)
+  updated_at     DateTime? @default(now()) @db.Timestamptz(6)
+
+  // Relations
+  transaction transactions? @relation(fields: [transaction_id], references: [id], onDelete: SetNull)
+
+  @@index([order_id])
+  @@index([status])
+  @@index([motoboy_name])
+  @@index([created_at])
+  @@index([method])
+}
+
+// =====================================================
+// TAREFAS
+// =====================================================
+model tasks {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  title       String    @db.VarChar(255)
+  description String?
+  assigned_to String?   @db.Uuid
+  created_by  String?   @db.Uuid
+  due_date    DateTime? @db.Date
+  priority    String    @default("medium") @db.VarChar(20)
+  status      String    @default("pending") @db.VarChar(20)
+  created_at  DateTime? @default(now()) @db.Timestamptz(6)
+  updated_at  DateTime? @default(now()) @db.Timestamptz(6)
+
+  // Relations
+  assignee users? @relation("TaskAssignedTo", fields: [assigned_to], references: [id], onDelete: SetNull)
+  creator  users? @relation("TaskCreatedBy", fields: [created_by], references: [id], onDelete: SetNull)
+
+  @@index([assigned_to])
+  @@index([created_by])
+  @@index([status])
+  @@index([priority])
+  @@index([due_date])
+}
+
+// =====================================================
+// REGISTROS FINANCEIROS
+// =====================================================
+model financial_records {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  description    String    @db.VarChar(255)
+  amount         Decimal   @db.Decimal(10, 2)
+  type           String    @db.VarChar(20)
+  date           DateTime  @db.Date
+  category       String    @db.VarChar(100)
+  status         String    @default("Paid") @db.VarChar(20)
+  transaction_id String?   @db.Uuid
+  created_at     DateTime? @default(now()) @db.Timestamptz(6)
+  updated_at     DateTime? @default(now()) @db.Timestamptz(6)
+
+  // Relations
+  transaction transactions? @relation(fields: [transaction_id], references: [id], onDelete: SetNull)
+
+  @@index([type])
+  @@index([date])
+  @@index([category])
+  @@index([status])
+}
+
+// =====================================================
+// METAS DE VENDAS (POR USUARIO)
+// =====================================================
+model sales_goals {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id      String?   @db.Uuid
+  goal_amount  Decimal   @db.Decimal(10, 2)
+  goal_type    String    @db.VarChar(20)
+  period_start DateTime  @db.Date
+  period_end   DateTime  @db.Date
+  created_at   DateTime? @default(now()) @db.Timestamptz(6)
+  updated_at   DateTime? @default(now()) @db.Timestamptz(6)
+
+  // Relations
+  user users? @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([user_id, period_start, period_end, goal_type])
+  @@index([user_id])
+  @@index([period_start, period_end])
+}
+
+// =====================================================
+// META GERAL DA LOJA
+// =====================================================
+model store_sales_goal {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  goal_amount  Decimal   @db.Decimal(10, 2)
+  goal_type    String    @db.VarChar(20)
+  period_start DateTime  @db.Date
+  period_end   DateTime  @db.Date
+  created_at   DateTime? @default(now()) @db.Timestamptz(6)
+  updated_at   DateTime? @default(now()) @db.Timestamptz(6)
+}
+
+// =====================================================
+// CONFIGURACOES DA EMPRESA
+// =====================================================
+model company_settings {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name            String    @db.VarChar(255)
+  logo_url        String?
+  logo_width      Int?      @default(100)
+  cnpj            String?   @db.VarChar(18)
+  email           String?   @db.VarChar(255)
+  phone           String?   @db.VarChar(20)
+  address         String?
+  city            String?   @db.VarChar(100)
+  website         String?   @db.VarChar(255)
+  receipt_message String?
+  created_at      DateTime? @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime? @default(now()) @db.Timestamptz(6)
+}
+
+// =====================================================
+// REGISTROS DE CAIXA
+// =====================================================
+model cash_registers {
+  id               String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  opened_at        DateTime  @default(now()) @db.Timestamptz(6)
+  closed_at        DateTime? @db.Timestamptz(6)
+  opened_by        String
+  closed_by        String?
+  opening_balance  Decimal   @default(0) @db.Decimal(10, 2)
+  closing_balance  Decimal?  @db.Decimal(10, 2)
+  expected_balance Decimal?  @db.Decimal(10, 2)
+  difference       Decimal?  @db.Decimal(10, 2)
+  status           String    @default("open")
+  notes            String?
+  created_at       DateTime? @default(now()) @db.Timestamptz(6)
+  updated_at       DateTime? @default(now()) @db.Timestamptz(6)
+
+  // Relations
+  cash_movements cash_movements[]
+
+  @@index([status])
+  @@index([opened_at(sort: Desc)])
+}
+
+// =====================================================
+// MOVIMENTACOES DO CAIXA
+// =====================================================
+model cash_movements {
+  id               String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  cash_register_id String?   @db.Uuid
+  type             String
+  description      String
+  amount           Decimal   @db.Decimal(10, 2)
+  payment_method   String
+  transaction_id   String?   @db.Uuid
+  created_by       String?
+  created_at       DateTime? @default(now()) @db.Timestamptz(6)
+
+  // Relations
+  cash_register cash_registers? @relation(fields: [cash_register_id], references: [id], onDelete: Cascade)
+  transaction   transactions?   @relation(fields: [transaction_id], references: [id])
+
+  @@index([cash_register_id])
+  @@index([created_at(sort: Desc)])
+  @@index([type])
+}
