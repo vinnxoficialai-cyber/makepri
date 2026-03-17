@@ -1,0 +1,443 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ======================================================
+   Dashboard Premium Dark — card + texture utilities
+   ====================================================== */
+
+/* Dotted noise texture overlay (dark mode only) */
+.dashboard-wrapper {
+  position: relative;
+}
+
+.dark .dashboard-wrapper::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.03;
+  background-image: radial-gradient(circle, rgba(255, 255, 255, 0.8) 1px, transparent 1px);
+  background-size: 16px 16px;
+  z-index: 0;
+}
+
+.dashboard-wrapper>* {
+  position: relative;
+  z-index: 1;
+}
+
+/* Dashboard card base (premium border, subtle hover) */
+.dash-card {
+  border-radius: 12px;
+  border: 1px solid rgba(0, 0, 0, 0.04);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  transition: box-shadow 0.25s ease, border-color 0.25s ease;
+}
+
+.dash-card:hover {
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
+  border-color: rgba(0, 0, 0, 0.08);
+}
+
+.dark .dash-card {
+  border-color: rgba(255, 255, 255, 0.06);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+}
+
+.dark .dash-card:hover {
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+/* Blue glow gradient for weather area */
+.weather-glow {
+  position: relative;
+}
+
+.weather-glow::before {
+  content: '';
+  position: absolute;
+  top: -150px;
+  left: -120px;
+  width: 500px;
+  height: 500px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(219, 39, 119, 0.2) 0%, rgba(219, 39, 119, 0.05) 40%, transparent 65%);
+  pointer-events: none;
+  filter: blur(50px);
+}
+
+/* Hero Header — enterprise premium card */
+.hero-header {
+  position: relative;
+  border-radius: 12px;
+  padding: 24px 28px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+  overflow: hidden;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+.hero-header::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.04;
+  background-image: radial-gradient(circle, rgba(255, 255, 255, 0.7) 1px, transparent 1px);
+  background-size: 14px 14px;
+  border-radius: 12px;
+  z-index: 0;
+}
+
+.hero-header>* {
+  position: relative;
+  z-index: 1;
+}
+
+.hero-title {
+  font-size: 1.5rem;
+  font-weight: 800;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+}
+
+.hero-subtitle {
+  font-size: 0.875rem;
+  font-weight: 500;
+  opacity: 0.7;
+}
+
+.hero-clock {
+  font-size: 3rem;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  font-family: 'Inter', system-ui, monospace;
+}
+
+.hero-clock-suffix {
+  font-size: 0.75rem;
+  font-weight: 700;
+  opacity: 0.8;
+  margin-left: 6px;
+}
+
+.hero-temp {
+  font-size: 2rem;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+
+.hero-weather-line {
+  font-size: 0.8125rem;
+}
+
+@media (max-width: 768px) {
+  .hero-header {
+    padding: 28px 24px;
+    border-radius: 20px;
+  }
+
+  .hero-title {
+    font-size: 1.5rem;
+  }
+
+  .hero-clock {
+    font-size: 3rem;
+  }
+
+  .hero-temp {
+    font-size: 2.5rem;
+  }
+}
+
+/* ======================================================
+   Custom Scrollbar — subtle, premium feel
+   ====================================================== */
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Dark mode scrollbar */
+.dark ::-webkit-scrollbar-thumb {
+  background: #3f3f46;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #e2e8f0;
+  border-radius: 2px;
+}
+
+.dark .custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #27272a;
+}
+
+/* ======================================================
+   Safe area padding utilities
+   ====================================================== */
+
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.safe-area-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* ======================================================
+   Login page entrance animation
+   ====================================================== */
+
+@keyframes fadeInUp {
+  0% {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.login-fade-in {
+  animation: fadeInUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.3s both;
+}
+
+/* ======================================================
+   Design System — ShineBadge (auto-loop shine effect)
+   ====================================================== */
+
+.shine-loop {
+  position: relative;
+  overflow: hidden;
+}
+
+.shine-loop::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 50%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.25), transparent);
+  transform: skewX(-20deg);
+  animation: shineLoop 3s ease-in-out infinite;
+  pointer-events: none;
+}
+
+.shine-d1::after {
+  animation-delay: 0s;
+}
+
+.shine-d2::after {
+  animation-delay: 1s;
+}
+
+.shine-d3::after {
+  animation-delay: 2s;
+}
+
+@keyframes shineLoop {
+  0% {
+    left: -100%;
+  }
+
+  30% {
+    left: 200%;
+  }
+
+  100% {
+    left: 200%;
+  }
+}
+
+/* ======================================================
+   Design System — Skeleton Shimmer Loader
+   ====================================================== */
+
+@keyframes skel {
+  0% {
+    background-position: 200% 0;
+  }
+
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+.skeleton-line {
+  border-radius: 6px;
+  background: linear-gradient(90deg, #e2e8f0 25%, #f1f5f9 50%, #e2e8f0 75%);
+  background-size: 200% 100%;
+  animation: skel 1.5s infinite;
+}
+
+.dark .skeleton-line {
+  background: linear-gradient(90deg, #27272a 25%, #3f3f46 50%, #27272a 75%);
+  background-size: 200% 100%;
+}
+
+.skeleton-circle {
+  border-radius: 50%;
+  background: linear-gradient(90deg, #e2e8f0 25%, #f1f5f9 50%, #e2e8f0 75%);
+  background-size: 200% 100%;
+  animation: skel 1.5s infinite;
+}
+
+.dark .skeleton-circle {
+  background: linear-gradient(90deg, #27272a 25%, #3f3f46 50%, #27272a 75%);
+  background-size: 200% 100%;
+}
+
+/* ======================================================
+   Design System — Status Dots
+   ====================================================== */
+
+.status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.status-dot-lg {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.status-dot-success {
+  background-color: #22c55e;
+}
+
+.status-dot-warning {
+  background-color: #eab308;
+}
+
+.status-dot-error {
+  background-color: #ef4444;
+}
+
+.status-dot-info {
+  background-color: #3b82f6;
+}
+
+.status-dot-muted {
+  background-color: #71717a;
+}
+
+/* ======================================================
+   Design System — Badge Pill Utilities
+   ====================================================== */
+
+.badge-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  font-weight: 600;
+  text-transform: capitalize;
+}
+
+.badge-sm {
+  padding: 0.125rem 0.5rem;
+  font-size: 0.75rem;
+}
+
+.badge-md {
+  padding: 0.25rem 0.75rem;
+  font-size: 0.875rem;
+}
+
+.badge-success {
+  background: rgba(34, 197, 94, 0.1);
+  color: #4ade80;
+  border: 1px solid rgba(34, 197, 94, 0.2);
+}
+
+.badge-warning {
+  background: rgba(234, 179, 8, 0.1);
+  color: #fde047;
+  border: 1px solid rgba(234, 179, 8, 0.2);
+}
+
+.badge-error {
+  background: rgba(239, 68, 68, 0.1);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.2);
+}
+
+.badge-info {
+  background: rgba(59, 130, 246, 0.1);
+  color: #60a5fa;
+  border: 1px solid rgba(59, 130, 246, 0.2);
+}
+
+.badge-muted {
+  background: #27272a;
+  color: #a1a1aa;
+  border: none;
+}
+
+/* ======================================================
+   Design System — Button Pill Utilities
+   ====================================================== */
+
+.btn-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border-radius: 9999px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+}
+
+.btn-pill:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* ======================================================
+   Design System — Spinner animation
+   ====================================================== */
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}

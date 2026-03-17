@@ -49,9 +49,9 @@ interface DashboardProps {
 const CustomTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
         return (
-            <div className="bg-white dark:bg-gray-800 p-3 rounded-xl shadow-xl border border-gray-100 dark:border-gray-700">
-                <p className="text-sm font-bold text-gray-800 dark:text-white mb-1">{label}</p>
-                <p className="text-sm text-pink-600 dark:text-pink-400 font-bold">
+            <div className="rounded-2xl border border-rose-100 bg-white px-4 py-3 shadow-[0_14px_36px_rgba(15,23,42,0.12)]">
+                <p className="text-xs font-semibold text-slate-500 mb-1">{label}</p>
+                <p className="text-base font-bold text-slate-900">
                     R$ {Number(payload[0].value).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                 </p>
             </div>
@@ -63,9 +63,9 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 const CustomPieTooltip = ({ active, payload }: any) => {
     if (active && payload && payload.length) {
         return (
-            <div className="bg-white dark:bg-gray-800 p-2 rounded-lg shadow-lg border border-gray-100 dark:border-gray-700 text-xs">
-                <span className="font-bold text-gray-800 dark:text-white">{payload[0].name}:</span>
-                <span className="ml-1 text-gray-600 dark:text-gray-300">{payload[0].value}%</span>
+            <div className="rounded-xl border border-rose-100 bg-white px-3 py-2 shadow-lg text-xs">
+                <span className="font-bold text-slate-900">{payload[0].name}:</span>
+                <span className="ml-1 text-slate-600">{payload[0].value}%</span>
             </div>
         );
     }
@@ -437,40 +437,40 @@ const Dashboard: React.FC<DashboardProps> = ({ user, users = [], salesGoals, onN
     const StatCard = ({ title, value, subtext, icon: Icon, trend, color, restricted = false, action, onClick }: any) => (
         <div
             onClick={onClick}
-            className={`bg-white dark:bg-gray-800 p-5 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 hover:shadow-md transition-all relative overflow-hidden flex flex-col justify-between h-full ${onClick ? 'cursor-pointer hover:border-pink-300 hover:scale-[1.02]' : ''}`}
+            className={`rounded-[24px] border border-rose-100/70 bg-white p-5 shadow-[0_10px_30px_rgba(15,23,42,0.04)] transition-all hover:-translate-y-0.5 hover:shadow-[0_18px_34px_rgba(15,23,42,0.08)] relative overflow-hidden flex flex-col justify-between h-full ${onClick ? 'cursor-pointer' : ''}`}
         >
             {restricted && (
-                <div className="absolute inset-0 bg-gray-100/50 dark:bg-gray-900/50 backdrop-blur-[2px] flex flex-col items-center justify-center z-10 text-gray-400">
+                <div className="absolute inset-0 bg-white/70 backdrop-blur-[2px] flex flex-col items-center justify-center z-10 text-slate-400">
                     <Lock size={24} className="mb-2" />
                     <span className="text-xs font-medium">Restrito</span>
                 </div>
             )}
             <div className="flex justify-between items-start">
                 <div>
-                    <p className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">{title}</p>
-                    <h3 className="text-2xl font-bold text-gray-800 dark:text-white">{restricted ? '----' : value}</h3>
+                    <p className="text-sm font-medium text-slate-500 mb-1">{title}</p>
+                    <h3 className="text-[1.7rem] font-semibold tracking-tight text-slate-900">{restricted ? '----' : value}</h3>
                 </div>
-                <div className={`p-2 rounded-lg ${color}`}>
-                    <Icon size={22} className="text-white" />
+                <div className={`rounded-[18px] border p-3 ${color}`}>
+                    <Icon size={20} />
                 </div>
             </div>
             <div className="mt-4 flex items-center justify-between">
                 {!restricted && (
                     <div className="flex items-center gap-2">
                         {trend === 'up' ? (
-                            <span className="flex items-center text-xs font-bold text-emerald-600 bg-emerald-50 dark:bg-emerald-900/30 dark:text-emerald-400 px-2 py-0.5 rounded-full">
+                            <span className="flex items-center text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">
                                 <ArrowUpRight size={12} className="mr-1" /> Bom
                             </span>
                         ) : trend === 'down' ? (
-                            <span className="flex items-center text-xs font-bold text-rose-600 bg-rose-50 dark:bg-rose-900/30 dark:text-rose-400 px-2 py-0.5 rounded-full">
-                                <ArrowDownRight size={12} className="mr-1" /> Atenção
+                            <span className="flex items-center text-xs font-bold text-rose-600 bg-rose-50 px-2 py-0.5 rounded-full">
+                                <ArrowDownRight size={12} className="mr-1" /> Atencao
                             </span>
                         ) : trend === 'info' ? (
-                            <span className="flex items-center text-xs font-bold text-blue-600 bg-blue-50 dark:bg-blue-900/30 dark:text-blue-400 px-2 py-0.5 rounded-full">
+                            <span className="flex items-center text-xs font-bold text-slate-600 bg-rose-50 px-2 py-0.5 rounded-full">
                                 {subtext}
                             </span>
                         ) : (
-                            <span className="text-xs text-gray-400 dark:text-gray-500">{subtext}</span>
+                            <span className="text-xs text-slate-500">{subtext}</span>
                         )}
                     </div>
                 )}
@@ -484,13 +484,13 @@ const Dashboard: React.FC<DashboardProps> = ({ user, users = [], salesGoals, onN
         return (
             <div className="flex-1">
                 <div className="flex justify-between items-end mb-1">
-                    <span className="text-[10px] font-bold uppercase text-gray-500 dark:text-gray-400">{label}</span>
+                    <span className="text-[10px] font-bold uppercase text-slate-500">{label}</span>
                     <span className={`text-sm font-black ${textColor}`}>{Math.round(percent)}%</span>
                 </div>
-                <div className="w-full bg-gray-100 dark:bg-gray-700 rounded-full h-2">
+                <div className="w-full bg-rose-50 rounded-full h-2">
                     <div className={`h-2 rounded-full ${barColor}`} style={{ width: `${percent}%` }}></div>
                 </div>
-                <p className="text-[10px] text-gray-400 mt-1 text-right">
+                <p className="text-[10px] text-slate-400 mt-1 text-right">
                     {current.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })} / {target.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })}
                 </p>
             </div>
@@ -500,43 +500,49 @@ const Dashboard: React.FC<DashboardProps> = ({ user, users = [], salesGoals, onN
     return (
         <div className="space-y-6 animate-in fade-in duration-500 pb-8">
             {/* Header Area */}
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                <div>
-                    <h2 className="text-2xl font-bold text-gray-800 dark:text-white">Dashboard</h2>
-                    <p className="text-gray-500 dark:text-gray-400 text-sm">
-                        Olá, <span className="font-semibold text-pink-600 dark:text-pink-400">{user.name}</span>!
-                        {isSalesperson
-                            ? ' Acompanhe suas vendas e metas.'
-                            : ' Aqui está o resumo financeiro de hoje.'}
-                    </p>
+            <section className="overflow-hidden rounded-[32px] border border-rose-100 bg-[linear-gradient(180deg,#fff7f8_0%,#ffffff_100%)] p-5 shadow-[0_20px_60px_rgba(255,200,203,0.2)] sm:p-6 lg:p-8">
+                <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                    <div className="space-y-3">
+                        <div className="inline-flex items-center gap-2 rounded-full border border-rose-200 bg-white px-3.5 py-1.5 text-xs font-semibold tracking-[0.08em] text-slate-600 shadow-sm">
+                            <TrendingUp size={14} className="text-rose-400" />
+                            Painel inteligente
+                        </div>
+                        <div>
+                            <h2 className="text-3xl font-semibold tracking-tight text-slate-900 md:text-[2.5rem]">Dashboard</h2>
+                            <p className="mt-2 max-w-xl text-[15px] leading-7 text-slate-600">
+                                Ola, <span className="font-semibold text-slate-900">{user.name}</span>!
+                                {isSalesperson ? ' Acompanhe suas vendas e metas.' : ' Resumo financeiro e operacional de hoje.'}
+                            </p>
+                        </div>
+                    </div>
+                    <button
+                        onClick={() => setIsPosModalOpen(true)}
+                        className="inline-flex items-center gap-2 rounded-[22px] bg-[linear-gradient(180deg,#d9468a_0%,#c73578_100%)] px-6 py-3.5 text-sm font-semibold text-white shadow-[0_8px_20px_rgba(199,53,120,0.2)] transition-all hover:-translate-y-0.5 hover:shadow-[0_12px_24px_rgba(199,53,120,0.28)]"
+                    >
+                        <ShoppingCart size={18} />
+                        NOVA VENDA RAPIDA
+                    </button>
                 </div>
-                <button
-                    onClick={() => setIsPosModalOpen(true)}
-                    className="bg-[#ffc8cb] hover:bg-[#ffb6b9] text-gray-900 px-6 py-3 rounded-xl shadow-lg shadow-pink-200 dark:shadow-none font-bold flex items-center gap-2 transition-all hover:scale-105 active:scale-95"
-                >
-                    <ShoppingCart size={20} />
-                    NOVA VENDA RÁPIDA
-                </button>
-            </div>
+            </section>
 
             {/* KPI Row */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {isSalesperson ? (
                     <>
-                        <StatCard title="Minha Comissão (Mês)" value={`R$ ${commission.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`} subtext={commissionSubtext} icon={Award} color="bg-purple-500" trend="info" />
-                        <StatCard title="Minhas Vendas (Mês)" value={`R$ ${myPersonalSalesMonth.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`} subtext="Acumulado" icon={DollarSign} color="bg-pink-500" trend="info" />
-                        <StatCard title="Envios Pendentes" value={itemsToShip} subtext="Pedidos para separar" icon={Truck} trend="info" color="bg-indigo-500" onClick={() => onNavigate('delivery')} />
-                        <StatCard title="Produtos Parados" value={stalledCount} subtext="Sem vendas > 30d" icon={Clock} color="bg-amber-500" onClick={() => onViewStalled && onViewStalled()} action={<div className="text-xs bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200 px-2 py-1 rounded font-bold">Ver Estoque</div>} />
-                        <StatCard title="Estoque Crítico" value={lowStockCount} subtext="Itens para repor" icon={AlertTriangle} trend={lowStockCount > 0 ? "down" : "info"} color="bg-rose-500" onClick={() => onViewLowStock && onViewLowStock()} action={<div className="text-xs bg-rose-100 text-rose-800 dark:bg-rose-900 dark:text-rose-200 px-2 py-1 rounded font-bold">Ver Estoque</div>} />
+                        <StatCard title="Minha Comissao (Mes)" value={`R$ ${commission.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`} subtext={commissionSubtext} icon={Award} color="border-purple-100 bg-purple-50 text-purple-600" trend="info" />
+                        <StatCard title="Minhas Vendas (Mes)" value={`R$ ${myPersonalSalesMonth.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`} subtext="Acumulado" icon={DollarSign} color="border-rose-100 bg-rose-50 text-rose-500" trend="info" />
+                        <StatCard title="Envios Pendentes" value={itemsToShip} subtext="Pedidos para separar" icon={Truck} trend="info" color="border-indigo-100 bg-indigo-50 text-indigo-600" onClick={() => onNavigate('delivery')} />
+                        <StatCard title="Produtos Parados" value={stalledCount} subtext="Sem vendas > 30d" icon={Clock} color="border-amber-100 bg-amber-50 text-amber-600" onClick={() => onViewStalled && onViewStalled()} action={<div className="text-xs bg-amber-100 text-amber-800 px-2 py-1 rounded-full font-bold">Ver Estoque</div>} />
+                        <StatCard title="Estoque Critico" value={lowStockCount} subtext="Itens para repor" icon={AlertTriangle} trend={lowStockCount > 0 ? "down" : "info"} color="border-red-100 bg-red-50 text-red-500" onClick={() => onViewLowStock && onViewLowStock()} action={<div className="text-xs bg-rose-100 text-rose-800 px-2 py-1 rounded-full font-bold">Ver Estoque</div>} />
                     </>
                 ) : (
                     <>
-                        <StatCard title="Vendas Hoje (Total)" value={`R$ ${salesToday.toFixed(2)}`} subtext="vs. ontem" icon={DollarSign} trend="info" color="bg-emerald-500" />
-                        <StatCard title="Vendas no Site" value={`R$ ${onlineSalesToday.toFixed(2)}`} subtext="~0% do total" icon={Globe} trend="info" color="bg-pink-500" onClick={() => onNavigate('ecommerce')} />
-                        <StatCard title="Envios Pendentes" value={itemsToShip} subtext={`${ecommercePending} E-commerce / ${itemsToShip - ecommercePending} Loja`} icon={Truck} trend="info" color="bg-indigo-500" onClick={() => onNavigate('delivery')} />
-                        <StatCard title="Comissões a Pagar" value={`R$ ${commission.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`} subtext={commissionSubtext} icon={Award} color="bg-purple-500" />
-                        <StatCard title="Produtos Parados" value={stalledCount} subtext="Sem vendas > 30d" icon={Clock} color="bg-amber-500" onClick={() => onViewStalled && onViewStalled()} action={<div className="text-xs bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200 px-2 py-1 rounded font-bold">Ver Estoque</div>} />
-                        <StatCard title="Estoque Crítico" value={lowStockCount} subtext="Itens para repor" icon={AlertTriangle} trend={lowStockCount > 0 ? "down" : "info"} color="bg-rose-500" onClick={() => onViewLowStock && onViewLowStock()} action={<div className="text-xs bg-rose-100 text-rose-800 dark:bg-rose-900 dark:text-rose-200 px-2 py-1 rounded font-bold">Ver Estoque</div>} />
+                        <StatCard title="Vendas Hoje (Total)" value={`R$ ${salesToday.toFixed(2)}`} subtext="vs. ontem" icon={DollarSign} trend="info" color="border-emerald-100 bg-emerald-50 text-emerald-600" />
+                        <StatCard title="Vendas no Site" value={`R$ ${onlineSalesToday.toFixed(2)}`} subtext="~0% do total" icon={Globe} trend="info" color="border-rose-100 bg-rose-50 text-rose-500" onClick={() => onNavigate('ecommerce')} />
+                        <StatCard title="Envios Pendentes" value={itemsToShip} subtext={`${ecommercePending} E-commerce / ${itemsToShip - ecommercePending} Loja`} icon={Truck} trend="info" color="border-indigo-100 bg-indigo-50 text-indigo-600" onClick={() => onNavigate('delivery')} />
+                        <StatCard title="Comissoes a Pagar" value={`R$ ${commission.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`} subtext={commissionSubtext} icon={Award} color="border-purple-100 bg-purple-50 text-purple-600" />
+                        <StatCard title="Produtos Parados" value={stalledCount} subtext="Sem vendas > 30d" icon={Clock} color="border-amber-100 bg-amber-50 text-amber-600" onClick={() => onViewStalled && onViewStalled()} action={<div className="text-xs bg-amber-100 text-amber-800 px-2 py-1 rounded-full font-bold">Ver Estoque</div>} />
+                        <StatCard title="Estoque Critico" value={lowStockCount} subtext="Itens para repor" icon={AlertTriangle} trend={lowStockCount > 0 ? "down" : "info"} color="border-red-100 bg-red-50 text-red-500" onClick={() => onViewLowStock && onViewLowStock()} action={<div className="text-xs bg-rose-100 text-rose-800 px-2 py-1 rounded-full font-bold">Ver Estoque</div>} />
                     </>
                 )}
             </div>
@@ -546,47 +552,47 @@ const Dashboard: React.FC<DashboardProps> = ({ user, users = [], salesGoals, onN
                 {/* Left Column: Charts & Goals (2/3 width) */}
                 <div className="lg:col-span-2 space-y-6">
                     {/* Goals Card */}
-                    <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 transition-colors">
+                    <div className="bg-white p-6 rounded-[28px] border border-rose-100 shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
                         <div className="flex items-center justify-between mb-6">
                             <div className="flex items-center gap-2">
-                                <Target className="text-pink-600 dark:text-pink-400" size={20} />
-                                <h3 className="text-lg font-bold text-gray-800 dark:text-white">Acompanhamento de Metas</h3>
+                                <Target className="text-rose-500" size={20} />
+                                <h3 className="text-lg font-bold text-slate-900">Acompanhamento de Metas</h3>
                             </div>
-                            <button onClick={() => onNavigate('team')} className="text-xs text-pink-600 dark:text-pink-400 font-bold hover:underline">Ver Detalhes</button>
+                            <button onClick={() => onNavigate('team')} className="text-xs text-rose-500 font-bold hover:underline">Ver Detalhes</button>
                         </div>
                         {isSalesperson ? (
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 {/* Daily Goal Card */}
-                                <div className="bg-indigo-50 dark:bg-indigo-900/20 p-5 rounded-xl border border-indigo-100 dark:border-indigo-800 flex flex-col justify-between">
+                                <div className="bg-indigo-50 p-5 rounded-xl border border-indigo-100 flex flex-col justify-between">
                                     <div className="flex justify-between items-start mb-2">
-                                        <div className="flex items-center gap-2 text-indigo-700 dark:text-indigo-300 font-bold"><Sun size={18} /> Meta Diária</div>
-                                        <span className="text-xs bg-white dark:bg-indigo-900/50 px-2 py-1 rounded font-mono text-indigo-600 dark:text-indigo-300">Hoje</span>
+                                        <div className="flex items-center gap-2 text-indigo-700 font-bold"><Sun size={18} /> Meta Diária</div>
+                                        <span className="text-xs bg-white px-2 py-1 rounded font-mono text-indigo-600">Hoje</span>
                                     </div>
                                     <div className="mb-4">
-                                        <span className="text-2xl font-black text-gray-800 dark:text-white">R$ {myPerformance.salesToday.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                                        <span className="text-xs text-gray-500 dark:text-gray-400 block mt-1">Meta: R$ {myPerformance.dailyTarget.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                        <span className="text-2xl font-black text-slate-900">R$ {myPerformance.salesToday.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                        <span className="text-xs text-slate-500 block mt-1">Meta: R$ {myPerformance.dailyTarget.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                                     </div>
-                                    <div className="w-full bg-white dark:bg-indigo-900/50 rounded-full h-3 overflow-hidden border border-indigo-100 dark:border-indigo-800/50">
+                                    <div className="w-full bg-white rounded-full h-3 overflow-hidden border border-indigo-100">
                                         <div className="bg-indigo-500 h-full rounded-full transition-all duration-1000" style={{ width: `${Math.min(100, (myPerformance.salesToday / Math.max(1, myPerformance.dailyTarget)) * 100)}%` }}></div>
                                     </div>
-                                    <div className="mt-2 text-right"><span className="text-xl font-black text-indigo-600 dark:text-indigo-400">{Math.round((myPerformance.salesToday / Math.max(1, myPerformance.dailyTarget)) * 100)}%</span><span className="text-xs font-bold text-gray-400 ml-1">atingido</span></div>
+                                    <div className="mt-2 text-right"><span className="text-xl font-black text-indigo-600">{Math.round((myPerformance.salesToday / Math.max(1, myPerformance.dailyTarget)) * 100)}%</span><span className="text-xs font-bold text-slate-400 ml-1">atingido</span></div>
                                 </div>
                                 {/* Monthly Goal Card */}
-                                <div className="bg-pink-50 dark:bg-pink-900/20 p-5 rounded-xl border border-pink-100 dark:border-pink-800 flex flex-col justify-between">
+                                <div className="bg-rose-50 p-5 rounded-xl border border-rose-100 flex flex-col justify-between">
                                     <div className="flex justify-between items-start mb-2">
-                                        <div className="flex items-center gap-2 text-pink-700 dark:text-pink-300 font-bold"><CalendarIcon size={18} /> Meta Mensal</div>
-                                        <span className="text-xs bg-white dark:bg-pink-900/50 px-2 py-1 rounded font-mono text-pink-600 dark:text-pink-300 capitalize">
+                                        <div className="flex items-center gap-2 text-rose-600 font-bold"><CalendarIcon size={18} /> Meta Mensal</div>
+                                        <span className="text-xs bg-white px-2 py-1 rounded font-mono text-rose-500 capitalize">
                                             {new Date().toLocaleString('pt-BR', { month: 'long' })}
                                         </span>
                                     </div>
                                     <div className="mb-4">
-                                        <span className="text-2xl font-black text-gray-800 dark:text-white">R$ {myPerformance.salesMonth.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                                        <span className="text-xs text-gray-500 dark:text-gray-400 block mt-1">Meta: R$ {myPerformance.monthlyTarget.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                        <span className="text-2xl font-black text-slate-900">R$ {myPerformance.salesMonth.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                        <span className="text-xs text-slate-500 block mt-1">Meta: R$ {myPerformance.monthlyTarget.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                                     </div>
-                                    <div className="w-full bg-white dark:bg-pink-900/50 rounded-full h-3 overflow-hidden border border-pink-100 dark:border-pink-800/50">
-                                        <div className="bg-pink-500 h-full rounded-full transition-all duration-1000" style={{ width: `${Math.min(100, (myPerformance.salesMonth / Math.max(1, myPerformance.monthlyTarget)) * 100)}%` }}></div>
+                                    <div className="w-full bg-white rounded-full h-3 overflow-hidden border border-rose-100">
+                                        <div className="bg-rose-400 h-full rounded-full transition-all duration-1000" style={{ width: `${Math.min(100, (myPerformance.salesMonth / Math.max(1, myPerformance.monthlyTarget)) * 100)}%` }}></div>
                                     </div>
-                                    <div className="mt-2 text-right"><span className="text-xl font-black text-pink-600 dark:text-pink-400">{Math.round((myPerformance.salesMonth / Math.max(1, myPerformance.monthlyTarget)) * 100)}%</span><span className="text-xs font-bold text-gray-400 ml-1">atingido</span></div>
+                                    <div className="mt-2 text-right"><span className="text-xl font-black text-rose-500">{Math.round((myPerformance.salesMonth / Math.max(1, myPerformance.monthlyTarget)) * 100)}%</span><span className="text-xs font-bold text-slate-400 ml-1">atingido</span></div>
                                 </div>
                             </div>
                         ) : (
@@ -596,29 +602,31 @@ const Dashboard: React.FC<DashboardProps> = ({ user, users = [], salesGoals, onN
                                         const u = users.find(usr => usr.id === s.id);
                                         return u && u.role === 'Vendedor';
                                     });
-                                    if (vendedoras.length === 0) return <p className="text-center text-gray-400 text-sm py-4">Nenhuma vendedora com meta definida.</p>;
+                                    if (vendedoras.length === 0) return <p className="text-center text-slate-400 text-sm py-4">Nenhuma vendedora com meta definida.</p>;
                                     return (
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                             {vendedoras.map((seller) => (
-                                                <div key={seller.id} className="bg-gradient-to-br from-gray-50 to-white dark:from-gray-700/50 dark:to-gray-800 p-5 rounded-xl border border-gray-200 dark:border-gray-600 shadow-sm">
+                                                <div key={seller.id} className="bg-[#fff8f8] p-5 rounded-[22px] border border-rose-100 shadow-sm">
                                                     {/* Seller Header */}
-                                                    <div className="flex items-center gap-3 mb-4 pb-3 border-b border-gray-100 dark:border-gray-600">
-                                                        <img src={seller.avatar} alt="" className="w-10 h-10 rounded-full bg-gray-200 object-cover border-2 border-pink-300 dark:border-pink-600" />
+                                                    <div className="flex items-center gap-3 mb-4 pb-3 border-b border-rose-100">
+                                                        <div className="w-10 h-10 rounded-full bg-rose-100 border-2 border-rose-200 flex items-center justify-center text-rose-500 font-bold text-sm">
+                                                            {seller.name?.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
+                                                        </div>
                                                         <div>
-                                                            <p className="font-bold text-sm text-gray-800 dark:text-white">{seller.name}</p>
-                                                            <p className="text-[10px] text-gray-400">Vendedora</p>
+                                                            <p className="font-bold text-sm text-slate-900">{seller.name}</p>
+                                                            <p className="text-[10px] text-slate-400">Vendedora</p>
                                                         </div>
                                                     </div>
                                                     {/* Daily */}
                                                     <div className="mb-3">
                                                         <div className="flex justify-between items-center mb-1">
-                                                            <span className="text-xs font-bold text-indigo-600 dark:text-indigo-400 flex items-center gap-1">☀️ Meta Diária</span>
-                                                            <span className="text-xs font-black text-gray-700 dark:text-gray-200">{Math.round((seller.salesToday / Math.max(1, seller.dailyTarget)) * 100)}%</span>
+                                                            <span className="text-xs font-bold text-indigo-600 flex items-center gap-1"><Sun size={14} /> Meta Diaria</span>
+                                                            <span className="text-xs font-black text-slate-700">{Math.round((seller.salesToday / Math.max(1, seller.dailyTarget)) * 100)}%</span>
                                                         </div>
-                                                        <div className="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-2.5 overflow-hidden">
+                                                        <div className="w-full bg-rose-100 rounded-full h-2.5 overflow-hidden">
                                                             <div className="bg-indigo-500 h-full rounded-full transition-all duration-700" style={{ width: `${Math.min(100, (seller.salesToday / Math.max(1, seller.dailyTarget)) * 100)}%` }}></div>
                                                         </div>
-                                                        <div className="flex justify-between mt-1 text-[10px] text-gray-400">
+                                                        <div className="flex justify-between mt-1 text-[10px] text-slate-400">
                                                             <span>R$ {seller.salesToday.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                                                             <span>Meta: R$ {seller.dailyTarget.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</span>
                                                         </div>
@@ -626,25 +634,25 @@ const Dashboard: React.FC<DashboardProps> = ({ user, users = [], salesGoals, onN
                                                     {/* Monthly */}
                                                     <div>
                                                         <div className="flex justify-between items-center mb-1">
-                                                            <span className="text-xs font-bold text-pink-600 dark:text-pink-400 flex items-center gap-1">📅 Meta Mensal</span>
-                                                            <span className="text-xs font-black text-gray-700 dark:text-gray-200">{Math.round((seller.salesMonth / Math.max(1, seller.monthlyTarget)) * 100)}%</span>
+                                                            <span className="text-xs font-bold text-rose-500 flex items-center gap-1"><CalendarIcon size={14} /> Meta Mensal</span>
+                                                            <span className="text-xs font-black text-slate-700">{Math.round((seller.salesMonth / Math.max(1, seller.monthlyTarget)) * 100)}%</span>
                                                         </div>
-                                                        <div className="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-2.5 overflow-hidden">
-                                                            <div className="bg-pink-500 h-full rounded-full transition-all duration-700" style={{ width: `${Math.min(100, (seller.salesMonth / Math.max(1, seller.monthlyTarget)) * 100)}%` }}></div>
+                                                        <div className="w-full bg-rose-100 rounded-full h-2.5 overflow-hidden">
+                                                            <div className="bg-rose-400 h-full rounded-full transition-all duration-700" style={{ width: `${Math.min(100, (seller.salesMonth / Math.max(1, seller.monthlyTarget)) * 100)}%` }}></div>
                                                         </div>
-                                                        <div className="flex justify-between mt-1 text-[10px] text-gray-400">
+                                                        <div className="flex justify-between mt-1 text-[10px] text-slate-400">
                                                             <span>R$ {seller.salesMonth.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                                                             <span>Meta: R$ {seller.monthlyTarget.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</span>
                                                         </div>
                                                         {/* Comissão acumulada no mês */}
-                                                        <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-600 flex items-center justify-between">
+                                                        <div className="mt-3 pt-3 border-t border-rose-100 flex items-center justify-between">
                                                             <div>
-                                                                <p className="text-[10px] font-bold text-gray-400 uppercase">Comissão do Mês</p>
-                                                                <p className="text-base font-black text-purple-600 dark:text-purple-400">
+                                                                <p className="text-[10px] font-bold text-slate-400 uppercase">Comissão do Mês</p>
+                                                                <p className="text-base font-black text-slate-900">
                                                                     R$ {((seller as any).commission ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                                                 </p>
                                                             </div>
-                                                            <span className={`text-xs font-bold px-2 py-1 rounded-full ${(seller as any).todayRate === '2%' ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>
+                                                            <span className={`text-xs font-bold px-2 py-1 rounded-full ${(seller as any).todayRate === '2%' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-50 text-slate-500'}`}>
                                                                 Hoje: {(seller as any).todayRate ?? '1%'}
                                                             </span>
                                                         </div>
@@ -654,19 +662,19 @@ const Dashboard: React.FC<DashboardProps> = ({ user, users = [], salesGoals, onN
                                         </div>
                                     );
                                 })()}
-                                <div className="pt-4 mt-2 border-t border-gray-100 dark:border-gray-700 flex justify-between items-center text-xs text-gray-500"><span>Progresso Global da Loja</span><div className="flex gap-4"><span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-indigo-500"></div> Dia</span><span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-pink-500"></div> Mês: {Math.round(globalMonthlyProgress)}%</span></div></div>
+                                <div className="pt-4 mt-2 border-t border-rose-100 flex justify-between items-center text-xs text-slate-500"><span>Progresso Global da Loja</span><div className="flex gap-4"><span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-indigo-500"></div> Dia</span><span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-rose-400"></div> Mês: {Math.round(globalMonthlyProgress)}%</span></div></div>
                             </div>
                         )}
                     </div>
 
                     {/* Revenue History Chart (Area Chart) - HIDDEN FOR SALESPERSON */}
                     {!isSalesperson && (
-                        <div className="bg-white dark:bg-gray-800 p-6 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm transition-colors">
+                        <div className="bg-white p-6 rounded-xl border border-rose-100 shadow-sm transition-colors">
                             <div className="flex justify-between items-center mb-6">
-                                <h3 className="font-bold text-gray-800 dark:text-white flex items-center gap-2">
+                                <h3 className="font-bold text-slate-900 flex items-center gap-2">
                                     <TrendingUp className="text-emerald-500" size={20} /> Histórico de Receita
                                 </h3>
-                                <span className="text-xs text-gray-400 bg-gray-50 dark:bg-gray-700/50 px-2 py-1 rounded">Semestral</span>
+                                <span className="text-xs text-slate-400 bg-[#fff8f8] px-2 py-1 rounded">Semestral</span>
                             </div>
                             <div className="h-64 w-full">
                                 <ResponsiveContainer width="100%" height="100%">
@@ -677,7 +685,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, users = [], salesGoals, onN
                                                 <stop offset="95%" stopColor="#ec4899" stopOpacity={0} />
                                             </linearGradient>
                                         </defs>
-                                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
+                                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#ffe4e6" />
                                         <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#9ca3af', fontSize: 12 }} />
                                         <YAxis axisLine={false} tickLine={false} tick={{ fill: '#9ca3af', fontSize: 12 }} />
                                         <Tooltip content={<CustomTooltip />} cursor={{ stroke: '#ec4899', strokeWidth: 1, strokeDasharray: '3 3' }} />
@@ -689,8 +697,8 @@ const Dashboard: React.FC<DashboardProps> = ({ user, users = [], salesGoals, onN
                     )}
 
                     {/* Top Categories Chart (Pie Chart) */}
-                    <div className="bg-white dark:bg-gray-800 p-6 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm transition-colors">
-                        <h3 className="font-bold text-gray-800 dark:text-white mb-4 flex items-center gap-2">
+                    <div className="bg-white p-6 rounded-xl border border-rose-100 shadow-sm transition-colors">
+                        <h3 className="font-bold text-slate-900 mb-4 flex items-center gap-2">
                             <PieChartIcon className="text-purple-500" size={20} /> Top Categorias
                         </h3>
                         <div className="h-64 w-full relative flex items-center justify-center">
@@ -715,7 +723,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, users = [], salesGoals, onN
                             {/* Legend */}
                             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                                 <div className="text-center">
-                                    <span className="text-sm font-bold text-gray-400">Total</span>
+                                    <span className="text-sm font-bold text-slate-400">Total</span>
                                 </div>
                             </div>
                         </div>
@@ -723,7 +731,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, users = [], salesGoals, onN
                             {dataCategories.map((entry, index) => (
                                 <div key={index} className="flex items-center gap-2">
                                     <div className="w-3 h-3 rounded-full" style={{ backgroundColor: COLORS[index % COLORS.length] }}></div>
-                                    <span className="text-xs text-gray-600 dark:text-gray-300">{entry.name} ({entry.value}%)</span>
+                                    <span className="text-xs text-slate-600">{entry.name} ({entry.value}%)</span>
                                 </div>
                             ))}
                         </div>
@@ -733,60 +741,58 @@ const Dashboard: React.FC<DashboardProps> = ({ user, users = [], salesGoals, onN
                 {/* Right Column */}
                 <div className="space-y-6">
                     {/* Pending Shipments Card */}
-                    <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 transition-colors relative overflow-hidden">
-                        <div className="absolute top-0 right-0 w-24 h-24 bg-indigo-50 dark:bg-indigo-900/10 rounded-bl-full -mr-4 -mt-4 pointer-events-none"></div>
-                        <div className="flex items-center justify-between mb-4 relative z-10">
-                            <div className="flex items-center gap-2"><Truck className="text-indigo-600 dark:text-indigo-400" size={18} /><h3 className="text-lg font-bold text-gray-800 dark:text-white">Próximos Envios</h3></div>
-                            <button onClick={() => onNavigate('delivery')} className="text-xs text-indigo-600 dark:text-indigo-400 font-bold hover:underline">Ver Todos</button>
+                    <div className="bg-white p-6 rounded-[28px] border border-rose-100 shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
+                        <div className="flex items-center justify-between mb-4">
+                            <div className="flex items-center gap-2"><Truck className="text-indigo-600" size={18} /><h3 className="text-lg font-bold text-slate-900">Próximos Envios</h3></div>
+                            <button onClick={() => onNavigate('delivery')} className="text-xs text-indigo-600 font-bold hover:underline">Ver Todos</button>
                         </div>
-                        <div className="space-y-3 relative z-10">
+                        <div className="space-y-3">
                             {pendingDeliveries.slice(0, 4).map((delivery) => (
-                                <div key={delivery.id} className="flex items-start justify-between bg-gray-50 dark:bg-gray-700/30 p-3 rounded-lg border border-gray-100 dark:border-gray-600">
+                                <div key={delivery.id} className="flex items-start justify-between bg-[#fff8f8] p-3 rounded-lg border border-rose-100">
                                     <div className="flex gap-3">
-                                        <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${delivery.method === 'Motoboy' ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30' : 'bg-blue-100 text-blue-600 dark:bg-blue-900/30'}`}>{delivery.method === 'Motoboy' ? <Bike size={18} /> : <Package size={18} />}</div>
-                                        <div><p className="text-sm font-bold text-gray-800 dark:text-white line-clamp-1">{delivery.customerName}</p><div className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400"><MapPin size={10} /><span className="truncate max-w-[120px]">{delivery.city}</span></div></div>
+                                        <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${delivery.method === 'Motoboy' ? 'bg-emerald-100 text-emerald-600' : 'bg-blue-100 text-blue-600'}`}>{delivery.method === 'Motoboy' ? <Bike size={18} /> : <Package size={18} />}</div>
+                                        <div><p className="text-sm font-bold text-slate-900 line-clamp-1">{delivery.customerName}</p><div className="flex items-center gap-1 text-xs text-slate-500"><MapPin size={10} /><span className="truncate max-w-[120px]">{delivery.city}</span></div></div>
                                     </div>
-                                    <div className="text-right"><span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${delivery.source === 'E-commerce' ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400' : 'bg-gray-200 text-gray-700 dark:bg-gray-600 dark:text-gray-300'}`}>{delivery.source === 'E-commerce' ? 'Online' : 'Loja'}</span><p className="text-[10px] text-gray-400 mt-1">{delivery.method}</p></div>
+                                    <div className="text-right"><span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${delivery.source === 'E-commerce' ? 'bg-purple-100 text-purple-700' : 'bg-rose-100 text-slate-700'}`}>{delivery.source === 'E-commerce' ? 'Online' : 'Loja'}</span><p className="text-[10px] text-slate-400 mt-1">{delivery.method}</p></div>
                                 </div>
                             ))}
-                            {pendingDeliveries.length === 0 && <p className="text-center text-sm text-gray-400 py-4 italic">Nenhum envio pendente hoje!</p>}
+                            {pendingDeliveries.length === 0 && <p className="text-center text-sm text-slate-400 py-4 italic">Nenhum envio pendente hoje!</p>}
                         </div>
                     </div>
 
                     {/* Birthdays Card (New Feature) */}
-                    <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 transition-colors relative overflow-hidden">
-                        <div className="absolute top-0 right-0 w-20 h-20 bg-pink-50 dark:bg-pink-900/10 rounded-bl-full -mr-2 -mt-2 pointer-events-none"></div>
-                        <div className="flex items-center justify-between mb-4 relative z-10">
+                    <div className="bg-white p-6 rounded-[28px] border border-rose-100 shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
+                        <div className="flex items-center justify-between mb-4">
                             <div className="flex items-center gap-2">
-                                <Cake className="text-pink-500" size={18} />
-                                <h3 className="text-lg font-bold text-gray-800 dark:text-white">Aniversariantes</h3>
+                                <Cake className="text-rose-500" size={18} />
+                                <h3 className="text-lg font-bold text-slate-900">Aniversariantes</h3>
                             </div>
-                            <span className="text-xs font-bold bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-300 px-2 py-1 rounded">Mês Atual</span>
+                            <span className="text-xs font-bold bg-rose-100 text-rose-600 px-2 py-1 rounded">Mês Atual</span>
                         </div>
 
-                        <div className="space-y-3 relative z-10 max-h-[250px] overflow-y-auto pr-1">
+                        <div className="space-y-3 max-h-[250px] overflow-y-auto pr-1">
                             {birthdayCustomers.length > 0 ? (
                                 birthdayCustomers.map((customer) => {
                                     const [year, month, day] = customer.birthDate ? customer.birthDate.split('-') : ['', '', ''];
                                     return (
-                                        <div key={customer.id} className="flex items-center justify-between bg-gray-50 dark:bg-gray-700/30 p-3 rounded-lg border border-gray-100 dark:border-gray-600 group">
+                                        <div key={customer.id} className="flex items-center justify-between bg-[#fff8f8] p-3 rounded-lg border border-rose-100 group">
                                             <div className="flex gap-3 items-center">
-                                                <div className="w-10 h-10 rounded-full bg-pink-100 dark:bg-pink-900/30 flex items-center justify-center text-pink-600 dark:text-pink-400 font-bold text-sm">
+                                                <div className="w-10 h-10 rounded-full bg-rose-100 flex items-center justify-center text-rose-500 font-bold text-sm">
                                                     {day}
                                                 </div>
                                                 <div>
-                                                    <p className="text-sm font-bold text-gray-800 dark:text-white line-clamp-1">{customer.name}</p>
-                                                    <p className="text-xs text-gray-500 dark:text-gray-400">{customer.phone}</p>
+                                                    <p className="text-sm font-bold text-slate-900 line-clamp-1">{customer.name}</p>
+                                                    <p className="text-xs text-slate-500">{customer.phone}</p>
                                                 </div>
                                             </div>
-                                            <button className="text-gray-400 hover:text-pink-600 dark:hover:text-pink-400 transition-colors p-2 rounded-full hover:bg-white dark:hover:bg-gray-600" title="Enviar Presente/Cupom">
+                                            <button className="text-slate-400 hover:text-rose-500 transition-colors p-2 rounded-full hover:bg-white" title="Enviar Presente/Cupom">
                                                 <Gift size={18} />
                                             </button>
                                         </div>
                                     );
                                 })
                             ) : (
-                                <div className="text-center py-6 text-gray-400">
+                                <div className="text-center py-6 text-slate-400">
                                     <Cake size={32} className="mx-auto mb-2 opacity-20" />
                                     <p className="text-sm">Nenhum aniversariante este mês.</p>
                                 </div>
@@ -800,21 +806,21 @@ const Dashboard: React.FC<DashboardProps> = ({ user, users = [], salesGoals, onN
             {
                 isPosModalOpen && (
                     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-                        <div className="absolute inset-0 bg-gray-900/60 backdrop-blur-sm" onClick={() => setIsPosModalOpen(false)}></div>
-                        <div className="bg-white dark:bg-gray-800 w-full max-w-4xl h-[85vh] rounded-2xl shadow-2xl relative flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                        <div className="absolute inset-0 bg-slate-900/30 backdrop-blur-sm" onClick={() => setIsPosModalOpen(false)}></div>
+                        <div className="bg-white w-full max-w-4xl h-[85vh] rounded-[32px] shadow-[0_32px_80px_rgba(15,23,42,0.14)] border border-rose-100 relative flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
 
                             {/* Modal Header */}
-                            <div className="bg-gray-900 dark:bg-black text-white p-4 flex justify-between items-center shadow-md z-10">
+                            <div className="bg-[linear-gradient(180deg,#fff6f7_0%,#ffffff_100%)] p-5 flex justify-between items-center border-b border-rose-100 z-10">
                                 <div className="flex items-center gap-3">
-                                    <div className="p-2 bg-[#ffc8cb] rounded-lg">
-                                        <ShoppingCart size={20} className="text-gray-900" />
+                                    <div className="p-2 bg-rose-50 rounded-[14px] border border-rose-100">
+                                        <ShoppingCart size={20} className="text-rose-500" />
                                     </div>
                                     <div>
-                                        <h3 className="text-lg font-bold">Nova Venda Rápida</h3>
-                                        <p className="text-xs text-gray-400">Caixa: Principal | Operador: {user.name}</p>
+                                        <h3 className="text-lg font-semibold text-slate-900">Nova Venda Rapida</h3>
+                                        <p className="text-xs text-slate-500">Caixa: Principal | Operador: {user.name}</p>
                                     </div>
                                 </div>
-                                <button onClick={() => setIsPosModalOpen(false)} className="p-2 hover:bg-gray-700 rounded-full transition-colors">
+                                <button onClick={() => setIsPosModalOpen(false)} className="p-2 hover:bg-rose-50 text-slate-400 hover:text-slate-600 rounded-full transition-colors">
                                     <X size={20} />
                                 </button>
                             </div>
@@ -822,17 +828,17 @@ const Dashboard: React.FC<DashboardProps> = ({ user, users = [], salesGoals, onN
                             {/* Modal Body */}
                             <div className="flex-1 overflow-hidden flex flex-col md:flex-row">
                                 {/* Left: Product Lookup */}
-                                <div className="hidden md:flex flex-1 flex-col bg-gray-50 dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700">
-                                    <div className="p-4 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 space-y-3">
+                                <div className="hidden md:flex flex-1 flex-col bg-[#fff8f8] border-r border-rose-100">
+                                    <div className="p-4 bg-white border-b border-rose-100 space-y-3">
                                         {/* SKU Input */}
                                         <div className="flex gap-2">
                                             <form onSubmit={handleSkuSubmit} className="relative flex-1">
-                                                <Barcode className="absolute left-3 top-1/2 -translate-y-1/2 text-pink-500" size={20} />
+                                                <Barcode className="absolute left-3 top-1/2 -translate-y-1/2 text-rose-500" size={20} />
                                                 <input
                                                     ref={skuInputRef}
                                                     type="text"
                                                     placeholder="Bipar Código / SKU + Enter"
-                                                    className="w-full pl-10 pr-4 py-3 border-2 border-[#ffc8cb] rounded-xl focus:border-pink-400 focus:ring-0 text-base font-semibold shadow-sm outline-none transition-all bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                                                    className="w-full pl-10 pr-4 py-3 border-2 border-[#ffc8cb] rounded-xl focus:border-pink-400 focus:ring-0 text-base font-semibold shadow-sm outline-none transition-all bg-white text-slate-900"
                                                     value={skuInput}
                                                     onChange={(e) => setSkuInput(e.target.value)}
                                                     autoFocus
@@ -840,7 +846,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, users = [], salesGoals, onN
                                             </form>
                                             <button
                                                 onClick={() => setIsScannerOpen(!isScannerOpen)}
-                                                className={`p-3 rounded-xl transition-colors border-2 ${isScannerOpen ? 'bg-pink-100 border-pink-500 text-pink-600' : 'bg-gray-100 dark:bg-gray-700 border-gray-200 dark:border-gray-600 hover:bg-gray-200 dark:hover:bg-gray-600 dark:text-gray-200'}`}
+                                                className={`p-3 rounded-xl transition-colors border-2 ${isScannerOpen ? 'bg-rose-100 border-pink-500 text-rose-500' : 'bg-rose-50 border-rose-100 hover:bg-rose-100'}`}
                                                 title="Ler Código de Barras"
                                             >
                                                 <Camera size={24} />
@@ -862,11 +868,11 @@ const Dashboard: React.FC<DashboardProps> = ({ user, users = [], salesGoals, onN
 
                                         {/* Name Search */}
                                         <div className="relative">
-                                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
                                             <input
                                                 type="text"
                                                 placeholder="Buscar produto por nome..."
-                                                className="w-full pl-10 pr-4 py-2 bg-gray-100 dark:bg-gray-700 dark:text-white border-none rounded-lg focus:ring-2 focus:ring-gray-200 dark:focus:ring-gray-600 text-sm"
+                                                className="w-full pl-10 pr-4 py-2 bg-rose-50 border-none rounded-lg focus:ring-2 focus:ring-gray-200 text-sm"
                                                 value={posSearchTerm}
                                                 onChange={(e) => setPosSearchTerm(e.target.value)}
                                             />
@@ -877,34 +883,34 @@ const Dashboard: React.FC<DashboardProps> = ({ user, users = [], salesGoals, onN
                                     <div className="flex-1 overflow-y-auto p-4">
                                         {posSearchTerm ? (
                                             <div className="space-y-2">
-                                                <h4 className="text-xs font-bold text-gray-400 uppercase mb-2">Resultados da busca</h4>
+                                                <h4 className="text-xs font-bold text-slate-400 uppercase mb-2">Resultados da busca</h4>
                                                 {filteredPosProducts.map(product => (
                                                     <div
                                                         key={product.id}
                                                         onClick={() => addToCart(product)}
-                                                        className="bg-white dark:bg-gray-800 p-3 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm hover:border-[#ffc8cb] cursor-pointer flex justify-between items-center group transition-all"
+                                                        className="bg-white p-3 rounded-lg border border-rose-100 shadow-sm hover:border-[#ffc8cb] cursor-pointer flex justify-between items-center group transition-all"
                                                     >
                                                         <div className="flex items-center gap-3">
-                                                            <div className="w-10 h-10 bg-gray-100 dark:bg-gray-700 rounded-md overflow-hidden">
+                                                            <div className="w-10 h-10 bg-rose-50 rounded-md overflow-hidden">
                                                                 {product.imageUrl && <img src={product.imageUrl} className="w-full h-full object-cover" />}
                                                             </div>
                                                             <div>
-                                                                <p className="font-bold text-gray-800 dark:text-white text-sm">{product.name}</p>
-                                                                <p className="text-xs text-gray-500 dark:text-gray-400 font-mono">{product.sku}</p>
+                                                                <p className="font-bold text-slate-900 text-sm">{product.name}</p>
+                                                                <p className="text-xs text-slate-500 font-mono">{product.sku}</p>
                                                             </div>
                                                         </div>
                                                         <div className="text-right">
-                                                            <p className="font-bold text-pink-600 dark:text-pink-400">R$ {product.priceSale.toFixed(2)}</p>
-                                                            <p className="text-[10px] text-gray-400">{product.stock} un</p>
+                                                            <p className="font-bold text-rose-500">R$ {product.priceSale.toFixed(2)}</p>
+                                                            <p className="text-[10px] text-slate-400">{product.stock} un</p>
                                                         </div>
                                                     </div>
                                                 ))}
                                                 {filteredPosProducts.length === 0 && (
-                                                    <p className="text-center text-sm text-gray-400 mt-4">Nenhum produto encontrado.</p>
+                                                    <p className="text-center text-sm text-slate-400 mt-4">Nenhum produto encontrado.</p>
                                                 )}
                                             </div>
                                         ) : (
-                                            <div className="flex flex-col items-center justify-center h-full text-gray-400 opacity-60">
+                                            <div className="flex flex-col items-center justify-center h-full text-slate-400 opacity-60">
                                                 <Barcode size={48} className="mb-2" />
                                                 <p className="text-sm font-medium">Aguardando leitura de código</p>
                                                 <p className="text-xs">ou digite para buscar</p>
@@ -914,15 +920,15 @@ const Dashboard: React.FC<DashboardProps> = ({ user, users = [], salesGoals, onN
                                 </div>
 
                                 {/* Right: Cart & Checkout (Existing logic) */}
-                                <div className="w-full md:w-[400px] bg-white dark:bg-gray-800 flex flex-col h-full border-l dark:border-gray-700">
+                                <div className="w-full md:w-[400px] bg-white flex flex-col h-full border-l">
                                     {/* Customer Select */}
-                                    <div className="p-4 border-b border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50">
+                                    <div className="p-4 border-b border-rose-100 bg-[#fff8f8]">
                                         <label className="text-xs font-bold text-gray-50 uppercase mb-1 block">Cliente</label>
                                         <div className="flex gap-2">
                                             <div className="relative flex-1">
-                                                <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                                                <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                                                 <select
-                                                    className="w-full pl-9 pr-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:border-pink-400 outline-none appearance-none bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                                                    className="w-full pl-9 pr-3 py-2 border border-rose-200 rounded-lg text-sm focus:border-pink-400 outline-none appearance-none bg-white text-slate-900"
                                                     value={selectedCustomer?.id || ''}
                                                     onChange={(e) => setSelectedCustomer(customers.find(c => c.id === e.target.value) || null)}
                                                 >
@@ -932,31 +938,31 @@ const Dashboard: React.FC<DashboardProps> = ({ user, users = [], salesGoals, onN
                                                     ))}
                                                 </select>
                                             </div>
-                                            <button className="px-3 bg-pink-100 dark:bg-pink-900 text-pink-600 dark:text-pink-300 rounded-lg hover:bg-pink-200 dark:hover:bg-pink-800 transition-colors" title="Adicionar Cliente Rápido">
+                                            <button className="px-3 bg-rose-100 text-rose-500 rounded-lg hover:bg-pink-200 transition-colors" title="Adicionar Cliente Rápido">
                                                 <Plus size={18} />
                                             </button>
                                         </div>
                                         {selectedCustomer && (
-                                            <p className="text-xs text-pink-600 dark:text-pink-400 mt-1 ml-1 font-medium">{selectedCustomer.phone}</p>
+                                            <p className="text-xs text-rose-500 mt-1 ml-1 font-medium">{selectedCustomer.phone}</p>
                                         )}
                                     </div>
 
                                     {/* MOBILE ONLY: SKU INPUT & Scanner Button */}
-                                    <div className="p-4 bg-white dark:bg-gray-800 border-b border-gray-100 dark:border-gray-700 md:hidden">
+                                    <div className="p-4 bg-white border-b border-rose-100 md:hidden">
                                         <div className="flex gap-2">
                                             <form onSubmit={handleSkuSubmit} className="relative flex-1">
-                                                <Barcode className="absolute left-3 top-1/2 -translate-y-1/2 text-pink-500" size={20} />
+                                                <Barcode className="absolute left-3 top-1/2 -translate-y-1/2 text-rose-500" size={20} />
                                                 <input
                                                     type="text"
                                                     placeholder="Bipar Código / SKU"
-                                                    className="w-full pl-10 pr-4 py-3 border-2 border-[#ffc8cb] rounded-xl focus:border-pink-400 focus:ring-0 text-base font-semibold shadow-sm outline-none transition-all bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                                                    className="w-full pl-10 pr-4 py-3 border-2 border-[#ffc8cb] rounded-xl focus:border-pink-400 focus:ring-0 text-base font-semibold shadow-sm outline-none transition-all bg-white text-slate-900"
                                                     value={skuInput}
                                                     onChange={(e) => setSkuInput(e.target.value)}
                                                 />
                                             </form>
                                             <button
                                                 onClick={() => setIsScannerOpen(!isScannerOpen)}
-                                                className={`p-3 rounded-xl transition-colors border-2 ${isScannerOpen ? 'bg-pink-100 border-pink-500 text-pink-600' : 'bg-gray-100 dark:bg-gray-700 border-gray-200 dark:border-gray-600'}`}
+                                                className={`p-3 rounded-xl transition-colors border-2 ${isScannerOpen ? 'bg-rose-100 border-pink-500 text-rose-500' : 'bg-rose-50 border-rose-100'}`}
                                             >
                                                 <Camera size={24} />
                                             </button>
@@ -975,27 +981,27 @@ const Dashboard: React.FC<DashboardProps> = ({ user, users = [], salesGoals, onN
                                     {/* Cart Items */}
                                     <div className="flex-1 overflow-y-auto p-4 space-y-3">
                                         {cart.length === 0 ? (
-                                            <div className="h-full flex flex-col items-center justify-center text-gray-300 dark:text-gray-600">
+                                            <div className="h-full flex flex-col items-center justify-center text-gray-300">
                                                 <ShoppingCart size={40} className="mb-2" />
                                                 <p className="text-sm">Carrinho vazio</p>
                                             </div>
                                         ) : (
                                             cart.map(item => (
-                                                <div key={item.id} className="flex justify-between items-start border-b border-gray-50 dark:border-gray-700 pb-3 last:border-0 last:pb-0 animate-in slide-in-from-right-2 duration-200">
+                                                <div key={item.id} className="flex justify-between items-start border-b border-rose-100/50 pb-3 last:border-0 last:pb-0 animate-in slide-in-from-right-2 duration-200">
                                                     <div className="flex-1">
-                                                        <p className="text-sm font-semibold text-gray-800 dark:text-white line-clamp-1">{item.name}</p>
-                                                        <p className="text-xs text-gray-500 dark:text-gray-400">R$ {item.priceSale.toFixed(2)} un</p>
+                                                        <p className="text-sm font-semibold text-slate-900 line-clamp-1">{item.name}</p>
+                                                        <p className="text-xs text-slate-500">R$ {item.priceSale.toFixed(2)} un</p>
                                                     </div>
                                                     <div className="flex items-center gap-3">
-                                                        <div className="flex items-center bg-gray-100 dark:bg-gray-700 rounded-lg text-gray-800 dark:text-white">
+                                                        <div className="flex items-center bg-rose-50 rounded-lg text-slate-900">
                                                             <button onClick={() => updateQuantity(item.id, -1)} className="p-1 hover:text-red-500 px-2"><Minus size={12} /></button>
                                                             <span className="text-xs font-bold w-4 text-center">{item.quantity}</span>
                                                             <button onClick={() => updateQuantity(item.id, 1)} className="p-1 hover:text-green-500 px-2"><Plus size={12} /></button>
                                                         </div>
-                                                        <p className="text-sm font-bold text-gray-800 dark:text-white w-16 text-right">
+                                                        <p className="text-sm font-bold text-slate-900 w-16 text-right">
                                                             R$ {(item.priceSale * item.quantity).toFixed(2)}
                                                         </p>
-                                                        <button onClick={() => removeFromCart(item.id)} className="text-gray-400 hover:text-red-500">
+                                                        <button onClick={() => removeFromCart(item.id)} className="text-slate-400 hover:text-red-500">
                                                             <Trash2 size={14} />
                                                         </button>
                                                     </div>
@@ -1005,10 +1011,10 @@ const Dashboard: React.FC<DashboardProps> = ({ user, users = [], salesGoals, onN
                                     </div>
 
                                     {/* Totals & Action */}
-                                    <div className="p-5 bg-gray-50 dark:bg-gray-900/50 border-t border-gray-200 dark:border-gray-700">
+                                    <div className="p-5 bg-[#fff8f8] border-t border-rose-100">
                                         <div className="flex justify-between items-center mb-4">
-                                            <span className="text-gray-500 dark:text-gray-400 font-medium">Total a Pagar</span>
-                                            <span className="text-3xl font-bold text-gray-900 dark:text-white">R$ {cartTotal.toFixed(2)}</span>
+                                            <span className="text-slate-500 font-medium">Total a Pagar</span>
+                                            <span className="text-3xl font-bold text-slate-900">R$ {cartTotal.toFixed(2)}</span>
                                         </div>
 
                                         <button
@@ -1017,8 +1023,8 @@ const Dashboard: React.FC<DashboardProps> = ({ user, users = [], salesGoals, onN
                                             className={`w-full py-3 rounded-xl font-bold text-lg shadow-lg transition-all flex items-center justify-center gap-2 ${saleSuccess
                                                 ? 'bg-green-500 text-white'
                                                 : cart.length === 0
-                                                    ? 'bg-gray-200 dark:bg-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed'
-                                                    : 'bg-[#ffc8cb] hover:bg-[#ffb6b9] text-gray-900 hover:shadow-pink-200 hover:-translate-y-0.5'
+                                                    ? 'bg-rose-100 text-slate-400 cursor-not-allowed'
+                                                    : 'bg-[#ffc8cb] hover:bg-[#ffb6b9] text-slate-900 hover:shadow-rose-200 hover:-translate-y-0.5'
                                                 }`}
                                         >
                                             {saleSuccess ? (

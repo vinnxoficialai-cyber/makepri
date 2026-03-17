@@ -1,7 +1,61 @@
 import { supabase } from './supabase';
 
 // =====================================================
-// SERVIÇO DE UPLOAD DE IMAGENS
+// COMPRESSAO DE IMAGEM (canvas resize + WebP)
+// =====================================================
+
+async function compressImage(file: File, maxWidth = 800, quality = 0.8): Promise<File> {
+    // Skip if already small (<200KB) or is a GIF
+    if (file.size < 200 * 1024 || file.type === 'image/gif') return file;
+
+    return new Promise<File>((resolve) => {
+        const img = new Image();
+        const url = URL.createObjectURL(file);
+
+        img.onload = () => {
+            URL.revokeObjectURL(url);
+
+            let { width, height } = img;
+            if (width > maxWidth) {
+                height = Math.round((height * maxWidth) / width);
+                width = maxWidth;
+            }
+
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+
+            const ctx = canvas.getContext('2d')!;
+            ctx.drawImage(img, 0, 0, width, height);
+
+            canvas.toBlob(
+                (blob) => {
+                    if (blob && blob.size < file.size) {
+                        const compressed = new File([blob], file.name.replace(/\.[^.]+$/, '.webp'), {
+                            type: 'image/webp',
+                            lastModified: Date.now()
+                        });
+                        resolve(compressed);
+                    } else {
+                        resolve(file); // Compression didn't help, keep original
+                    }
+                },
+                'image/webp',
+                quality
+            );
+        };
+
+        img.onerror = () => {
+            URL.revokeObjectURL(url);
+            resolve(file); // Fallback to original on error
+        };
+
+        img.src = url;
+    });
+}
+
+// =====================================================
+// SERVICO DE UPLOAD DE IMAGENS
 // =====================================================
 
 export const ImageService = {
@@ -13,15 +67,18 @@ export const ImageService = {
      */
     async upload(file: File, folder: string = 'general'): Promise<string> {
         try {
-            // Gerar nome único para o arquivo
-            const fileExt = file.name.split('.').pop();
+            // Compress image before upload
+            const optimizedFile = await compressImage(file);
+
+            // Generate unique filename
+            const fileExt = optimizedFile.name.split('.').pop();
             const fileName = `${folder}/${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
 
-            // Fazer upload
+            // Upload
             const { data, error } = await supabase.storage
                 .from('images')
-                .upload(fileName, file, {
-                    cacheControl: '3600',
+                .upload(fileName, optimizedFile, {
+                    cacheControl: '31536000',
                     upsert: false
                 });
 

@@ -1,6 +1,7 @@
 import { supabase } from './supabase';
 import { dataCache } from './cache';
 export { CashService } from './cash-service';
+export { AuditService } from './audit-service';
 import type {
     Product,
     Customer,
@@ -493,6 +494,74 @@ export const CustomerService = {
         });
         dataCache.invalidate('customers:all'); // Invalidate after update
         return updatedCustomer;
+    },
+
+    // Unificar clientes duplicados: transfere tudo do duplicado para o primario
+    async mergeCustomers(primaryId: string, duplicateId: string): Promise<void> {
+        // 1. Buscar dados de ambos
+        const { data: primary } = await supabase.from('customers').select('*').eq('id', primaryId).single();
+        const { data: duplicate } = await supabase.from('customers').select('*').eq('id', duplicateId).single();
+        if (!primary || !duplicate) throw new Error('Cliente nao encontrado');
+
+        // 2. Transferir transacoes: mudar customer_name e customer_id
+        await supabase
+            .from('transactions')
+            .update({ customer_name: primary.name, customer_id: primaryId })
+            .eq('customer_id', duplicateId);
+
+        // Also match by name (some transactions may not have customer_id)
+        await supabase
+            .from('transactions')
+            .update({ customer_name: primary.name, customer_id: primaryId })
+            .eq('customer_name', duplicate.name)
+            .is('customer_id', null);
+
+        // 3. Transferir entregas
+        await supabase
+            .from('deliveries')
+            .update({ customer_name: primary.name })
+            .eq('customer_name', duplicate.name);
+
+        // 4. Recalcular total_spent do primario
+        const { data: allTx } = await supabase
+            .from('transactions')
+            .select('total, date')
+            .eq('customer_id', primaryId)
+            .eq('status', 'Completed')
+            .order('date', { ascending: false });
+
+        const newTotal = (allTx || []).reduce((sum: number, t: any) => sum + (t.total || 0), 0);
+        const lastPurchase = allTx && allTx.length > 0 ? allTx[0].date : primary.last_purchase;
+
+        await supabase
+            .from('customers')
+            .update({ total_spent: newTotal, last_purchase: lastPurchase })
+            .eq('id', primaryId);
+
+        // 5. Audit log
+        try {
+            const { AuditService } = await import('./audit-service');
+            await AuditService.log({
+                action: 'merge_customers',
+                entityType: 'customer',
+                entityId: primaryId,
+                details: {
+                    primaryName: primary.name,
+                    duplicateName: duplicate.name,
+                    duplicateId,
+                    transferredTotal: newTotal
+                }
+            });
+        } catch (err) {
+            console.error('Audit log merge error:', err);
+        }
+
+        // 6. Deletar o duplicado
+        await supabase.from('customers').delete().eq('id', duplicateId);
+
+        dataCache.invalidate('customers:all');
+        dataCache.invalidate('transactions:all');
+        dataCache.invalidate('deliveries:all');
     }
 };
 
@@ -763,9 +832,150 @@ export const TransactionService = {
         dataCache.invalidate('transactions:all');
     },
 
-    // Deletar transação e seus itens (admin only)
+    // Deletar transação COM CLEANUP COMPLETO (admin only)
+    // Reverte: estoque, total do cliente, entrega associada, movimento do caixa
     async delete(id: string): Promise<void> {
-        // Delete items first (if no cascade FK)
+        // 1. Buscar transação completa (com itens) ANTES de deletar
+        const transaction = await this.getById(id);
+        if (!transaction) throw new Error('Transação não encontrada');
+
+        // AUDIT LOG: registrar delete antes de executar
+        try {
+            const { AuditService } = await import('./audit-service');
+            await AuditService.log({
+                action: 'delete_transaction',
+                entityType: 'transaction',
+                entityId: id,
+                details: {
+                    customerName: transaction.customerName,
+                    total: transaction.total,
+                    date: transaction.date,
+                    paymentMethod: transaction.paymentMethod,
+                    itemCount: transaction.items?.length || 0,
+                    isDelivery: transaction.isDelivery
+                }
+            });
+        } catch (err) {
+            console.error('Erro ao registrar audit log:', err);
+        }
+
+        // 2. RESTAURAR ESTOQUE de cada item
+        if (transaction.items && transaction.items.length > 0) {
+            for (const item of transaction.items) {
+                try {
+                    if (!item.id) continue;
+                    const { data: product } = await supabase
+                        .from('products')
+                        .select('stock')
+                        .eq('id', item.id)
+                        .single();
+                    if (product) {
+                        await supabase
+                            .from('products')
+                            .update({ stock: (product.stock || 0) + item.quantity })
+                            .eq('id', item.id);
+                    }
+                } catch (err) {
+                    console.error(`Erro ao restaurar estoque do produto ${item.id}:`, err);
+                }
+            }
+            dataCache.invalidate('products:all');
+        }
+
+        // 3. RECALCULAR totalSpent DO CLIENTE
+        if (transaction.customerId) {
+            try {
+                // Sum all remaining transactions for this customer (excluding the one being deleted)
+                const { data: remainingTx } = await supabase
+                    .from('transactions')
+                    .select('total')
+                    .eq('customer_id', transaction.customerId)
+                    .eq('status', 'Completed')
+                    .neq('id', id);
+
+                const newTotal = (remainingTx || []).reduce((sum: number, t: any) => sum + (t.total || 0), 0);
+
+                // Find the latest remaining transaction date
+                const { data: latestTx } = await supabase
+                    .from('transactions')
+                    .select('date')
+                    .eq('customer_id', transaction.customerId)
+                    .eq('status', 'Completed')
+                    .neq('id', id)
+                    .order('date', { ascending: false })
+                    .limit(1);
+
+                const lastPurchase = latestTx && latestTx.length > 0 ? latestTx[0].date : null;
+
+                await supabase
+                    .from('customers')
+                    .update({ total_spent: newTotal, last_purchase: lastPurchase })
+                    .eq('id', transaction.customerId);
+
+                dataCache.invalidate('customers:all');
+            } catch (err) {
+                console.error('Erro ao recalcular totalSpent do cliente:', err);
+            }
+        }
+
+        // 4. DELETAR ENTREGA ASSOCIADA (se for delivery)
+        if (transaction.isDelivery) {
+            try {
+                // Try by transaction_id first (new deliveries will have this)
+                const { data: deliveryByTxId } = await supabase
+                    .from('deliveries')
+                    .select('id')
+                    .eq('transaction_id', id);
+
+                if (deliveryByTxId && deliveryByTxId.length > 0) {
+                    await supabase.from('deliveries').delete().eq('transaction_id', id);
+                } else {
+                    // Fallback: match by customer_name + approximate date
+                    const txDate = new Date(transaction.date);
+                    const startWindow = new Date(txDate.getTime() - 60000).toISOString(); // -1min
+                    const endWindow = new Date(txDate.getTime() + 60000).toISOString();   // +1min
+
+                    const { data: matchedDelivery } = await supabase
+                        .from('deliveries')
+                        .select('id')
+                        .eq('customer_name', transaction.customerName)
+                        .gte('created_at', startWindow)
+                        .lte('created_at', endWindow)
+                        .limit(1);
+
+                    if (matchedDelivery && matchedDelivery.length > 0) {
+                        await supabase.from('deliveries').delete().eq('id', matchedDelivery[0].id);
+                    }
+                }
+                dataCache.invalidate('deliveries:all');
+            } catch (err) {
+                console.error('Erro ao remover entrega associada:', err);
+            }
+        }
+
+        // 5. ESTORNAR MOVIMENTO DO CAIXA
+        try {
+            const { CashService } = await import('./cash-service');
+            const mapMethod = (m?: string): 'cash' | 'credit' | 'debit' | 'pix' => {
+                if (!m) return 'cash';
+                const lower = m.toLowerCase();
+                if (lower.includes('pix')) return 'pix';
+                if (lower.includes('créd') || lower.includes('credit')) return 'credit';
+                if (lower.includes('déb') || lower.includes('debit')) return 'debit';
+                return 'cash';
+            };
+            await CashService.addReversalMovement(
+                transaction.total,
+                `Venda ${transaction.customerName} (R$${transaction.total.toFixed(2)})`,
+                mapMethod(transaction.paymentMethod),
+                '',
+                id
+            );
+        } catch (err) {
+            console.error('Erro ao registrar estorno no caixa:', err);
+        }
+
+        // 6. DELETAR ITENS + TRANSAÇÃO
         await supabase.from('transaction_items').delete().eq('transaction_id', id);
         const { error } = await supabase.from('transactions').delete().eq('id', id);
         if (error) throw error;
@@ -1003,7 +1213,7 @@ export const DeliveryService = {
     },
 
     async create(delivery: Partial<DeliveryOrder>): Promise<DeliveryOrder> {
-        const deliveryData = {
+        const deliveryData: any = {
             order_id: delivery.id || `DEL-${Date.now().toString().slice(-6)}`,
             customer_name: delivery.customerName || '',
             phone: delivery.phone,
@@ -1019,6 +1229,7 @@ export const DeliveryService = {
             tracking_code: delivery.trackingCode,
             notes: delivery.notes
         };
+        if (delivery.transactionId) deliveryData.transaction_id = delivery.transactionId;
 
         const { data, error } = await supabase.from('deliveries').insert([deliveryData]).select().single();
         if (error) throw error;

@@ -173,5 +173,41 @@ export const CashService = {
             throw error;
         }
         return toCamelCase(data) as CashRegister;
+    },
+
+    // Adicionar movimento de estorno (reversal de venda)
+    async addReversalMovement(
+        amount: number,
+        description: string,
+        paymentMethod: 'cash' | 'credit' | 'debit' | 'pix',
+        createdBy: string,
+        transactionId?: string
+    ): Promise<CashMovement | null> {
+        try {
+            const currentRegister = await this.getCurrentRegister();
+            if (!currentRegister) return null; // No open register, skip silently
+
+            const movementData: any = {
+                cash_register_id: currentRegister.id,
+                type: 'refund',
+                description: `Estorno - ${description}`,
+                amount: -Math.abs(amount), // Always negative
+                payment_method: paymentMethod,
+                created_by: createdBy || ''
+            };
+            if (transactionId) movementData.transaction_id = transactionId;
+
+            const { data, error } = await supabase
+                .from('cash_movements')
+                .insert(movementData)
+                .select()
+                .single();
+
+            if (error) throw error;
+            return toCamelCase(data) as CashMovement;
+        } catch (err) {
+            console.error('Erro ao registrar estorno no caixa:', err);
+            return null; // Don't break the delete flow
+        }
     }
 };

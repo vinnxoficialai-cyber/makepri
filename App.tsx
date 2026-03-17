@@ -1,6 +1,12 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Sidebar from './components/Sidebar';
+import { BottomNav } from './components/BottomNav';
+import { ProfileDropdown } from './components/ProfileDropdown';
+import { NotificationsDropdown } from './components/NotificationsDropdown';
+import { ToastProvider } from './components/Toast';
+import { ConfirmProvider } from './components/ConfirmModal';
+import { PasswordConfirmProvider } from './components/PasswordConfirmModal';
 import Dashboard from './pages/Dashboard';
 import Inventory from './pages/Inventory';
 import POS from './pages/POS';
@@ -10,14 +16,14 @@ import Cash from './pages/Cash';
 import Settings from './pages/Settings';
 import Reports from './pages/Reports';
 import Ecommerce from './pages/Ecommerce';
-import Team from './pages/Team'; // New Unified Page
+import Team from './pages/Team';
 import Bundles from './pages/Bundles';
 import PrimakeAI from './pages/PrimakeAI';
 import Delivery from './pages/Delivery';
 import Login from './pages/Login';
 import {
     AlertTriangle, Users, BarChart2, ShoppingCart, Package, Home,
-    LayoutGrid, Bell, Sun, Moon, DollarSign, Globe, Coins, X, ClipboardList, Layers, Bot, Target, Bike, Briefcase, Sparkles, User as UserIcon, LogOut
+    LayoutGrid, Bell, Sun, Moon, DollarSign, Globe, Coins, X, ClipboardList, Layers, Bot, Target, Bike, Briefcase, Sparkles, User as UserIcon, LogOut, Menu
 } from 'lucide-react';
 import { MOCK_USERS, MOCK_DELIVERIES } from './constants';
 import { User, ModuleType, CompanySettings, SalesGoal, DeliveryOrder } from './types';
@@ -25,77 +31,10 @@ import { testarIntegracaoCompleta } from './test-supabase';
 import { useSettings, useUsers, useSalesGoals, useProducts } from './lib/hooks';
 import { useCashRegister } from './lib/useCashRegister';
 
-// --- MOBILE BOTTOM NAVIGATION COMPONENT ---
-interface MobileBottomNavProps {
-    activeTab: string;
-    onNavigate: (tab: string) => void;
-    onToggleMenu: () => void;
-    isMenuOpen: boolean;
-}
-
-const MobileBottomNav: React.FC<MobileBottomNavProps> = ({ activeTab, onNavigate, onToggleMenu, isMenuOpen }) => {
-
-    // Helper to determine styling for active vs inactive tabs
-    const getTabClass = (tabName: string) =>
-        `flex flex-col items-center justify-center text-[9px] font-medium transition-colors w-14 ${activeTab === tabName && !isMenuOpen
-            ? 'text-pink-600 dark:text-pink-400'
-            : 'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300'
-        }`;
-
-    return (
-        <nav className="fixed bottom-0 left-0 right-0 bg-white dark:bg-[#0b1220] border-t border-gray-200 dark:border-gray-800 h-16 flex items-center justify-around z-50 pb-safe shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] lg:hidden transition-colors">
-
-            {/* 1. DASHBOARD (HOME) */}
-            <button
-                onClick={() => onNavigate('dashboard')}
-                className={getTabClass('dashboard')}
-            >
-                <Home size={20} className="mb-0.5" />
-                Início
-            </button>
-
-            {/* 2. INVENTORY (MOVED HERE) */}
-            <button
-                onClick={() => onNavigate('inventory')}
-                className={getTabClass('inventory')}
-            >
-                <Package size={20} className="mb-0.5" />
-                Estoque
-            </button>
-
-            {/* 3. POS (Center FAB) - Resized */}
-            <div className="relative -top-5">
-                <button
-                    onClick={() => onNavigate('pos')}
-                    className="bg-[#ffc8cb] dark:bg-pink-600 text-gray-900 dark:text-white rounded-full w-14 h-14 flex items-center justify-center shadow-lg hover:scale-105 active:scale-95 transition-all border-4 border-gray-50 dark:border-[#0b1220]"
-                >
-                    <ShoppingCart size={24} />
-                </button>
-            </div>
-
-            {/* 4. CRM */}
-            <button
-                onClick={() => onNavigate('crm')}
-                className={getTabClass('crm')}
-            >
-                <Users size={20} className="mb-0.5" />
-                Clientes
-            </button>
-
-            {/* 5. MENU (GRID) */}
-            <button
-                onClick={onToggleMenu}
-                className={`flex flex-col items-center justify-center text-[9px] font-medium transition-colors w-14 ${isMenuOpen
-                    ? 'text-pink-600 dark:text-pink-400'
-                    : 'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300'
-                    }`}
-            >
-                {isMenuOpen ? <X size={20} className="mb-0.5" /> : <LayoutGrid size={20} className="mb-0.5" />}
-                Menu
-            </button>
-
-        </nav>
-    );
+// Mobile sidebar state
+const useMobileSidebar = () => {
+    const [isOpen, setIsOpen] = useState(false);
+    return { isOpen, open: () => setIsOpen(true), close: () => setIsOpen(false) };
 };
 
 // Main App Component
@@ -138,12 +77,12 @@ const App: React.FC = () => {
     });
 
     // Carregar configurações do Supabase
-    const { settings: supabaseSettings } = useSettings();
+    const { settings: supabaseSettings, loading: settingsLoading, refresh: refreshSettings } = useSettings();
 
-    // Global Company Settings - ZERADO
-    const [companySettings, setCompanySettings] = useState<CompanySettings>({
+    // Global Company Settings
+    const defaultSettings: CompanySettings = {
         name: 'Minha Empresa',
-        logoUrl: '', // Sem logo inicial
+        logoUrl: '',
         logoWidth: 160,
         cnpj: '',
         email: '',
@@ -152,7 +91,8 @@ const App: React.FC = () => {
         city: '',
         website: '',
         receiptMessage: 'Obrigado pela preferência!'
-    });
+    };
+    const [companySettings, setCompanySettings] = useState<CompanySettings>(defaultSettings);
 
     // Global Sales Goals State - Carregar do Supabase
     const { salesGoals, refresh: refreshGoals, saveUserGoal } = useSalesGoals();
@@ -160,26 +100,37 @@ const App: React.FC = () => {
     // Global Deliveries State (Moved from Delivery.tsx to allow POS integration)
     const [globalDeliveries, setGlobalDeliveries] = useState<DeliveryOrder[]>(MOCK_DELIVERIES);
 
-    // Atualizar configurações quando carregadas do Supabase
+    // Sync companySettings when supabaseSettings loads
+    // Using supabaseSettings?.name as dep ensures it re-triggers on actual data change, not just reference
     useEffect(() => {
-        if (supabaseSettings) {
-            console.log('📸 Logo carregado do Supabase:', supabaseSettings.logoUrl);
+        if (supabaseSettings && supabaseSettings.name) {
             setCompanySettings(supabaseSettings);
         }
-    }, [supabaseSettings]);
+    }, [supabaseSettings?.name, supabaseSettings?.logoUrl]);
+
+    // Retry: if settings didn't load after initial fetch, retry once
+    useEffect(() => {
+        if (!settingsLoading && !supabaseSettings) {
+            const timer = setTimeout(() => {
+                refreshSettings();
+            }, 2000);
+            return () => clearTimeout(timer);
+        }
+    }, [settingsLoading, supabaseSettings]);
 
     const [activeTab, setActiveTab] = useState(() => {
         const savedTab = localStorage.getItem('activeTab');
         return savedTab || 'dashboard';
     });
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+    const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
     // Sidebar State
     const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
-    // State to handle direct navigation to "Stalled Products" in Inventory
+    // State to handle direct navigation to"Stalled Products"in Inventory
     const [autoFilterStalled, setAutoFilterStalled] = useState(false);
-    // State to handle direct navigation to "Low Stock" in Inventory
+    // State to handle direct navigation to"Low Stock"in Inventory
     const [autoFilterLowStock, setAutoFilterLowStock] = useState(false);
 
     // --- AI MODAL STATE ---
@@ -395,258 +346,248 @@ const App: React.FC = () => {
     ];
 
     if (!isAuthenticated) {
-        return <Login onLogin={handleLogin} />;
+        return (
+            <ToastProvider>
+                <Login onLogin={handleLogin} />
+            </ToastProvider>
+        );
     }
 
     const accessibleMenuItems = menuItems.filter(item => currentUser.permissions.includes(item.id as ModuleType));
 
     return (
-        <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex font-sans transition-colors duration-200">
+        <ToastProvider>
+            <ConfirmProvider isDarkMode={isDarkMode}>
+                <PasswordConfirmProvider isDarkMode={isDarkMode}>
+                    <div className="min-h-screen bg-slate-50 dark:bg-dark flex font-sans transition-colors duration-200">
 
-            {/* Desktop Sidebar (Hidden on Mobile) */}
-            <div className="hidden lg:flex fixed inset-y-0 left-0 z-50">
-                <Sidebar
-                    activeTab={activeTab}
-                    setActiveTab={handleNavigate}
-                    user={currentUser}
-                    companySettings={companySettings}
-                    isDarkMode={isDarkMode}
-                    toggleTheme={toggleTheme}
-                    isCollapsed={isSidebarCollapsed}
-                    toggleSidebar={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-                    onLogout={handleLogout}
-                />
-            </div>
+                        {/* Sidebar (Desktop always visible, mobile via overlay) */}
+                        <Sidebar
+                            activeTab={activeTab}
+                            setActiveTab={handleNavigate}
+                            user={currentUser}
+                            companySettings={companySettings}
+                            settingsLoading={settingsLoading}
+                            isDarkMode={isDarkMode}
+                            toggleTheme={toggleTheme}
+                            isCollapsed={isSidebarCollapsed}
+                            toggleSidebar={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+                            onLogout={handleLogout}
+                            isMobileOpen={isMobileSidebarOpen}
+                            onMobileClose={() => setIsMobileSidebarOpen(false)}
+                        />
 
-            {/* Main Content Area */}
-            <main className={`flex-1 flex flex-col min-w-0 overflow-hidden h-screen transition-all duration-300 ${isSidebarCollapsed ? 'lg:ml-20' : 'lg:ml-64'}`}>
+                        {/* Main Content Area */}
+                        <main className="flex-1 flex flex-col min-w-0 overflow-hidden h-screen transition-all duration-300">
 
-                {/* --- NEW MOBILE HEADER --- */}
-                <header className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 lg:hidden px-4 py-3 flex items-center justify-between shadow-sm z-30 transition-colors relative">
-                    <div className="font-bold text-xl text-pink-600 dark:text-pink-400 tracking-tight">
-                        PriMAKE
-                    </div>
+                            {/* --- DESKTOP HEADER --- */}
+                            <header className={`hidden lg:flex bg-white dark:bg-dark-surface border-b border-slate-200 dark:border-dark-border px-6 py-3 items-center justify-between z-30 transition-colors`}>
+                                <div>
+                                    <h1 className="text-lg font-bold text-slate-800 dark:text-white capitalize">
+                                        {activeTab === 'dashboard' ? 'Dashboard' : activeTab === 'pos' ? 'PDV / Vendas' : activeTab === 'crm' ? 'Clientes' : activeTab === 'ai' ? 'PrimakeAI' : activeTab}
+                                    </h1>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                    <NotificationsDropdown
+                                        isDarkMode={isDarkMode}
+                                        products={products}
+                                        onNavigateToInventory={handleNavigateToLowStock}
+                                    />
+                                    <ProfileDropdown
+                                        user={currentUser}
+                                        isDarkMode={isDarkMode}
+                                        onToggleTheme={toggleTheme}
+                                        onLogout={handleLogout}
+                                        onNavigate={handleNavigate}
+                                    />
+                                </div>
+                            </header>
 
-                    <div className="flex items-center gap-4">
-                        <button
-                            onClick={toggleTheme}
-                            className="text-gray-500 dark:text-gray-400 hover:text-pink-500 dark:hover:text-pink-400 transition-colors"
-                        >
-                            {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
-                        </button>
+                            {/* --- TOP GRADIENT FADE (Mobile, mirrors BottomNav fade) --- */}
+                            <div className="fixed top-0 left-0 w-full h-24 bg-gradient-to-b from-slate-50 via-slate-50/80 to-transparent pointer-events-none z-20 lg:hidden" />
 
-                        <div className="relative">
-                            <button
-                                onClick={() => setIsNotificationsOpen(!isNotificationsOpen)}
-                                className="text-gray-500 dark:text-gray-400 hover:text-pink-500 dark:hover:text-pink-400 transition-colors relative block"
-                            >
-                                <Bell size={20} />
-                                {hasNotifications && (
-                                    <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white dark:border-gray-800 animation-pulse"></span>
-                                )}
-                            </button>
-
-                            {/* Notifications Dropdown */}
-                            {isNotificationsOpen && (
-                                <>
-                                    <div className="fixed inset-0 z-40 bg-transparent" onClick={() => setIsNotificationsOpen(false)}></div>
-                                    <div className="absolute top-full right-0 mt-2 w-72 bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-100 dark:border-gray-700 z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-                                        <div className="p-3 border-b border-gray-100 dark:border-gray-700 font-bold text-sm text-gray-800 dark:text-white flex justify-between items-center bg-gray-50 dark:bg-gray-700/50">
-                                            Notificações
-                                            {hasNotifications && <span className="bg-red-100 text-red-600 text-[10px] px-2 py-0.5 rounded-full">{lowStockItems.length}</span>}
-                                        </div>
-                                        <div className="max-h-[300px] overflow-y-auto">
-                                            {hasNotifications ? (
-                                                <div className="divide-y divide-gray-50 dark:divide-gray-700">
-                                                    {lowStockItems.slice(0, 5).map(item => (
-                                                        <div key={item.id} className="p-3 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors cursor-pointer" onClick={() => {
-                                                            setIsNotificationsOpen(false);
-                                                            handleNavigateToStalled(); // Reuse stalled logic or go to Inventory
-                                                        }}>
-                                                            <div className="flex items-start gap-3">
-                                                                <div className="bg-amber-100 text-amber-600 p-1.5 rounded-full shrink-0 mt-0.5">
-                                                                    <AlertTriangle size={14} />
-                                                                </div>
-                                                                <div>
-                                                                    <p className="text-xs font-bold text-gray-800 dark:text-gray-200 line-clamp-1">{item.name}</p>
-                                                                    <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">
-                                                                        Baixo estoque: <strong className="text-red-500">{item.stock} un</strong> (Min: {item.minStock})
-                                                                    </p>
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                    ))}
-                                                    {lowStockItems.length > 5 && (
-                                                        <div className="p-2 text-center text-xs text-indigo-600 dark:text-indigo-400 font-medium bg-gray-50 dark:bg-gray-800/50">
-                                                            + {lowStockItems.length - 5} alertas
-                                                        </div>
+                            {/* --- MOBILE HEADER (Floating, ChatGPT-style) --- */}
+                            <header className="fixed top-0 left-0 right-0 lg:hidden px-4 pt-3 pb-2 flex items-center justify-between z-30" style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top))' }}>
+                                {/* Left: hamburger + logo pill */}
+                                <div className="flex items-center gap-2.5">
+                                    <button
+                                        onClick={() => setIsMobileSidebarOpen(true)}
+                                        className="w-11 h-11 rounded-full bg-white border border-slate-200/60 shadow-sm flex items-center justify-center text-slate-700 hover:bg-slate-50 transition-colors active:scale-95"
+                                    >
+                                        <Menu size={20} />
+                                    </button>
+                                    <button
+                                        onClick={() => handleNavigate('dashboard')}
+                                        className="h-11 px-5 rounded-full bg-white border border-slate-200/60 shadow-sm flex items-center gap-2 hover:bg-slate-50 transition-colors active:scale-95"
+                                    >
+                                        {companySettings.logoUrl ? (
+                                            <img src={companySettings.logoUrl} alt="" className="h-5 max-w-[100px] object-contain" />
+                                        ) : (
+                                            <span className="text-sm font-semibold text-slate-900 tracking-tight">PriMAKE</span>
+                                        )}
+                                    </button>
+                                </div>
+                                {/* Right: notification + avatar */}
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        onClick={() => setIsNotificationsOpen(!isNotificationsOpen)}
+                                        className="w-11 h-11 rounded-full bg-white border border-slate-200/60 shadow-sm flex items-center justify-center text-slate-700 hover:bg-slate-50 transition-colors active:scale-95 relative"
+                                    >
+                                        <Bell size={19} />
+                                        {hasNotifications && (
+                                            <span className="absolute top-2 right-2 w-2.5 h-2.5 bg-rose-500 rounded-full border-2 border-white"></span>
+                                        )}
+                                    </button>
+                                    <button
+                                        onClick={() => handleNavigate('settings')}
+                                        className="w-11 h-11 rounded-full border-[3px] border-slate-200/60 bg-white shadow-sm overflow-hidden flex items-center justify-center active:scale-95 transition-transform"
+                                    >
+                                        {currentUser.avatarUrl ? (
+                                            <img src={currentUser.avatarUrl} className="w-full h-full object-cover" />
+                                        ) : (
+                                            <UserIcon size={18} className="text-slate-500" />
+                                        )}
+                                    </button>
+                                </div>
+                                {/* Mobile Notifications Panel */}
+                                {isNotificationsOpen && (
+                                    <>
+                                        <div className="fixed inset-0 z-40" onClick={() => setIsNotificationsOpen(false)} />
+                                        <div className="absolute top-full right-4 mt-2 w-80 bg-white border border-slate-200 rounded-2xl shadow-xl z-50 animate-in fade-in slide-in-from-top-2 duration-200 overflow-hidden">
+                                            <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+                                                <div className="flex items-center gap-2">
+                                                    <Bell size={16} className="text-rose-400" />
+                                                    <h3 className="font-bold text-slate-900 text-sm">Notificacoes</h3>
+                                                    {lowStockItems.length > 0 && (
+                                                        <span className="px-2 py-0.5 bg-rose-50 text-rose-500 text-[10px] font-bold rounded-full">{lowStockItems.length}</span>
                                                     )}
                                                 </div>
-                                            ) : (
-                                                <div className="p-6 text-center text-gray-400 flex flex-col items-center">
-                                                    <Bell size={24} className="mb-2 opacity-20" />
-                                                    <p className="text-xs">Tudo certo por aqui!</p>
-                                                </div>
-                                            )}
+                                                <button onClick={() => setIsNotificationsOpen(false)} className="text-slate-400 hover:text-slate-600 p-1 rounded-full hover:bg-slate-100 transition-colors">
+                                                    <X size={16} />
+                                                </button>
+                                            </div>
+                                            <div className="max-h-64 overflow-y-auto">
+                                                {lowStockItems.length > 0 ? (
+                                                    <div className="p-2 space-y-1.5">
+                                                        {lowStockItems.slice(0, 6).map(item => (
+                                                            <div
+                                                                key={item.id}
+                                                                onClick={() => { handleNavigateToLowStock(); setIsNotificationsOpen(false); }}
+                                                                className="flex items-center gap-3 p-2.5 rounded-xl bg-amber-50 border border-amber-100 cursor-pointer hover:bg-amber-100/60 transition-colors"
+                                                            >
+                                                                <AlertTriangle size={14} className="text-amber-500 flex-shrink-0" />
+                                                                <div className="flex-1 min-w-0">
+                                                                    <p className="text-xs font-semibold text-slate-900 truncate">{item.name}</p>
+                                                                    <p className="text-[10px] text-slate-500">Estoque: <strong className="text-red-500">{item.stock}</strong> (Min: {item.minStock})</p>
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                ) : (
+                                                    <div className="p-6 text-center">
+                                                        <Bell size={28} className="mx-auto mb-2 text-slate-300" />
+                                                        <p className="text-xs text-slate-400">Nenhuma notificacao</p>
+                                                    </div>
+                                                )}
+                                            </div>
                                         </div>
+                                    </>
+                                )}
+                            </header>
+
+                            {/* --- STALE CASH REGISTER TOAST --- */}
+                            {isStaleCash && (
+                                <div className="fixed top-20 right-6 z-[9998] bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 rounded-xl px-4 py-2.5 shadow-lg backdrop-blur-sm animate-in slide-in-from-right-5 fade-in duration-300">
+                                    <div className="flex items-center gap-2.5">
+                                        <AlertTriangle size={16} className="text-amber-500 flex-shrink-0" />
+                                        <span className="text-xs font-bold text-slate-700 dark:text-slate-200 whitespace-nowrap">
+                                            Caixa aberto{staleCashDaysAgo === 1 ? ' ontem' : staleCashDaysAgo > 1 ? ` há ${staleCashDaysAgo} dias` : ''}
+                                        </span>
+                                        <button
+                                            onClick={() => { handleNavigate('cash'); setStaleDismissed(true); }}
+                                            className="flex-shrink-0 px-3 py-1 text-[11px] font-bold text-amber-600 dark:text-amber-400 border border-amber-300 dark:border-amber-500/40 rounded-full hover:bg-amber-100 dark:hover:bg-amber-500/10 transition-colors whitespace-nowrap"
+                                        >
+                                            Ir ao Caixa
+                                        </button>
+                                        <button
+                                            onClick={() => setStaleDismissed(true)}
+                                            className="flex-shrink-0 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 ml-0.5"
+                                        >
+                                            <X size={14} />
+                                        </button>
                                     </div>
-                                </>
+                                </div>
                             )}
-                        </div>
 
-
-                        <button
-                            onClick={() => handleNavigate('settings')}
-                            className="w-9 h-9 rounded-full bg-pink-100 dark:bg-pink-900/30 border border-pink-200 dark:border-pink-800 overflow-hidden ring-2 ring-transparent hover:ring-pink-300 dark:hover:ring-pink-700 transition-all flex items-center justify-center"
-                        >
-                            {currentUser.avatarUrl ? (
-                                <img src={currentUser.avatarUrl} className="w-full h-full object-cover" />
-                            ) : (
-                                <UserIcon size={20} className="text-pink-600 dark:text-pink-400" />
-                            )}
-                        </button>
-                    </div>
-                </header>
-
-                {/* --- STALE CASH REGISTER ALERT BANNER --- */}
-                {isStaleCash && (
-                    <div className="bg-amber-50 dark:bg-amber-900/30 border-b border-amber-200 dark:border-amber-700 px-4 py-3 flex items-center justify-between gap-3 animate-in fade-in slide-in-from-top-2 duration-300">
-                        <div className="flex items-center gap-3 min-w-0">
-                            <div className="flex-shrink-0 w-10 h-10 rounded-full bg-amber-100 dark:bg-amber-800/50 flex items-center justify-center">
-                                <AlertTriangle size={20} className="text-amber-600 dark:text-amber-400" />
+                            {/* Content Scroll Area */}
+                            <div className="flex-1 overflow-auto p-4 pt-20 lg:pt-4 lg:p-8 relative pb-32 lg:pb-8">
+                                <div className="max-w-7xl mx-auto">
+                                    {renderContent()}
+                                </div>
                             </div>
-                            <div className="min-w-0">
-                                <p className="text-sm font-bold text-amber-800 dark:text-amber-200">
-                                    ⚠️ Caixa aberto desde {new Date(staleCashCheck!.openedAt).toLocaleDateString('pt-BR')}
-                                    {staleCashDaysAgo === 1 ? ' (ontem)' : staleCashDaysAgo > 1 ? ` (há ${staleCashDaysAgo} dias)` : ''}
-                                </p>
-                                <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">
-                                    O caixa ficou aberto do dia anterior. Feche-o para manter o controle financeiro correto.
-                                </p>
-                            </div>
-                        </div>
-                        <div className="flex items-center gap-2 flex-shrink-0">
-                            <button
-                                onClick={() => { handleNavigate('cash'); setStaleDismissed(true); }}
-                                className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-lg shadow-sm transition-colors whitespace-nowrap"
-                            >
-                                Ir ao Caixa
-                            </button>
-                            <button
-                                onClick={() => setStaleDismissed(true)}
-                                className="p-1.5 text-amber-400 hover:text-amber-600 dark:hover:text-amber-300 transition-colors"
-                                title="Dispensar"
-                            >
-                                <X size={16} />
-                            </button>
-                        </div>
-                    </div>
-                )}
+                        </main>
 
-                {/* Content Scroll Area */}
-                <div className="flex-1 overflow-auto p-4 lg:p-8 relative pb-24 lg:pb-8">
-                    {/* --- MOBILE GRID MENU OVERLAY --- */}
-                    {mobileMenuOpen && (
-                        <div className="fixed inset-0 z-[40] bg-gray-50 dark:bg-gray-900 lg:hidden animate-in fade-in slide-in-from-bottom-5 duration-200 flex flex-col">
-                            <div className="pt-20 px-6 pb-24 overflow-y-auto">
-                                <h3 className="text-lg font-bold text-gray-800 dark:text-white mb-6">Menu Principal</h3>
-                                <div className="grid grid-cols-3 gap-4">
-                                    {accessibleMenuItems.map(item => {
-                                        const Icon = item.icon;
-                                        return (
-                                            <button
-                                                key={item.id}
-                                                onClick={() => handleNavigate(item.id)}
-                                                className="flex flex-col items-center justify-center gap-2 p-4 bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 active:scale-95 transition-all aspect-square"
-                                            >
-                                                <div className={`p-3 rounded-xl ${item.color}`}>
-                                                    <Icon size={24} />
-                                                </div>
-                                                <span className="text-xs font-medium text-gray-700 dark:text-gray-300 text-center leading-tight">
-                                                    {item.label}
-                                                </span>
-                                            </button>
-                                        );
-                                    })}
+                        {/* --- SIMULATION BANNER --- */}
+                        {isAuthenticated && realUser && currentUser.id !== realUser.id && (
+                            <div className="fixed bottom-24 lg:bottom-8 left-1/2 transform -translate-x-1/2 z-[60] bg-slate-900 text-white pl-4 pr-1 py-1 rounded-full shadow-2xl flex items-center gap-3 border border-slate-700 animate-in slide-in-from-bottom-10">
+                                <div className="flex items-center gap-2 text-sm">
+                                    <Users size={16} className="text-primary" />
+                                    <span className="hidden sm:inline">Acessando como:</span>
+                                    <strong className="text-primary">{currentUser.name}</strong>
                                 </div>
                                 <button
-                                    onClick={handleLogout}
-                                    className="mt-8 w-full py-4 bg-gray-200 dark:bg-gray-800 text-gray-700 dark:text-gray-300 font-bold rounded-xl flex items-center justify-center gap-2"
+                                    onClick={handleExitSimulation}
+                                    className="bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded-full text-xs font-bold transition-colors flex items-center gap-1"
                                 >
-                                    Sair do Sistema
+                                    <LogOut size={12} /> Sair
                                 </button>
                             </div>
-                        </div>
-                    )}
+                        )}
 
-                    <div className="max-w-7xl mx-auto">
-                        {renderContent()}
-                    </div>
-                </div>
-            </main>
+                        {/* --- AI ASSISTANT FLOATING BUTTON (FAB) --- */}
+                        {showAiButton && (
+                            <button
+                                onClick={() => setIsAIModalOpen(true)}
+                                className="fixed bottom-24 lg:bottom-8 right-4 lg:right-8 z-40 w-14 h-14 rounded-full bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-lg shadow-indigo-500/40 hover:shadow-xl hover:scale-110 active:scale-95 transition-all flex items-center justify-center animate-in zoom-in slide-in-from-bottom-10"
+                                title="Assistente Virtual PrimakeAI"
+                            >
+                                <Bot size={24} />
+                                <span className="absolute top-0 right-0 -mt-1 -mr-1 flex h-3 w-3">
+                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-yellow-400 opacity-75"></span>
+                                    <span className="relative inline-flex rounded-full h-3 w-3 bg-yellow-500"></span>
+                                </span>
+                            </button>
+                        )}
 
-            {/* --- SIMULATION BANNER --- */}
-            {isAuthenticated && realUser && currentUser.id !== realUser.id && (
-                <div className="fixed bottom-20 lg:bottom-8 left-1/2 transform -translate-x-1/2 z-[60] bg-gray-900 text-white pl-4 pr-1 py-1 rounded-full shadow-2xl flex items-center gap-3 border border-gray-700 animate-in slide-in-from-bottom-10">
-                    <div className="flex items-center gap-2 text-sm">
-                        <Users size={16} className="text-pink-400" />
-                        <span className="hidden sm:inline">Acessando como:</span>
-                        <strong className="text-pink-300">{currentUser.name}</strong>
-                    </div>
-                    <button
-                        onClick={handleExitSimulation}
-                        className="bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded-full text-xs font-bold transition-colors flex items-center gap-1"
-                    >
-                        <LogOut size={12} /> Sair
-                    </button>
-                </div>
-            )}
+                        {/* --- AI ASSISTANT MODAL --- */}
+                        {isAIModalOpen && (
+                            <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center sm:p-4 pointer-events-none">
+                                <div
+                                    className="absolute inset-0 bg-black/30 backdrop-blur-sm pointer-events-auto"
+                                    onClick={() => setIsAIModalOpen(false)}
+                                ></div>
+                                <div className="bg-white dark:bg-dark-surface w-full sm:max-w-[450px] h-[80vh] sm:h-[600px] rounded-t-2xl sm:rounded-2xl shadow-2xl relative flex flex-col overflow-hidden animate-in slide-in-from-bottom-10 sm:zoom-in-95 duration-300 pointer-events-auto border border-slate-100 dark:border-dark-border">
+                                    <PrimakeAI
+                                        context={activeTab}
+                                        isModal={true}
+                                        onClose={() => setIsAIModalOpen(false)}
+                                    />
+                                </div>
+                            </div>
+                        )}
 
-            {/* --- AI ASSISTANT FLOATING BUTTON (FAB) --- */}
-            {showAiButton && (
-                <button
-                    onClick={() => setIsAIModalOpen(true)}
-                    className="fixed bottom-20 lg:bottom-8 right-4 lg:right-8 z-40 w-14 h-14 rounded-full bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-lg shadow-indigo-500/40 hover:shadow-xl hover:scale-110 active:scale-95 transition-all flex items-center justify-center animate-in zoom-in slide-in-from-bottom-10"
-                    title="Assistente Virtual PrimakeAI"
-                >
-                    <Bot size={24} />
-                    <span className="absolute top-0 right-0 -mt-1 -mr-1 flex h-3 w-3">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-yellow-400 opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-3 w-3 bg-yellow-500"></span>
-                    </span>
-                </button>
-            )}
-
-            {/* --- AI ASSISTANT MODAL --- */}
-            {isAIModalOpen && (
-                <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center sm:p-4 pointer-events-none">
-                    {/* Backdrop */}
-                    <div
-                        className="absolute inset-0 bg-gray-900/30 backdrop-blur-sm pointer-events-auto"
-                        onClick={() => setIsAIModalOpen(false)}
-                    ></div>
-
-                    {/* Modal Content */}
-                    <div className="bg-white dark:bg-gray-800 w-full sm:max-w-[450px] h-[80vh] sm:h-[600px] rounded-t-2xl sm:rounded-2xl shadow-2xl relative flex flex-col overflow-hidden animate-in slide-in-from-bottom-10 sm:zoom-in-95 duration-300 pointer-events-auto border border-gray-100 dark:border-gray-700">
-                        <PrimakeAI
-                            context={activeTab}
-                            isModal={true}
-                            onClose={() => setIsAIModalOpen(false)}
+                        {/* --- CAPSULE BOTTOM NAVIGATION (Mobile) --- */}
+                        <BottomNav
+                            activeTab={activeTab}
+                            onNavigate={handleNavigate}
+                            user={currentUser}
+                            isDarkMode={isDarkMode}
                         />
                     </div>
-                </div>
-            )}
-
-            {/* --- MOBILE BOTTOM NAVIGATION --- */}
-            <MobileBottomNav
-                activeTab={activeTab}
-                onNavigate={handleNavigate}
-                onToggleMenu={() => setMobileMenuOpen(!mobileMenuOpen)}
-                isMenuOpen={mobileMenuOpen}
-            />
-        </div>
+                </PasswordConfirmProvider>
+            </ConfirmProvider>
+        </ToastProvider>
     );
 };
 
 export default App;
-

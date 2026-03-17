@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { supabase } from './supabase';
 import { dataCache } from './cache';
 import {
     ProductService,
@@ -21,6 +22,39 @@ import type {
 } from '../types';
 
 // =====================================================
+// REALTIME REFRESH CONFIG
+// =====================================================
+const POLL_INTERVAL = 30_000; // 30 seconds polling fallback
+
+/**
+ * Creates a Realtime subscription + polling interval for a table.
+ * Realtime is the primary mechanism; polling is the fallback.
+ * Returns a cleanup function.
+ */
+function useRealtimeSync(table: string, onRefresh: () => void) {
+    useEffect(() => {
+        // 1. Polling fallback (always works, even if Realtime is blocked by RLS)
+        const interval = setInterval(() => {
+            onRefresh();
+        }, POLL_INTERVAL);
+
+        // 2. Realtime subscription (instant updates when it works)
+        const channelName = `${table}-rt-${Math.random().toString(36).slice(2, 8)}`;
+        const channel = supabase
+            .channel(channelName)
+            .on('postgres_changes', { event: '*', schema: 'public', table }, () => {
+                onRefresh();
+            })
+            .subscribe();
+
+        return () => {
+            clearInterval(interval);
+            supabase.removeChannel(channel);
+        };
+    }, [table, onRefresh]);
+}
+
+// =====================================================
 // HOOK: useProducts
 // =====================================================
 
@@ -28,13 +62,15 @@ export function useProducts() {
     const [products, setProducts] = useState<Product[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const isFirstLoad = useRef(true);
 
     const loadProducts = useCallback(async () => {
         try {
-            setLoading(true);
+            if (isFirstLoad.current) setLoading(true);
             setError(null);
             const data = await ProductService.getAll();
             setProducts(data);
+            isFirstLoad.current = false;
         } catch (err: any) {
             setError(err.message || 'Erro ao carregar produtos');
             console.error('Erro ao carregar produtos:', err);
@@ -43,9 +79,8 @@ export function useProducts() {
         }
     }, []);
 
-    useEffect(() => {
-        loadProducts();
-    }, []);
+    useEffect(() => { loadProducts(); }, []);
+    useRealtimeSync('products', loadProducts);
 
     const addProduct = async (product: Omit<Product, 'id' | 'createdAt' | 'updatedAt'>) => {
         try {
@@ -114,24 +149,25 @@ export function useCustomers() {
     const [customers, setCustomers] = useState<Customer[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const isFirstLoad = useRef(true);
 
-    const loadCustomers = async () => {
+    const loadCustomers = useCallback(async () => {
         try {
-            setLoading(true);
+            if (isFirstLoad.current) setLoading(true);
             setError(null);
             const data = await CustomerService.getAll();
             setCustomers(data);
+            isFirstLoad.current = false;
         } catch (err: any) {
             setError(err.message || 'Erro ao carregar clientes');
             console.error('Erro ao carregar clientes:', err);
         } finally {
             setLoading(false);
         }
-    };
-
-    useEffect(() => {
-        loadCustomers();
     }, []);
+
+    useEffect(() => { loadCustomers(); }, []);
+    useRealtimeSync('customers', loadCustomers);
 
     const addCustomer = async (customer: Omit<Customer, 'id' | 'createdAt' | 'updatedAt'>) => {
         try {
@@ -174,6 +210,16 @@ export function useCustomers() {
         }
     };
 
+    const mergeCustomers = async (primaryId: string, duplicateId: string) => {
+        try {
+            await CustomerService.mergeCustomers(primaryId, duplicateId);
+            await loadCustomers(); // Refresh full list
+        } catch (err: any) {
+            setError(err.message || 'Erro ao unificar clientes');
+            throw err;
+        }
+    };
+
     return {
         customers,
         loading,
@@ -182,7 +228,8 @@ export function useCustomers() {
         addCustomer,
         updateCustomer,
         deleteCustomer,
-        findByPhone
+        findByPhone,
+        mergeCustomers
     };
 }
 
@@ -194,24 +241,25 @@ export function useUsers() {
     const [users, setUsers] = useState<User[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const isFirstLoad = useRef(true);
 
-    const loadUsers = async () => {
+    const loadUsers = useCallback(async () => {
         try {
-            setLoading(true);
+            if (isFirstLoad.current) setLoading(true);
             setError(null);
             const data = await UserService.getAll();
             setUsers(data);
+            isFirstLoad.current = false;
         } catch (err: any) {
             setError(err.message || 'Erro ao carregar usuários');
             console.error('Erro ao carregar usuários:', err);
         } finally {
             setLoading(false);
         }
-    };
-
-    useEffect(() => {
-        loadUsers();
     }, []);
+
+    useEffect(() => { loadUsers(); }, []);
+    useRealtimeSync('users', loadUsers);
 
     const addUser = async (user: Omit<User, 'id' | 'createdAt' | 'updatedAt'>) => {
         try {
@@ -264,24 +312,25 @@ export function useTransactions() {
     const [transactions, setTransactions] = useState<Transaction[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const isFirstLoad = useRef(true);
 
-    const loadTransactions = async () => {
+    const loadTransactions = useCallback(async () => {
         try {
-            setLoading(true);
+            if (isFirstLoad.current) setLoading(true);
             setError(null);
             const data = await TransactionService.getAll();
             setTransactions(data);
+            isFirstLoad.current = false;
         } catch (err: any) {
             setError(err.message || 'Erro ao carregar transações');
             console.error('Erro ao carregar transações:', err);
         } finally {
             setLoading(false);
         }
-    };
-
-    useEffect(() => {
-        loadTransactions();
     }, []);
+
+    useEffect(() => { loadTransactions(); }, []);
+    useRealtimeSync('transactions', loadTransactions);
 
     const addTransaction = async (transaction: Omit<Transaction, 'id' | 'createdAt' | 'updatedAt'>) => {
         try {
@@ -332,24 +381,25 @@ export function useSettings() {
     const [settings, setSettings] = useState<CompanySettings | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const isFirstLoad = useRef(true);
 
-    const loadSettings = async () => {
+    const loadSettings = useCallback(async () => {
         try {
-            setLoading(true);
+            if (isFirstLoad.current) setLoading(true);
             setError(null);
             const data = await SettingsService.get();
             setSettings(data);
+            isFirstLoad.current = false;
         } catch (err: any) {
             setError(err.message || 'Erro ao carregar configurações');
             console.error('Erro ao carregar configurações:', err);
         } finally {
             setLoading(false);
         }
-    };
-
-    useEffect(() => {
-        loadSettings();
     }, []);
+
+    useEffect(() => { loadSettings(); }, []);
+    useRealtimeSync('company_settings', loadSettings);
 
     const updateSettings = async (newSettings: Partial<CompanySettings>) => {
         try {
@@ -379,24 +429,25 @@ export function useDeliveries() {
     const [deliveries, setDeliveries] = useState<DeliveryOrder[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const isFirstLoad = useRef(true);
 
-    const loadDeliveries = async () => {
+    const loadDeliveries = useCallback(async () => {
         try {
-            setLoading(true);
+            if (isFirstLoad.current) setLoading(true);
             setError(null);
             const data = await DeliveryService.getAll();
             setDeliveries(data);
+            isFirstLoad.current = false;
         } catch (err: any) {
             setError(err.message || 'Erro ao carregar entregas');
             console.error('Erro ao carregar entregas:', err);
         } finally {
             setLoading(false);
         }
-    };
-
-    useEffect(() => {
-        loadDeliveries();
     }, []);
+
+    useEffect(() => { loadDeliveries(); }, []);
+    useRealtimeSync('deliveries', loadDeliveries);
 
     return {
         deliveries,
@@ -419,7 +470,7 @@ export function useSalesGoals() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
-    const loadGoals = async () => {
+    const loadGoals = useCallback(async () => {
         try {
             setLoading(true);
             setError(null);
@@ -445,11 +496,9 @@ export function useSalesGoals() {
         } finally {
             setLoading(false);
         }
-    };
-
-    useEffect(() => {
-        loadGoals();
     }, []);
+
+    useEffect(() => { loadGoals(); }, []);
 
     const saveUserGoal = async (userId: string, amount: number, type: 'daily' | 'monthly') => {
         try {
@@ -488,24 +537,25 @@ export function useTasks() {
     const [tasks, setTasks] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const isFirstLoad = useRef(true);
 
-    const loadTasks = async () => {
+    const loadTasks = useCallback(async () => {
         try {
-            setLoading(true);
+            if (isFirstLoad.current) setLoading(true);
             setError(null);
             const data = await TaskService.getAll();
             setTasks(data);
+            isFirstLoad.current = false;
         } catch (err: any) {
             setError(err.message || 'Erro ao carregar tarefas');
             console.error('Erro ao carregar tarefas:', err);
         } finally {
             setLoading(false);
         }
-    };
-
-    useEffect(() => {
-        loadTasks();
     }, []);
+
+    useEffect(() => { loadTasks(); }, []);
+    useRealtimeSync('tasks', loadTasks);
 
     const addTask = async (task: { title: string, description: string, assignedTo: string, createdBy: string, dueDate: string, priority: string }) => {
         try {

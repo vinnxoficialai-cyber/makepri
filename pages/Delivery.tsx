@@ -1,1718 +1,1661 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from'react';
 import {
-    Bike, MapPin, Search, Phone, Package, ArrowRight,
-    CheckCircle, Truck, Globe, MessageCircle, MoreVertical, Store, Home,
-    Plus, X, User, DollarSign, Calendar, FileText, Save, Users, Printer, Map, Trash2, Edit, AlertCircle, TrendingUp, History, Archive
-} from 'lucide-react';
-import { DeliveryOrder, User as UserType } from '../types';
-import { MOCK_CUSTOMERS } from '../constants';
-import { useDeliveries, useCustomers, useUsers } from '../lib/hooks';
-import { DeliveryService } from '../lib/database';
+ Bike, MapPin, Search, Phone, Package, ArrowRight,
+ CheckCircle, Truck, Globe, MessageCircle, MoreVertical, Store, Home,
+ Plus, X, User, DollarSign, Calendar, FileText, Save, Users, Printer, Map, Trash2, Edit, AlertCircle, TrendingUp, History, Archive
+} from'lucide-react';
+import { useToast } from'../components/Toast';
+import { DSButton } from'../components/ds/index';
+import { EmptyState } from'../components/ds/layout';
+import { DeliveryOrder, User as UserType } from'../types';
+import { MOCK_CUSTOMERS } from'../constants';
+import { useDeliveries, useCustomers, useUsers } from'../lib/hooks';
+import { DeliveryService } from'../lib/database';
+import { CustomDropdown } from '../components/ds/CustomDropdown';
+import { SmoothTabs } from '../components/ds/SmoothTabs';
 
 interface DeliveryProps {
-    user?: UserType; // Pass current user for permission check
+ user?: UserType; // Pass current user for permission check
 }
 
 const Delivery: React.FC<DeliveryProps> = ({ user }) => {
-    // Load deliveries from Supabase
-    const { deliveries, loading, error, refresh } = useDeliveries();
-    // Load customers for selection
-    const { customers } = useCustomers();
-    // Load users (motoboys)
-    const { users } = useUsers();
-
-    // View State (Active vs Archived)
-    const [viewMode, setViewMode] = useState<'active' | 'archived'>('active');
-    const [historyDate, setHistoryDate] = useState(new Date().toISOString().split('T')[0]);
-
-    // Filter State
-    const [filterMethod, setFilterMethod] = useState<'All' | 'Local' | 'Dispatch'>('All');
-    const [filterMotoboy, setFilterMotoboy] = useState<string>('Todos');
-    const [searchTerm, setSearchTerm] = useState('');
-
-    // --- ROUTE SELECTION STATE ---
-    // routeSequence is an ORDERED array: position 0 = stop #1, position 1 = stop #2, etc.
-    const [routeSequence, setRouteSequence] = useState<string[]>([]);
-    const [isRouteModalOpen, setIsRouteModalOpen] = useState(false);
-    const [isSavingRoute, setIsSavingRoute] = useState(false);
-
-    // --- STATUS SUB-FILTER (active view) ---
-    const [filterStatus, setFilterStatus] = useState<'Todos' | 'Iniciar' | 'Em Rota' | 'Problema' | 'Retornar'>('Todos');
-
-    // --- CARD INLINE FINALIZE MENU ---
-    const [finalizeMenuId, setFinalizeMenuId] = useState<string | null>(null);
-
-    // --- MODAL STATES ---
-    const [selectedDelivery, setSelectedDelivery] = useState<DeliveryOrder | null>(null);
-    const [receiptDelivery, setReceiptDelivery] = useState<DeliveryOrder | null>(null);
-    const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
-    const [isPayoutModalOpen, setIsPayoutModalOpen] = useState(false);
-    const [payoutTab, setPayoutTab] = useState<'pending' | 'paid'>('pending');
-
-    // --- EDIT STATES (Inside Details Modal) ---
-    const [isEditing, setIsEditing] = useState(false);
-    const [editForm, setEditForm] = useState<{ status: string, notes: string }>({ status: '', notes: '' });
-
-    // --- NEW DELIVERY FORM STATE ---
-    const [newDeliveryForm, setNewDeliveryForm] = useState<Partial<DeliveryOrder>>({
-        customerName: '',
-        phone: '',
-        address: '',
-        city: '',
-        source: 'WhatsApp',
-        method: 'Motoboy',
-        itemsSummary: '',
-        totalValue: 0,
-        fee: 0,
-        motoboyName: '', // Added motoboy selection
-        paymentMethod: '' // Payment method
-    });
-
-    const isSalesperson = user?.role === 'Vendedor';
-    const isMotoboy = user?.role === 'Motoboy';
-    const isAdmin = user?.role === 'Administrador' || user?.role === 'Gerente';
-
-    // Get list of available motoboys from real users
-    const availableMotoboys = users.filter(u => u.role === 'Motoboy');
-
-    // --- LOGIC ---
-    const filteredDeliveries = deliveries.filter(d => {
-        // 1. Search Filter
-        const matchesSearch = d.customerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            d.id.toLowerCase().includes(searchTerm.toLowerCase());
-
-        // 2. Method Filter
-        const matchesMethod = filterMethod === 'All'
-            ? true
-            : filterMethod === 'Local'
-                ? d.method === 'Motoboy'
-                : (d.method === 'Correios' || d.method === 'Jadlog');
-
-        // 3. User Permission Filter (The core request)
-        // If current user is Motoboy, ONLY show deliveries assigned to them.
-        // If Admin/Sales, show all.
-        let isAuthorized = true;
-        if (isMotoboy) {
-            isAuthorized = d.motoboyName === user?.name;
-        }
-
-        // 5. Motoboy Filter (Admin only)
-        const matchesMotoboy = filterMotoboy === 'Todos' || d.motoboyName === filterMotoboy;
-
-        // 4. Archive vs Active Filter
-        const isFinished = d.status === 'Entregue' || d.status === 'Cancelado';
-        let matchesView = true;
-
-        if (viewMode === 'active') {
-            matchesView = !isFinished; // Show pending, in route, retornar, etc.
-            // Apply status sub-filter
-            if (filterStatus === 'Iniciar') {
-                matchesView = matchesView && (d.status === 'Pendente' || d.status === 'Em Preparo');
-            } else if (filterStatus === 'Em Rota') {
-                matchesView = matchesView && d.status === 'Em Rota';
-            } else if (filterStatus === 'Problema') {
-                matchesView = matchesView && d.status === 'Problema';
-            } else if (filterStatus === 'Retornar') {
-                matchesView = matchesView && d.status === 'Retornar a Loja';
-            }
-        } else {
-            // History Mode
-            matchesView = isFinished;
-            // Apply Date Filter in History Mode
-            if (historyDate) {
-                matchesView = matchesView && d.date.startsWith(historyDate);
-            }
-        }
-
-        return matchesSearch && matchesMethod && isAuthorized && matchesMotoboy && matchesView;
-    });
-
-    const updateStatus = async (id: string, newStatus: DeliveryOrder['status']) => {
-        try {
-            await DeliveryService.update(id, { status: newStatus });
-            await refresh();
-            if (selectedDelivery && selectedDelivery.id === id) {
-                setSelectedDelivery(prev => prev ? { ...prev, status: newStatus } : null);
-            }
-        } catch (err) {
-            console.error('Erro ao atualizar status:', err);
-            alert('Erro ao atualizar status da entrega');
-        }
-    };
-
-    const handleCreateDelivery = async (e: React.FormEvent) => {
-        e.preventDefault();
-        try {
-            const newOrder: Partial<DeliveryOrder> = {
-                id: `DEL-${Date.now().toString().slice(-6)}`,
-                customerName: newDeliveryForm.customerName || 'Cliente sem nome',
-                phone: newDeliveryForm.phone || '',
-                address: newDeliveryForm.address || '',
-                city: newDeliveryForm.city || '',
-                source: newDeliveryForm.source as any,
-                method: newDeliveryForm.method as any,
-                status: 'Pendente',
-                itemsSummary: newDeliveryForm.itemsSummary || 'Itens diversos',
-                totalValue: Number(newDeliveryForm.totalValue),
-                fee: Number(newDeliveryForm.fee),
-                motoboyName: newDeliveryForm.motoboyName,
-                trackingCode: newDeliveryForm.trackingCode,
-                paymentMethod: newDeliveryForm.paymentMethod || ''
-            };
-
-            await DeliveryService.create(newOrder);
-            await refresh();
-            setIsCreateModalOpen(false);
-            setNewDeliveryForm({
-                customerName: '', phone: '', address: '', city: '',
-                source: 'WhatsApp', method: 'Motoboy', itemsSummary: '', totalValue: 0, fee: 0, motoboyName: '', paymentMethod: ''
-            });
-        } catch (err) {
-            console.error('Erro ao criar entrega:', err);
-            alert('Erro ao criar entrega');
-        }
-    };
-
-    const handleSelectCustomer = (customerId: string) => {
-        const customer = customers.find(c => c.id === customerId);
-        if (customer) {
-            setNewDeliveryForm(prev => ({
-                ...prev,
-                customerName: customer.name,
-                phone: customer.phone || '',
-                address: customer.address || '',
-                city: customer.city || ''
-            }));
-        }
-    };
-
-    const handleSaveEdit = async () => {
-        if (selectedDelivery) {
-            try {
-                const updated = await DeliveryService.update(selectedDelivery.id, {
-                    status: editForm.status as any,
-                    notes: editForm.notes
-                });
-                await refresh();
-                setSelectedDelivery(updated);
-                setIsEditing(false);
-            } catch (err) {
-                console.error('Erro ao salvar edição:', err);
-                alert('Erro ao salvar alterações');
-            }
-        }
-    };
-
-    // --- PAYOUT REPORT LOGIC ---
-    const [payoutData, setPayoutData] = useState<Record<string, { count: number, totalFee: number }>>({});
-    const [paidPayoutData, setPaidPayoutData] = useState<Record<string, { count: number, totalFee: number }>>({});
-    const [selectedPayoutMotoboy, setSelectedPayoutMotoboy] = useState<string | null>(null);
-    const [payoutDeliveries, setPayoutDeliveries] = useState<DeliveryOrder[]>([]);
-    const [payoutDeliveriesLoading, setPayoutDeliveriesLoading] = useState(false);
-
-    const loadPayoutData = async () => {
-        try {
-            const [pending, paid] = await Promise.all([
-                DeliveryService.getPayoutReport(),
-                DeliveryService.getPaidPayoutReport()
-            ]);
-            setPayoutData(pending);
-            setPaidPayoutData(paid);
-        } catch (err) {
-            console.error('Erro ao carregar repasses:', err);
-        }
-    };
-
-    const loadPayoutDeliveries = async (motoboyName: string) => {
-        setPayoutDeliveriesLoading(true);
-        try {
-            const list = await DeliveryService.getPayoutDeliveries(motoboyName);
-            setPayoutDeliveries(list);
-        } catch (err) {
-            console.error('Erro ao carregar detalhes do repasse:', err);
-        } finally {
-            setPayoutDeliveriesLoading(false);
-        }
-    };
-
-    const handleSelectPayoutMotoboy = (name: string) => {
-        setSelectedPayoutMotoboy(name);
-        loadPayoutDeliveries(name);
-    };
-
-    useEffect(() => {
-        if (isPayoutModalOpen) {
-            setPayoutTab('pending');
-            setSelectedPayoutMotoboy(null);
-            setPayoutDeliveries([]);
-            loadPayoutData();
-        }
-    }, [isPayoutModalOpen]);
-
-    const handlePrintPayoutReport = () => {
-        const printWindow = window.open('', 'PRINT', 'height=600,width=800');
-        if (!printWindow) return;
-
-        // Print detail for selected motoboy, or summary of all
-        const isSingleMotoboy = selectedPayoutMotoboy && payoutDeliveries.length > 0;
-        const motoboyName = selectedPayoutMotoboy || 'Todos';
-        const totalFee = isSingleMotoboy
-            ? payoutDeliveries.reduce((s, d) => s + (Number(d.fee) || 0), 0)
-            : Object.values(payoutData).reduce((s, v: any) => s + v.totalFee, 0);
-
-        const deliveryRows = isSingleMotoboy
-            ? payoutDeliveries.map((d, i) => {
-                const dt = d.date ? new Date(d.date).toLocaleDateString('pt-BR') : '';
-                return `
-                <div class="item">
-                    <div class="item-row" style="font-weight:900">
-                        <span>#${i + 1} — ${d.customerName || ''}</span>
-                        <span>R$ ${(Number(d.fee) || 0).toFixed(2)}</span>
-                    </div>
-                    <div class="item-sub">${dt}${d.address ? ' · ' + d.address : ''}</div>
-                    ${d.itemsSummary ? `<div class="item-sub">${d.itemsSummary}</div>` : ''}
-                </div>`;
-            }).join('')
-            : Object.entries(payoutData).map(([name, data]: [string, any]) => `
-                <div class="item">
-                    <div class="item-row">
-                        <span>${name.toUpperCase()}</span>
-                        <span>R$ ${data.totalFee.toFixed(2)}</span>
-                    </div>
-                    <div class="item-sub">${data.count} entrega${data.count !== 1 ? 's' : ''}</div>
-                </div>`).join('');
-
-        printWindow.document.write(`
-            <html>
-            <head>
-                <title>Comprovante de Repasse</title>
-                <style>
-                    @page { size: 80mm auto; margin: 0; }
-                    * { box-sizing: border-box; margin: 0; padding: 0; }
-                    body {
-                        font-family: 'Courier New', Courier, monospace;
-                        font-size: 12px;
-                        font-weight: 700;
-                        width: 80mm;
-                        max-width: 80mm;
-                        padding: 2mm;
-                        margin: 0 auto;
-                        color: #000;
-                        line-height: 1.4;
-                        -webkit-print-color-adjust: exact;
-                    }
-                    .header { text-align: center; margin-bottom: 12px; border-bottom: 2px dashed #000; padding-bottom: 10px; }
-                    .title { font-size: 16px; font-weight: 900; text-transform: uppercase; letter-spacing: 1px; }
-                    .subtitle { font-size: 11px; margin-top: 4px; font-weight: 700; }
-                    .motoboy-name { font-size: 13px; font-weight: 900; margin-top: 6px; border: 1px solid #000; padding: 2px 6px; display: inline-block; }
-                    .datetime { font-size: 10px; margin-top: 6px; font-weight: 700; }
-                    .section-title { font-size: 11px; font-weight: 900; margin: 10px 0 6px; text-transform: uppercase; border-bottom: 1px dotted #000; padding-bottom: 3px; }
-                    .item { margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px dotted #000; }
-                    .item-row { display: flex; justify-content: space-between; font-size: 12px; font-weight: 900; }
-                    .item-sub { font-size: 10px; font-weight: 700; color: #333; margin-top: 2px; word-break: break-word; }
-                    .total { margin-top: 12px; border-top: 2px dashed #000; padding-top: 10px; font-size: 16px; font-weight: 900; text-align: center; }
-                    .signature-block { margin-top: 28px; }
-                    .signature { text-align: center; margin-top: 22px; }
-                    .signature-line { border-top: 1px solid #000; width: 90%; margin: 0 auto; padding-top: 4px; font-size: 10px; font-weight: 700; }
-                    .footer { margin-top: 18px; text-align: center; font-size: 10px; color: #000; font-weight: 700; }
-                    @media print { body { width: 80mm; } }
-                </style>
-            </head>
-            <body>
-                <div class="header">
-                    <div class="title">PriMAKE</div>
-                    <div class="subtitle">Comprovante de Repasse</div>
-                    ${isSingleMotoboy ? `<div class="motoboy-name">🏍️ ${motoboyName}</div>` : ''}
-                    <div class="datetime">
-                        📅 ${new Date().toLocaleDateString('pt-BR')} &nbsp;
-                        🕐 ${new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-                    </div>
-                </div>
-
-                <div class="section-title">${isSingleMotoboy ? `Entregas — ${payoutDeliveries.length} pedido(s)` : 'Resumo por Motoboy'}</div>
-
-                ${deliveryRows}
-
-                <div class="total">
-                    TOTAL A PAGAR: R$ ${totalFee.toFixed(2)}
-                </div>
-
-                <div class="signature-block">
-                    <div class="signature">
-                        <div class="signature-line">Responsável Financeiro</div>
-                    </div>
-                    <div class="signature">
-                        <div class="signature-line">Entregador: ${motoboyName}</div>
-                    </div>
-                </div>
-
-                <div class="footer">
-                    Sistema PriMAKE • Gerado automaticamente<br/>
-                    Impresso em: ${new Date().toLocaleString('pt-BR')}
-                </div>
-            </body>
-            </html>
-        `);
-
-        printWindow.document.close();
-        printWindow.focus();
-        // Após imprimir, perguntar se deseja marcar como pago
-        setTimeout(async () => {
-            printWindow.print();
-            printWindow.close();
-
-            if (isSingleMotoboy && selectedPayoutMotoboy) {
-                const total = (payoutDeliveries.reduce((s, d) => s + (Number(d.fee) || 0), 0)).toFixed(2);
-                const confirmar = window.confirm(
-                    `✅ Comprovante impresso!\n\nDeseja marcar o repasse de ${selectedPayoutMotoboy} como PAGO?\n\nTotal: R$ ${total}\n${payoutDeliveries.length} entrega(s)`
-                );
-                if (confirmar) {
-                    await DeliveryService.markAsPaid(selectedPayoutMotoboy);
-                    setSelectedPayoutMotoboy(null);
-                    setPayoutDeliveries([]);
-                    loadPayoutData();
-                    refresh();
-                }
-            }
-        }, 500);
-    };
-
-
-    // --- WHATSAPP LINK ---
-    const openWhatsApp = (phone: string, name: string) => {
-        const cleanPhone = phone.replace(/\D/g, '');
-        if (cleanPhone) {
-            const text = `Olá ${name}, aqui é da entrega da Pri MAKE. Estou com seu pedido!`;
-            window.open(`https://wa.me/55${cleanPhone}?text=${encodeURIComponent(text)}`, '_blank');
-        } else {
-            alert('Telefone inválido para WhatsApp.');
-        }
-    };
-
-    // --- ROUTE HANDLERS ---
-    const toggleRouteSelection = (id: string) => {
-        setRouteSequence(prev =>
-            prev.includes(id)
-                ? prev.filter(i => i !== id)  // remove -> deselect
-                : [...prev, id]               // append at end = next stop number
-        );
-    };
-
-    const selectableDeliveries = filteredDeliveries.filter(
-        d => d.status !== 'Entregue' && d.status !== 'Cancelado'
-    );
-    const allSelected = selectableDeliveries.length > 0 && selectableDeliveries.every(d => routeSequence.includes(d.id));
-
-    const toggleSelectAll = () => {
-        if (allSelected) {
-            setRouteSequence([]);
-        } else {
-            // Add only the ones not already in the sequence, preserving existing order
-            const existing = routeSequence.filter(id => selectableDeliveries.some(d => d.id === id));
-            const newOnes = selectableDeliveries.filter(d => !routeSequence.includes(d.id)).map(d => d.id);
-            setRouteSequence([...existing, ...newOnes]);
-        }
-    };
-
-    // Save the route order to the database
-    const saveRouteOrder = async () => {
-        setIsSavingRoute(true);
-        try {
-            // Update each delivery in routeSequence with its position number
-            const updates = routeSequence.map((id, idx) =>
-                DeliveryService.update(id, { routeOrder: idx + 1 })
-            );
-            // Also clear routeOrder for deliveries that were removed from the sequence
-            const removedIds = selectableDeliveries
-                .filter(d => !routeSequence.includes(d.id) && d.routeOrder != null)
-                .map(d => DeliveryService.update(d.id, { routeOrder: null }));
-            await Promise.all([...updates, ...removedIds]);
-            await refresh();
-            alert(`✅ Rota salva! ${routeSequence.length} paradas organizadas.`);
-        } catch (err) {
-            console.error('Erro ao salvar rota:', err);
-            alert('❌ Erro ao salvar rota. Tente novamente.');
-        } finally {
-            setIsSavingRoute(false);
-        }
-    };
-
-
-
-    const getStatusColor = (status: string) => {
-        switch (status) {
-            case 'Pendente': return 'bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-800';
-            case 'Em Preparo': return 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-900/20 dark:text-blue-300 dark:border-blue-800';
-            case 'Em Rota': return 'bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-800';
-            case 'Entregue': return 'bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-800';
-            case 'Cancelado': return 'bg-rose-100 text-rose-800 border-rose-200 dark:bg-rose-900/30 dark:text-rose-300 dark:border-rose-800';
-            case 'Problema': return 'bg-red-100 text-red-800 border-red-200 dark:bg-red-900/30 dark:text-red-300 dark:border-red-800';
-            case 'Retornar a Loja': return 'bg-orange-100 text-orange-800 border-orange-200 dark:bg-orange-900/30 dark:text-orange-300 dark:border-orange-800';
-            default: return 'bg-gray-100 text-gray-700';
-        }
-    };
-
-    return (
-        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 relative pb-20">
-            {/* Header */}
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                <div>
-                    <h2 className="text-2xl font-bold text-gray-800 dark:text-white flex items-center gap-2">
-                        <Bike className="text-pink-600 dark:text-pink-400" /> Central de Entregas
-                    </h2>
-                    <p className="text-gray-500 dark:text-gray-400">
-                        {isMotoboy ? `Olá, ${user?.name}. Aqui estão suas entregas.` : 'Gerencie a rota do motoboy e repasses.'}
-                    </p>
-                </div>
-
-                <div className="flex flex-wrap gap-2 w-full md:w-auto">
-                    {/* View Toggles */}
-                    <div className="bg-gray-100 dark:bg-gray-700 p-1 rounded-lg flex">
-                        <button
-                            onClick={() => setViewMode('active')}
-                            className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all flex items-center gap-2 ${viewMode === 'active' ? 'bg-white dark:bg-gray-600 shadow text-pink-600 dark:text-pink-400' : 'text-gray-500 dark:text-gray-400'}`}
-                        >
-                            <Truck size={14} /> Em Andamento
-                        </button>
-                        <button
-                            onClick={() => setViewMode('archived')}
-                            className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all flex items-center gap-2 ${viewMode === 'archived' ? 'bg-white dark:bg-gray-600 shadow text-indigo-600 dark:text-indigo-400' : 'text-gray-500 dark:text-gray-400'}`}
-                        >
-                            <Archive size={14} /> Arquivados
-                        </button>
-                    </div>
-
-                    {!isSalesperson && !isMotoboy && (
-                        <button
-                            onClick={() => setIsPayoutModalOpen(true)}
-                            className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-md transition-all flex items-center justify-center gap-2"
-                        >
-                            <DollarSign size={18} /> Repasse
-                        </button>
-                    )}
-
-                    {viewMode === 'active' && selectableDeliveries.length > 0 && (
-                        <button
-                            onClick={toggleSelectAll}
-                            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold border transition-all ${allSelected
-                                ? 'bg-pink-600 text-white border-pink-600 hover:bg-pink-700'
-                                : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 border-gray-300 dark:border-gray-600 hover:border-pink-400'
-                                }`}
-                        >
-                            <CheckCircle size={16} />
-                            {allSelected ? `Desmarcar Todas (${selectableDeliveries.length})` : `Selecionar Todas (${selectableDeliveries.length})`}
-                        </button>
-                    )}
-
-                    {routeSequence.length > 0 && (
-                        <>
-                            <button
-                                onClick={() => setIsRouteModalOpen(true)}
-                                className="flex-1 md:flex-none bg-gray-900 hover:bg-black text-white px-4 py-2 rounded-lg text-sm font-bold shadow-md transition-all animate-in zoom-in-95 flex items-center justify-center gap-2"
-                            >
-                                <Map size={18} /> Ver Rota ({routeSequence.length})
-                            </button>
-                            <button
-                                onClick={saveRouteOrder}
-                                disabled={isSavingRoute}
-                                className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-md transition-all disabled:opacity-60"
-                            >
-                                <Save size={16} /> {isSavingRoute ? 'Salvando...' : 'Salvar Rota'}
-                            </button>
-                        </>
-                    )}
-
-                    {!isMotoboy && (
-                        <button
-                            onClick={() => setIsCreateModalOpen(true)}
-                            className={`bg-pink-600 hover:bg-pink-700 text-white px-4 py-2 rounded-lg flex items-center justify-center gap-2 font-medium shadow-sm shadow-pink-200 dark:shadow-none transition-all hover:scale-105 ${routeSequence.length > 0 ? 'hidden md:flex' : 'flex-1 md:flex-none'}`}
-                        >
-                            <Plus size={18} /> <span className={routeSequence.length > 0 ? "hidden lg:inline" : ""}>Nova Entrega</span>
-                        </button>
-                    )}
-                </div>
-            </div>
-
-            {/* Filter Bar */}
-            <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 flex flex-col md:flex-row gap-4 justify-between items-center">
-                <div className="relative w-full md:w-96">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-                    <input
-                        type="text"
-                        placeholder="Buscar por cliente ou ID..."
-                        className="w-full pl-10 pr-4 py-2 border border-gray-200 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-pink-200 focus:border-pink-500 outline-none bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white"
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                    />
-                </div>
-
-                <div className="flex items-center gap-4 w-full md:w-auto">
-                    {/* Date Picker for History */}
-                    {viewMode === 'archived' && (
-                        <div className="flex items-center gap-2 bg-indigo-50 dark:bg-indigo-900/20 p-1.5 rounded-lg border border-indigo-100 dark:border-indigo-800">
-                            <Calendar size={16} className="text-indigo-600 dark:text-indigo-400 ml-1" />
-                            <input
-                                type="date"
-                                className="bg-transparent text-sm text-indigo-700 dark:text-indigo-300 outline-none"
-                                value={historyDate}
-                                onChange={(e) => setHistoryDate(e.target.value)}
-                            />
-                        </div>
-                    )}
-
-                    {/* Method Tabs */}
-                    <div className="flex bg-gray-100 dark:bg-gray-700 p-1 rounded-lg overflow-x-auto">
-                        <button
-                            onClick={() => setFilterMethod('All')}
-                            className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${filterMethod === 'All' ? 'bg-white dark:bg-gray-600 shadow text-gray-900 dark:text-white' : 'text-gray-500 dark:text-gray-400'}`}
-                        >
-                            Todas
-                        </button>
-                        <button
-                            onClick={() => setFilterMethod('Local')}
-                            className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all flex items-center gap-1 ${filterMethod === 'Local' ? 'bg-white dark:bg-gray-600 shadow text-emerald-600 dark:text-emerald-400' : 'text-gray-500 dark:text-gray-400'}`}
-                        >
-                            <Home size={14} /> Entrega Cliente
-                        </button>
-                        <button
-                            onClick={() => setFilterMethod('Dispatch')}
-                            className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all flex items-center gap-1 ${filterMethod === 'Dispatch' ? 'bg-white dark:bg-gray-600 shadow text-purple-600 dark:text-purple-400' : 'text-gray-500 dark:text-gray-400'}`}
-                        >
-                            <Package size={14} /> Levar Correios
-                        </button>
-                    </div>
-
-                    {/* Motoboy Filter (Admin only) */}
-                    {!isMotoboy && availableMotoboys.length > 0 && (
-                        <select
-                            value={filterMotoboy}
-                            onChange={e => setFilterMotoboy(e.target.value)}
-                            className="px-3 py-1.5 rounded-lg text-xs font-bold border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-pink-200"
-                        >
-                            <option value="Todos">🏍️ Todos Motoboys</option>
-                            {availableMotoboys.map(m => (
-                                <option key={m.id} value={m.name}>{m.name}</option>
-                            ))}
-                        </select>
-                    )}
-                </div>
-            </div>
-
-            {/* ── Status Sub-Filter Chips (active view only) ── */}
-            {viewMode === 'active' && (() => {
-                const activeAll = deliveries.filter(d => d.status !== 'Entregue' && d.status !== 'Cancelado');
-                const counts = {
-                    Todos: activeAll.length,
-                    Iniciar: activeAll.filter(d => d.status === 'Pendente' || d.status === 'Em Preparo').length,
-                    'Em Rota': activeAll.filter(d => d.status === 'Em Rota').length,
-                    Problema: activeAll.filter(d => d.status === 'Problema').length,
-                    Retornar: activeAll.filter(d => d.status === 'Retornar a Loja').length,
-                };
-                const chips: { key: 'Todos' | 'Iniciar' | 'Em Rota' | 'Problema' | 'Retornar'; label: string; icon: string; activeClass: string }[] = [
-                    { key: 'Todos', label: 'Todas', icon: '📋', activeClass: 'bg-gray-900 text-white border-gray-900' },
-                    { key: 'Iniciar', label: 'Iniciar', icon: '🟡', activeClass: 'bg-amber-500 text-white border-amber-500' },
-                    { key: 'Em Rota', label: 'Em Rota', icon: '🏍️', activeClass: 'bg-blue-600 text-white border-blue-600' },
-                    { key: 'Problema', label: 'Problema', icon: '🔴', activeClass: 'bg-red-600 text-white border-red-600' },
-                    { key: 'Retornar', label: 'Retornar', icon: '🟠', activeClass: 'bg-orange-500 text-white border-orange-500' },
-                ];
-                return (
-                    <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide">
-                        {chips.map(chip => {
-                            const count = counts[chip.key];
-                            const isActive = filterStatus === chip.key;
-                            return (
-                                <button
-                                    key={chip.key}
-                                    onClick={() => setFilterStatus(chip.key)}
-                                    className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border-2 transition-all ${isActive
-                                        ? chip.activeClass + ' shadow-sm scale-105'
-                                        : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-gray-300'
-                                        }`}
-                                >
-                                    <span>{chip.icon}</span>
-                                    <span>{chip.label}</span>
-                                    {count > 0 && (
-                                        <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-black leading-none ${isActive ? 'bg-white/30' : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200'}`}>
-                                            {count}
-                                        </span>
-                                    )}
-                                </button>
-                            );
-                        })}
-                    </div>
-                );
-            })()}
-
-            {/* ── Route Summary Bar (mobile-first) ── */}
-            {viewMode === 'active' && filteredDeliveries.some(d => d.status !== 'Entregue' && d.status !== 'Cancelado') && (() => {
-                // Build per-motoboy counts from ALL active deliveries (not just filtered)
-                const activeDeliveries = deliveries.filter(d => d.status !== 'Entregue' && d.status !== 'Cancelado');
-                const byMotoboy: Record<string, number> = {};
-                activeDeliveries.forEach(d => {
-                    const name = d.motoboyName || '(Sem motoboy)';
-                    byMotoboy[name] = (byMotoboy[name] || 0) + 1;
-                });
-                const total = activeDeliveries.length;
-                const inRoute = routeSequence.filter(id => activeDeliveries.some(d => d.id === id)).length;
-
-                return (
-                    <div className="flex items-center gap-2 overflow-x-auto pb-1 -mb-1 scrollbar-hide">
-                        {/* Total pill */}
-                        <div className="flex-shrink-0 flex items-center gap-1.5 bg-gray-900 dark:bg-gray-700 text-white rounded-full px-3 py-1.5 text-xs font-black shadow-sm">
-                            <Bike size={12} />
-                            <span>{total} entrega{total !== 1 ? 's' : ''}</span>
-                            {inRoute > 0 && (
-                                <span className="bg-pink-500 text-white rounded-full px-1.5 py-0.5 text-[10px] font-black ml-0.5">
-                                    {inRoute} em rota
-                                </span>
-                            )}
-                        </div>
-
-                        {/* Per-motoboy chips */}
-                        {Object.entries(byMotoboy).map(([name, count]) => (
-                            <div
-                                key={name}
-                                className="flex-shrink-0 flex items-center gap-1.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-full px-3 py-1.5 text-xs font-bold text-gray-700 dark:text-gray-300 shadow-sm"
-                            >
-                                <span className="w-4 h-4 rounded-full bg-pink-100 dark:bg-pink-900 flex items-center justify-center text-pink-600 dark:text-pink-300 font-black text-[10px]">{count}</span>
-                                <span className="max-w-[100px] truncate">{name}</span>
-                            </div>
-                        ))}
-                    </div>
-                );
-            })()}
-
-            {/* Cards Grid — sorted by routeOrder first, then by date descending */}
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                {filteredDeliveries
-                    .slice()
-                    .sort((a, b) => {
-                        const aOrder = a.routeOrder ?? null;
-                        const bOrder = b.routeOrder ?? null;
-                        if (viewMode === 'active') {
-                            // 'Retornar a Loja' always goes LAST
-                            const aReturn = a.status === 'Retornar a Loja' ? 1 : 0;
-                            const bReturn = b.status === 'Retornar a Loja' ? 1 : 0;
-                            if (aReturn !== bReturn) return aReturn - bReturn;
-                            // Both have order: sort numerically
-                            if (aOrder !== null && bOrder !== null) return aOrder - bOrder;
-                            // Only a has order: a goes first
-                            if (aOrder !== null) return -1;
-                            // Only b has order: b goes first
-                            if (bOrder !== null) return 1;
-                        }
-                        // Fallback: most recent first
-                        return new Date(b.date).getTime() - new Date(a.date).getTime();
-                    })
-                    .map(delivery => {
-                        const isSelectable = delivery.status !== 'Entregue' && delivery.status !== 'Cancelado';
-                        const routePosition = routeSequence.indexOf(delivery.id); // -1 = not in route
-                        const isSelected = routePosition >= 0;
-
-                        return (
-                            <div
-                                key={delivery.id}
-                                className={`
-                                bg-white dark:bg-gray-800 rounded-xl border shadow-sm overflow-hidden flex flex-col group transition-all cursor-pointer relative
-                                ${isSelected ? 'border-pink-500 ring-1 ring-pink-500' : 'border-gray-200 dark:border-gray-700 hover:border-pink-300'}
-                            `}
-                                onClick={() => {
-                                    setSelectedDelivery(delivery);
-                                    setEditForm({ status: delivery.status, notes: delivery.notes || '' });
-                                    setIsEditing(false);
-                                }}
-                            >
-                                {/* Route Order Badge — shows number (1, 2, 3...) instead of checkmark */}
-                                {isSelectable && viewMode === 'active' && (
-                                    <div
-                                        className="absolute top-3 left-3 z-10"
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            toggleRouteSelection(delivery.id);
-                                        }}
-                                    >
-                                        <div className={`w-7 h-7 rounded-full border-2 flex items-center justify-center font-black text-sm transition-all shadow-sm ${isSelected
-                                            ? 'bg-pink-600 border-pink-600 text-white'
-                                            : 'bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-500 text-gray-400'
-                                            }`}>
-                                            {isSelected ? routePosition + 1 : '+'}
-                                        </div>
-                                    </div>
-                                )}
-
-                                {/* Card Header */}
-                                <div className={`px-3 py-2 border-b border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-700/20 flex justify-between items-start ${isSelectable && viewMode === 'active' ? 'pl-12' : ''}`}>
-                                    <div className="flex-1 min-w-0">
-                                        <div className="flex items-center gap-1.5 mb-0.5">
-                                            <span className="text-[10px] font-mono font-bold text-gray-400 dark:text-gray-500 truncate max-w-[80px]">{delivery.id}</span>
-                                            <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold border ${getStatusColor(delivery.status)}`}>
-                                                {delivery.status.toUpperCase()}
-                                            </span>
-                                            {/* Receipt icon — opens comprovante modal */}
-                                            <button
-                                                onClick={(e) => { e.stopPropagation(); setReceiptDelivery(delivery); }}
-                                                className="text-gray-400 hover:text-indigo-500 transition-colors"
-                                                title="Ver comprovante do pedido"
-                                            >
-                                                <FileText size={13} />
-                                            </button>
-                                        </div>
-                                        <h3 className="font-bold text-gray-800 dark:text-white text-sm leading-tight line-clamp-1">{delivery.customerName}</h3>
-                                    </div>
-                                    <div className="flex flex-col items-end ml-2 flex-shrink-0">
-                                        <span className="text-[10px] text-gray-400">{new Date(delivery.date).toLocaleDateString('pt-BR')}</span>
-                                        {!isMotoboy && delivery.motoboyName && (
-                                            <span className="text-[9px] bg-gray-200 dark:bg-gray-600 text-gray-600 dark:text-gray-300 px-1.5 py-0.5 rounded mt-0.5 flex items-center gap-1">
-                                                <Bike size={9} /> {delivery.motoboyName}
-                                            </span>
-                                        )}
-                                    </div>
-                                </div>
-
-                                {/* Card Body */}
-                                <div className="px-3 py-2 flex-1 flex flex-col gap-1.5 pointer-events-none">
-                                    <div className={`flex items-start gap-1.5 text-xs p-1.5 rounded-lg ${delivery.method === 'Motoboy' ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-800 dark:text-emerald-300' : 'bg-purple-50 dark:bg-purple-900/20 text-purple-800 dark:text-purple-300'}`}>
-                                        <MapPin size={13} className="mt-0.5 flex-shrink-0" />
-                                        <div className="flex-1 min-w-0">
-                                            <div className="flex justify-between items-start">
-                                                <p className="text-[9px] font-bold uppercase opacity-70">
-                                                    {delivery.method === 'Motoboy' ? 'Entregar:' : 'Despacho:'}
-                                                </p>
-                                                {delivery.payoutStatus === 'Paid' && (
-                                                    <span className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300 text-[9px] font-black px-1 py-0.5 rounded border border-emerald-200 dark:border-emerald-700 flex items-center gap-0.5">
-                                                        <DollarSign size={8} /> PAGO
-                                                    </span>
-                                                )}
-                                            </div>
-                                            <p className="font-medium leading-snug text-xs">{delivery.address}</p>
-                                            <p className="text-[10px] opacity-80">{delivery.city}</p>
-                                        </div>
-                                    </div>
-                                    {delivery.notes && (
-                                        <div className="bg-yellow-50 dark:bg-yellow-900/10 px-2 py-1 rounded border border-yellow-100 dark:border-yellow-800 text-[10px] text-yellow-800 dark:text-yellow-200">
-                                            <span className="font-bold">Obs:</span> {delivery.notes}
-                                        </div>
-                                    )}
-                                </div>
-
-                                {/* Card Footer Actions */}
-                                <div className="px-3 py-2 bg-gray-50 dark:bg-gray-900/50 border-t border-gray-100 dark:border-gray-700 flex justify-between items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
-                                    {/* WhatsApp Button */}
-                                    <button
-                                        onClick={() => openWhatsApp(delivery.phone, delivery.customerName)}
-                                        className="flex items-center gap-1 bg-emerald-500 hover:bg-emerald-600 text-white text-[11px] font-bold px-2 py-1 rounded-lg transition-colors shadow-sm flex-shrink-0"
-                                        title="WhatsApp"
-                                    >
-                                        <MessageCircle size={12} /> WA
-                                    </button>
-
-                                    <div className="flex gap-1 flex-1 justify-end">
-                                        {/* Iniciar — shown when Pendente or Em Preparo */}
-                                        {(delivery.status === 'Pendente' || delivery.status === 'Em Preparo') && viewMode === 'active' && (
-                                            <button
-                                                onClick={() => updateStatus(delivery.id, 'Em Rota')}
-                                                className="bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-bold px-2 py-1 rounded-lg flex items-center gap-1 shadow-sm transition-colors"
-                                            >
-                                                <ArrowRight size={12} /> Iniciar
-                                            </button>
-                                        )}
-
-                                        {/* Finalizado — inline dropdown for em-rota and others */}
-                                        {delivery.status !== 'Entregue' && delivery.status !== 'Cancelado' && viewMode === 'active' && (
-                                            <div className="relative">
-                                                <button
-                                                    onClick={() => setFinalizeMenuId(finalizeMenuId === delivery.id ? null : delivery.id)}
-                                                    className="bg-gray-700 hover:bg-gray-900 dark:bg-gray-600 dark:hover:bg-gray-500 text-white text-[11px] font-bold px-2 py-1 rounded-lg flex items-center gap-1 shadow-sm transition-colors"
-                                                >
-                                                    <CheckCircle size={12} /> Finalizar
-                                                </button>
-                                                {finalizeMenuId === delivery.id && (
-                                                    <div className="absolute bottom-full right-0 mb-1 bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 z-30 overflow-hidden w-36 animate-in fade-in zoom-in-95 duration-150">
-                                                        <button onClick={() => { updateStatus(delivery.id, 'Entregue'); setFinalizeMenuId(null); }} className="w-full text-left px-3 py-2 text-xs font-bold text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 flex items-center gap-2">
-                                                            <CheckCircle size={13} /> Entregue
-                                                        </button>
-                                                        <button onClick={() => { updateStatus(delivery.id, 'Problema'); setFinalizeMenuId(null); }} className="w-full text-left px-3 py-2 text-xs font-bold text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 flex items-center gap-2">
-                                                            <AlertCircle size={13} /> Problema
-                                                        </button>
-                                                        <button onClick={() => { updateStatus(delivery.id, 'Retornar a Loja'); setFinalizeMenuId(null); }} className="w-full text-left px-3 py-2 text-xs font-bold text-orange-700 dark:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-900/20 flex items-center gap-2">
-                                                            <Store size={13} /> Retornar a Loja
-                                                        </button>
-                                                        <button onClick={() => { updateStatus(delivery.id, 'Cancelado'); setFinalizeMenuId(null); }} className="w-full text-left px-3 py-2 text-xs font-bold text-rose-700 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 flex items-center gap-2">
-                                                            <X size={13} /> Cancelado
-                                                        </button>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        )}
-
-                                        {/* Details button (3-dot) */}
-                                        <button onClick={() => {
-                                            setSelectedDelivery(delivery);
-                                            setEditForm({ status: delivery.status, notes: delivery.notes || '' });
-                                        }} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700">
-                                            <MoreVertical size={14} />
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        );
-                    })}
-                {filteredDeliveries.length === 0 && (
-                    <div className="col-span-full py-12 text-center text-gray-400 dark:text-gray-500">
-                        {viewMode === 'active' ? (
-                            <>
-                                <Bike size={48} className="mx-auto mb-2 opacity-20" />
-                                <p>Nenhuma entrega ativa no momento.</p>
-                            </>
-                        ) : (
-                            <>
-                                <Archive size={48} className="mx-auto mb-2 opacity-20" />
-                                <p>Nenhuma entrega arquivada para esta data.</p>
-                            </>
-                        )}
-                    </div>
-                )}
-            </div>
-
-            {/* --- DELIVERY RECEIPT / COMPROVANTE MODAL --- */}
-            {receiptDelivery && (
-                <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
-                    <div className="absolute inset-0 bg-gray-900/70 backdrop-blur-sm" onClick={() => setReceiptDelivery(null)} />
-                    <div className="bg-white dark:bg-gray-800 w-full max-w-sm rounded-2xl shadow-2xl relative flex flex-col max-h-[90vh] animate-in fade-in zoom-in-95 duration-200 overflow-hidden">
-                        <div className="bg-[#ffc8cb] p-4 text-gray-900">
-                            <div className="flex justify-between items-start">
-                                <div>
-                                    <p className="text-xs font-bold uppercase tracking-widest opacity-70">Comprovante de Pedido</p>
-                                    <h3 className="text-lg font-black mt-0.5">{receiptDelivery.customerName}</h3>
-                                    <p className="text-xs opacity-80 mt-0.5">{receiptDelivery.id}</p>
-                                </div>
-                                <button onClick={() => setReceiptDelivery(null)} className="bg-black/10 hover:bg-black/20 p-1.5 rounded-full transition-colors">
-                                    <X size={16} />
-                                </button>
-                            </div>
-                            {/* Status badge */}
-                            <div className="mt-3">
-                                <span className={`px-2.5 py-1 rounded-full text-[11px] font-black uppercase tracking-wide ${receiptDelivery.status === 'Entregue' ? 'bg-emerald-400/30 text-emerald-900' : receiptDelivery.status === 'Cancelado' ? 'bg-rose-400/30 text-rose-900' : receiptDelivery.status === 'Problema' ? 'bg-amber-400/30 text-amber-900' : receiptDelivery.status === 'Retornar a Loja' ? 'bg-orange-400/30 text-orange-900' : receiptDelivery.status === 'Em Rota' ? 'bg-blue-400/30 text-blue-900' : 'bg-white/40 text-gray-900'}`}>
-                                    {receiptDelivery.status}
-                                </span>
-                            </div>
-                        </div>
-
-                        {/* Receipt Body — scrollable */}
-                        <div className="overflow-y-auto flex-1 p-4 space-y-4">
-                            {/* Date + Source */}
-                            <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400">
-                                <span className="flex items-center gap-1"><Calendar size={12} /> {new Date(receiptDelivery.date).toLocaleString('pt-BR')}</span>
-                                <span className="font-medium text-gray-700 dark:text-gray-300">{receiptDelivery.source}</span>
-                            </div>
-
-                            {/* Items */}
-                            <div>
-                                <p className="text-[10px] font-bold uppercase text-gray-400 mb-1">Itens do Pedido</p>
-                                <div className="bg-gray-50 dark:bg-gray-700/50 rounded-xl p-3">
-                                    <p className="text-sm text-gray-800 dark:text-white font-medium whitespace-pre-line">{receiptDelivery.itemsSummary || '—'}</p>
-                                </div>
-                            </div>
-
-                            {/* Delivery Info */}
-                            <div>
-                                <p className="text-[10px] font-bold uppercase text-gray-400 mb-1">Endereço de Entrega</p>
-                                <div className="bg-gray-50 dark:bg-gray-700/50 rounded-xl p-3 flex items-start gap-2">
-                                    <MapPin size={15} className="text-indigo-500 mt-0.5 flex-shrink-0" />
-                                    <div>
-                                        <p className="text-sm font-semibold text-gray-800 dark:text-white">{receiptDelivery.address}</p>
-                                        <p className="text-xs text-gray-500 dark:text-gray-400">{receiptDelivery.city}</p>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Contact */}
-                            <div className="flex gap-3">
-                                <div className="flex-1 bg-gray-50 dark:bg-gray-700/50 rounded-xl p-3">
-                                    <p className="text-[10px] font-bold uppercase text-gray-400 mb-1">Telefone</p>
-                                    <p className="text-sm font-semibold text-gray-800 dark:text-white flex items-center gap-1">
-                                        <Phone size={12} className="text-emerald-500" /> {receiptDelivery.phone || '—'}
-                                    </p>
-                                </div>
-                                <div className="flex-1 bg-gray-50 dark:bg-gray-700/50 rounded-xl p-3">
-                                    <p className="text-[10px] font-bold uppercase text-gray-400 mb-1">Método</p>
-                                    <p className="text-sm font-semibold text-gray-800 dark:text-white flex items-center gap-1">
-                                        <Truck size={12} className="text-purple-500" /> {receiptDelivery.method}
-                                    </p>
-                                </div>
-                            </div>
-
-                            {/* Motoboy + Payment */}
-                            {(receiptDelivery.motoboyName || receiptDelivery.paymentMethod) && (
-                                <div className="flex gap-3">
-                                    {receiptDelivery.motoboyName && (
-                                        <div className="flex-1 bg-gray-50 dark:bg-gray-700/50 rounded-xl p-3">
-                                            <p className="text-[10px] font-bold uppercase text-gray-400 mb-1">Motoboy</p>
-                                            <p className="text-sm font-semibold text-gray-800 dark:text-white flex items-center gap-1">
-                                                <Bike size={12} className="text-indigo-500" /> {receiptDelivery.motoboyName}
-                                            </p>
-                                        </div>
-                                    )}
-                                    {receiptDelivery.paymentMethod && (
-                                        <div className="flex-1 bg-gray-50 dark:bg-gray-700/50 rounded-xl p-3">
-                                            <p className="text-[10px] font-bold uppercase text-gray-400 mb-1">Pagamento</p>
-                                            <p className="text-sm font-semibold text-gray-800 dark:text-white">{receiptDelivery.paymentMethod}</p>
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-
-                            {/* Notes */}
-                            {receiptDelivery.notes && (
-                                <div className="bg-yellow-50 dark:bg-yellow-900/20 rounded-xl p-3 border border-yellow-200 dark:border-yellow-800">
-                                    <p className="text-[10px] font-bold uppercase text-yellow-600 dark:text-yellow-400 mb-1">Observações</p>
-                                    <p className="text-xs text-yellow-800 dark:text-yellow-200">{receiptDelivery.notes}</p>
-                                </div>
-                            )}
-
-                            {/* Totals */}
-                            <div className="border-t border-dashed border-gray-200 dark:border-gray-600 pt-3 space-y-1">
-                                {receiptDelivery.fee ? (
-                                    <>
-                                        <div className="flex justify-between text-sm text-gray-600 dark:text-gray-400">
-                                            <span>Subtotal</span>
-                                            <span>R$ {(receiptDelivery.totalValue - receiptDelivery.fee).toFixed(2)}</span>
-                                        </div>
-                                        <div className="flex justify-between text-sm text-gray-600 dark:text-gray-400">
-                                            <span>Taxa de entrega</span>
-                                            <span>R$ {receiptDelivery.fee.toFixed(2)}</span>
-                                        </div>
-                                    </>
-                                ) : null}
-                                <div className="flex justify-between text-base font-black text-gray-900 dark:text-white mt-1">
-                                    <span>TOTAL</span>
-                                    <span className="text-indigo-600 dark:text-indigo-400">R$ {receiptDelivery.totalValue.toFixed(2)}</span>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Footer actions */}
-                        <div className="p-4 border-t border-gray-100 dark:border-gray-700 flex gap-2">
-                            <button
-                                onClick={() => openWhatsApp(receiptDelivery.phone, receiptDelivery.customerName)}
-                                className="flex-1 flex items-center justify-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-2.5 rounded-xl text-sm transition-colors"
-                            >
-                                <MessageCircle size={15} /> WhatsApp
-                            </button>
-                            <button
-                                onClick={() => { setSelectedDelivery(receiptDelivery); setEditForm({ status: receiptDelivery.status, notes: receiptDelivery.notes || '' }); setIsEditing(false); setReceiptDelivery(null); }}
-                                className="flex items-center justify-center gap-1 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 font-bold py-2.5 px-3 rounded-xl text-sm transition-colors"
-                            >
-                                <Edit size={15} /> Editar
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* --- PAYOUT REPORT MODAL --- */}
-            {isPayoutModalOpen && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-                    <div className="absolute inset-0 bg-gray-900/60 backdrop-blur-sm" onClick={() => setIsPayoutModalOpen(false)}></div>
-                    <div className="bg-white dark:bg-gray-800 w-full max-w-lg rounded-xl shadow-2xl relative flex flex-col max-h-[85vh] animate-in fade-in zoom-in-95 duration-200">
-                        {/* Header */}
-                        <div className="p-5 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center bg-emerald-50 dark:bg-emerald-900/20">
-                            <h3 className="font-bold text-lg text-emerald-900 dark:text-emerald-300 flex items-center gap-2">
-                                <DollarSign size={20} /> Relatório de Repasse
-                            </h3>
-                            <button onClick={() => setIsPayoutModalOpen(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
-                                <X size={20} />
-                            </button>
-                        </div>
-
-                        {/* Tab Switcher */}
-                        <div className="px-5 pt-4 pb-2">
-                            <div className="bg-gray-100 dark:bg-gray-700 p-1 rounded-lg flex">
-                                <button
-                                    onClick={() => setPayoutTab('pending')}
-                                    className={`flex-1 px-3 py-2 rounded-md text-sm font-bold transition-all flex items-center justify-center gap-2 ${payoutTab === 'pending' ? 'bg-white dark:bg-gray-600 shadow text-amber-600 dark:text-amber-400' : 'text-gray-500 dark:text-gray-400'}`}
-                                >
-                                    <DollarSign size={16} /> Pendente
-                                    {Object.keys(payoutData).length > 0 && (
-                                        <span className="bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-300 text-[10px] font-black px-1.5 py-0.5 rounded-full">
-                                            {Object.keys(payoutData).length}
-                                        </span>
-                                    )}
-                                </button>
-                                <button
-                                    onClick={() => setPayoutTab('paid')}
-                                    className={`flex-1 px-3 py-2 rounded-md text-sm font-bold transition-all flex items-center justify-center gap-2 ${payoutTab === 'paid' ? 'bg-white dark:bg-gray-600 shadow text-emerald-600 dark:text-emerald-400' : 'text-gray-500 dark:text-gray-400'}`}
-                                >
-                                    <Archive size={16} /> Pagos
-                                    {Object.keys(paidPayoutData).length > 0 && (
-                                        <span className="bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 text-[10px] font-black px-1.5 py-0.5 rounded-full">
-                                            {Object.keys(paidPayoutData).length}
-                                        </span>
-                                    )}
-                                </button>
-                            </div>
-                        </div>
-
-                        {/* Content */}
-                        <div className="p-5 overflow-y-auto flex-1">
-                            {payoutTab === 'pending' ? (
-                                /* --- PENDING TAB --- */
-                                <div className="space-y-3">
-                                    {/* DRILL-DOWN: Motoboy Detail View */}
-                                    {selectedPayoutMotoboy ? (
-                                        <div>
-                                            {/* Back + motoboy header */}
-                                            <div className="flex items-center gap-3 mb-4">
-                                                <button
-                                                    onClick={() => { setSelectedPayoutMotoboy(null); setPayoutDeliveries([]); }}
-                                                    className="text-gray-500 hover:text-gray-800 dark:hover:text-white flex items-center gap-1 text-xs font-bold border border-gray-200 dark:border-gray-600 px-2 py-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-                                                >
-                                                    ← Voltar
-                                                </button>
-                                                <div>
-                                                    <p className="font-bold text-gray-800 dark:text-white flex items-center gap-2">
-                                                        <Bike size={16} className="text-amber-600" /> {selectedPayoutMotoboy}
-                                                    </p>
-                                                    <p className="text-xs text-gray-500 dark:text-gray-400">
-                                                        {payoutData[selectedPayoutMotoboy]?.count || 0} entrega(s) · R$ {(payoutData[selectedPayoutMotoboy]?.totalFee || 0).toFixed(2)} a pagar
-                                                    </p>
-                                                </div>
-                                            </div>
-
-                                            {/* Delivery List */}
-                                            {payoutDeliveriesLoading ? (
-                                                <div className="text-center py-8 text-gray-400 text-sm">Carregando entregas...</div>
-                                            ) : payoutDeliveries.length === 0 ? (
-                                                <div className="text-center py-8 text-gray-400 text-sm">Nenhuma entrega encontrada.</div>
-                                            ) : (
-                                                <div className="space-y-2">
-                                                    {payoutDeliveries.map((d, i) => (
-                                                        <div key={d.id} className="p-3 bg-gray-50 dark:bg-gray-700/40 rounded-xl border border-gray-200 dark:border-gray-600">
-                                                            <div className="flex justify-between items-start">
-                                                                <div className="flex-1 min-w-0">
-                                                                    <p className="font-bold text-sm text-gray-800 dark:text-white">
-                                                                        #{i + 1} — {d.customerName}
-                                                                    </p>
-                                                                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate">
-                                                                        {d.date ? new Date(d.date).toLocaleDateString('pt-BR') : ''}
-                                                                        {d.address ? ` · ${d.address}` : ''}
-                                                                    </p>
-                                                                    {d.itemsSummary && (
-                                                                        <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5 line-clamp-1">{d.itemsSummary}</p>
-                                                                    )}
-                                                                </div>
-                                                                <span className="ml-3 font-bold text-emerald-700 dark:text-emerald-400 text-sm whitespace-nowrap">
-                                                                    R$ {(Number(d.fee) || 0).toFixed(2)}
-                                                                </span>
-                                                            </div>
-                                                        </div>
-                                                    ))}
-                                                    {/* Summary row */}
-                                                    <div className="flex justify-between items-center pt-2 mt-2 border-t border-dashed border-gray-300 dark:border-gray-600 font-bold text-gray-800 dark:text-white">
-                                                        <span>Total a pagar</span>
-                                                        <span className="text-lg text-amber-700 dark:text-amber-300">
-                                                            R$ {payoutDeliveries.reduce((s, d) => s + (Number(d.fee) || 0), 0).toFixed(2)}
-                                                        </span>
-                                                    </div>
-                                                </div>
-                                            )}
-                                        </div>
-                                    ) : (
-                                        /* MOTOBOY LIST */
-                                        <>
-                                            <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">Selecione um motoboy para ver o detalhamento e confirmar o pagamento.</p>
-                                            {Object.entries(payoutData).map(([motoboy, data]: [string, { count: number, totalFee: number }]) => (
-                                                <div key={motoboy} className="p-4 bg-amber-50 dark:bg-amber-900/10 rounded-xl border border-amber-200 dark:border-amber-800">
-                                                    <div className="flex justify-between items-center">
-                                                        <div>
-                                                            <p className="font-bold text-gray-800 dark:text-white flex items-center gap-2">
-                                                                <Bike size={16} className="text-amber-600" /> {motoboy}
-                                                            </p>
-                                                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{data.count} entrega{data.count !== 1 ? 's' : ''} pendente{data.count !== 1 ? 's' : ''}</p>
-                                                        </div>
-                                                        <div className="text-right flex items-center gap-3">
-                                                            <div>
-                                                                <p className="text-[10px] text-amber-600 dark:text-amber-400 uppercase font-bold">A Pagar</p>
-                                                                <p className="text-xl font-bold text-amber-700 dark:text-amber-300">R$ {data.totalFee.toFixed(2)}</p>
-                                                            </div>
-                                                            <button
-                                                                onClick={() => handleSelectPayoutMotoboy(motoboy)}
-                                                                className="bg-amber-500 hover:bg-amber-600 text-white px-3 py-2 rounded-lg shadow-sm font-bold text-xs flex items-center gap-1.5 transition-colors"
-                                                            >
-                                                                Ver Detalhes →
-                                                            </button>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            ))}
-                                            {Object.keys(payoutData).length === 0 && (
-                                                <div className="text-center py-8">
-                                                    <CheckCircle size={40} className="mx-auto mb-2 text-emerald-300 dark:text-emerald-700" />
-                                                    <p className="text-gray-400 dark:text-gray-500 italic">Nenhum repasse pendente!</p>
-                                                    <p className="text-xs text-gray-300 dark:text-gray-600 mt-1">Todos os motoboys foram pagos.</p>
-                                                </div>
-                                            )}
-                                        </>
-                                    )}
-                                </div>
-                            ) : (
-                                /* --- PAID TAB --- */
-                                <div className="space-y-3">
-                                    <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">Histórico de pagamentos realizados aos motoboys.</p>
-                                    {Object.entries(paidPayoutData).map(([motoboy, data]: [string, { count: number, totalFee: number }]) => (
-                                        <div key={motoboy} className="flex justify-between items-center p-4 bg-emerald-50 dark:bg-emerald-900/10 rounded-xl border border-emerald-200 dark:border-emerald-800">
-                                            <div>
-                                                <p className="font-bold text-gray-800 dark:text-white flex items-center gap-2">
-                                                    <Bike size={16} className="text-emerald-600" /> {motoboy}
-                                                </p>
-                                                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{data.count} entrega{data.count !== 1 ? 's' : ''} paga{data.count !== 1 ? 's' : ''}</p>
-                                            </div>
-                                            <div className="text-right flex items-center gap-2">
-                                                <div>
-                                                    <p className="text-[10px] text-emerald-600 dark:text-emerald-400 uppercase font-bold">Pago</p>
-                                                    <p className="text-xl font-bold text-emerald-600 dark:text-emerald-400">R$ {data.totalFee.toFixed(2)}</p>
-                                                </div>
-                                                <span className="bg-emerald-100 dark:bg-emerald-900/50 p-2 rounded-lg">
-                                                    <CheckCircle size={20} className="text-emerald-600 dark:text-emerald-400" />
-                                                </span>
-                                            </div>
-                                        </div>
-                                    ))}
-                                    {Object.keys(paidPayoutData).length === 0 && (
-                                        <div className="text-center py-8">
-                                            <Archive size={40} className="mx-auto mb-2 text-gray-300 dark:text-gray-700" />
-                                            <p className="text-gray-400 dark:text-gray-500 italic">Nenhum repasse pago ainda.</p>
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-                        </div>
-
-                        {/* Footer */}
-                        <div className="p-4 bg-gray-50 dark:bg-gray-900/30 border-t border-gray-100 dark:border-gray-700 flex gap-2">
-                            <button
-                                onClick={handlePrintPayoutReport}
-                                className="flex-1 text-emerald-600 dark:text-emerald-400 text-sm font-bold hover:underline flex items-center justify-center gap-2 border border-emerald-200 dark:border-emerald-800 rounded-lg py-2 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-colors"
-                            >
-                                <Printer size={16} /> {selectedPayoutMotoboy ? `Imprimir — ${selectedPayoutMotoboy}` : 'Imprimir Comprovante'}
-                            </button>
-                            {selectedPayoutMotoboy && payoutDeliveries.length > 0 && (
-                                <button
-                                    onClick={async () => {
-                                        const total = payoutDeliveries.reduce((s, d) => s + (Number(d.fee) || 0), 0);
-                                        if (window.confirm(`Confirma pagamento de R$ ${total.toFixed(2)} para ${selectedPayoutMotoboy}?\n\n${payoutDeliveries.length} entrega(s) serão marcadas como pagas.`)) {
-                                            await DeliveryService.markAsPaid(selectedPayoutMotoboy);
-                                            setSelectedPayoutMotoboy(null);
-                                            setPayoutDeliveries([]);
-                                            loadPayoutData();
-                                            refresh();
-                                        }
-                                    }}
-                                    className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg shadow-sm font-bold text-sm flex items-center gap-2 transition-colors"
-                                >
-                                    <CheckCircle size={16} /> Confirmar Pagamento
-                                </button>
-                            )}
-                        </div>
-
-                    </div>
-                </div>
-            )}
-
-            {/* --- DELIVERY DETAILS / EDIT MODAL --- */}
-            {selectedDelivery && (
-                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-                    <div className="absolute inset-0 bg-gray-900/60 backdrop-blur-sm" onClick={() => setSelectedDelivery(null)}></div>
-                    <div className="bg-white dark:bg-gray-800 w-full max-w-xl rounded-xl shadow-2xl relative flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-                        <div className="p-5 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center bg-gray-50 dark:bg-gray-700/30">
-                            <h3 className="font-bold text-lg text-gray-800 dark:text-white flex items-center gap-2">
-                                {isEditing ? <Edit size={20} className="text-pink-600" /> : <Package size={20} className="text-pink-600" />}
-                                {isEditing ? 'Atualizar Status/Obs' : 'Detalhes da Entrega'}
-                            </h3>
-                            <button onClick={() => setSelectedDelivery(null)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
-                                <X size={20} />
-                            </button>
-                        </div>
-
-                        <div className="p-6 space-y-4">
-                            {isEditing ? (
-                                <div className="space-y-4">
-                                    <div>
-                                        <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-2">Status do Pedido</label>
-                                        <div className="flex flex-wrap gap-2">
-                                            {[
-                                                { value: 'Pendente', label: 'Pendente (Atenção)', color: 'bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-800' },
-                                                { value: 'Em Rota', label: 'Em Rota', color: 'bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-800' },
-                                                { value: 'Entregue', label: 'Entregue', color: 'bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-800' },
-                                                { value: 'Problema', label: 'Problema', color: 'bg-red-100 text-red-800 border-red-200 dark:bg-red-900/30 dark:text-red-300 dark:border-red-800' },
-                                                { value: 'Retornar a Loja', label: 'Retornar a Loja', color: 'bg-orange-100 text-orange-800 border-orange-200 dark:bg-orange-900/30 dark:text-orange-300 dark:border-orange-800' },
-                                                { value: 'Cancelado', label: 'Cancelado', color: 'bg-rose-100 text-rose-800 border-rose-200 dark:bg-rose-900/30 dark:text-rose-300 dark:border-rose-800' }
-                                            ].map((option) => (
-                                                <button
-                                                    key={option.value}
-                                                    onClick={() => setEditForm({ ...editForm, status: option.value })}
-                                                    className={`
-                                                        px-3 py-2 rounded-xl text-xs font-bold border-2 transition-all flex-1 whitespace-nowrap
-                                                        ${option.color}
-                                                        ${editForm.status === option.value
-                                                            ? 'ring-2 ring-offset-1 ring-gray-400 dark:ring-gray-500 scale-105 shadow-md opacity-100'
-                                                            : 'opacity-60 hover:opacity-100 hover:scale-105 border-transparent'}
-                                                    `}
-                                                >
-                                                    {option.label}
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Observações do Motoboy</label>
-                                        <textarea
-                                            className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white h-24"
-                                            value={editForm.notes}
-                                            onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })}
-                                            placeholder="Ex: Campainha quebrada, deixei com vizinho..."
-                                        />
-                                    </div>
-                                    <button
-                                        onClick={handleSaveEdit}
-                                        className="w-full py-3 bg-pink-600 text-white font-bold rounded-lg hover:bg-pink-700 transition-colors"
-                                    >
-                                        Salvar Alterações
-                                    </button>
-                                </div>
-                            ) : (
-                                <>
-                                    {/* Read-Only View */}
-                                    <div className="flex justify-between items-start">
-                                        <div>
-                                            <p className="text-xl font-bold text-gray-900 dark:text-white">{selectedDelivery.customerName}</p>
-                                            <p className="text-sm text-gray-500">{selectedDelivery.address}</p>
-                                            {selectedDelivery.motoboyName && (
-                                                <p className="text-xs text-indigo-600 dark:text-indigo-400 mt-1 font-bold flex items-center gap-1">
-                                                    <Bike size={12} /> {selectedDelivery.motoboyName}
-                                                </p>
-                                            )}
-                                        </div>
-                                        <div className="flex flex-col items-end gap-2">
-                                            <span className={`px-2 py-1 rounded text-xs font-bold border ${getStatusColor(selectedDelivery.status)}`}>
-                                                {selectedDelivery.status}
-                                            </span>
-                                            {/* Route stop number badge */}
-                                            {selectedDelivery.routeOrder != null && (
-                                                <span className="flex items-center gap-1 bg-gray-900 text-white text-xs font-black px-2 py-1 rounded-full">
-                                                    <Map size={10} /> Parada #{selectedDelivery.routeOrder}
-                                                </span>
-                                            )}
-                                        </div>
-                                    </div>
-
-                                    <div className="flex gap-2 mt-4">
-                                        <button
-                                            onClick={() => openWhatsApp(selectedDelivery.phone, selectedDelivery.customerName)}
-                                            className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white py-2 rounded-lg font-bold text-sm flex items-center justify-center gap-2"
-                                        >
-                                            <MessageCircle size={16} /> Chamar no WhatsApp
-                                        </button>
-                                        <button
-                                            onClick={() => setIsEditing(true)}
-                                            className="flex-1 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-800 dark:text-white py-2 rounded-lg font-bold text-sm flex items-center justify-center gap-2"
-                                        >
-                                            <Edit size={16} /> Editar Status/Obs
-                                        </button>
-                                    </div>
-
-                                    {selectedDelivery.notes && (
-                                        <div className="mt-4 p-3 bg-yellow-50 dark:bg-yellow-900/10 border border-yellow-100 dark:border-yellow-800 rounded-lg">
-                                            <p className="text-xs font-bold text-yellow-800 dark:text-yellow-200 mb-1">Observação:</p>
-                                            <p className="text-sm text-yellow-900 dark:text-yellow-100">{selectedDelivery.notes}</p>
-                                        </div>
-                                    )}
-                                    {/* Imprimir Comprovante individual */}
-                                    <div className="mt-4 border-t border-gray-100 dark:border-gray-700 pt-4">
-                                        <button
-                                            onClick={() => {
-                                                const d = selectedDelivery;
-                                                const routeNum = d.routeOrder != null ? `PARADA #${d.routeOrder}` : null;
-                                                const printWindow = window.open('', 'PRINT', 'height=700,width=420');
-                                                if (!printWindow) return;
-                                                printWindow.document.write(`
-                                                    <html><head><title>Comprovante ${d.id}</title>
-                                                    <style>
-                                                        @page { size: 80mm auto; margin: 0; }
-                                                        * { box-sizing: border-box; margin: 0; padding: 0; }
-                                                        body { font-family: 'Courier New', monospace; font-size: 13px; font-weight: 700; width: 80mm; padding: 4mm; color: #000; line-height: 1.5; }
-                                                        .center { text-align: center; }
-                                                        .divider { border-top: 2px dashed #000; margin: 7px 0; }
-                                                        .row { display: flex; justify-content: space-between; align-items: flex-start; }
-                                                        .stop-badge { display: block; background: #111; color: #fff; font-size: 22px; font-weight: 900; letter-spacing: 2px; padding: 6px 0; border-radius: 6px; margin: 8px 0; text-align: center; }
-                                                        .label { font-size: 10px; text-transform: uppercase; color: #666; letter-spacing: 0.5px; }
-                                                        .value { font-size: 14px; font-weight: 900; }
-                                                        .sm { font-size: 12px; }
-                                                    </style>
-                                                    </head><body>
-                                                    <div class="center">
-                                                        <div class="value" style="font-size:17px">🏍️ PriMAKE</div>
-                                                        <div class="label">Comprovante de Entrega</div>
-                                                    </div>
-                                                    ${routeNum ? `<div class="stop-badge">${routeNum}</div>` : '<div class="divider"></div>'}
-                                                    <div class="divider"></div>
-                                                    <div class="label">Cliente</div>
-                                                    <div class="value">${d.customerName}</div>
-                                                    ${d.phone ? `<div class="sm">${d.phone}</div>` : ''}
-                                                    <div class="divider"></div>
-                                                    <div class="label">Endereço</div>
-                                                    <div class="value sm">${d.address}${d.city ? ', ' + d.city : ''}</div>
-                                                    <div class="divider"></div>
-                                                    <div class="label">Itens</div>
-                                                    <div class="sm" style="padding: 2px 0">${d.itemsSummary}</div>
-                                                    <div class="divider"></div>
-                                                    <div class="row">
-                                                        <div><div class="label">Total</div><div class="value">R$ ${d.totalValue.toFixed(2)}</div></div>
-                                                        ${d.paymentMethod ? `<div style="text-align:right"><div class="label">Pagamento</div><div class="value sm">${d.paymentMethod}</div></div>` : ''}
-                                                    </div>
-                                                    <div class="divider"></div>
-                                                    <div class="center sm">ID: ${d.id}</div>
-                                                    <div class="center" style="font-size:11px">${new Date(d.date).toLocaleDateString('pt-BR')}</div>
-                                                    ${d.notes ? `<div class="divider"></div><div class="label">Obs:</div><div class="sm">${d.notes}</div>` : ''}
-                                                    <div class="divider"></div>
-                                                    <div class="center" style="font-size:10px">Sistema PriMAKE • Obrigado!</div>
-                                                    </body></html>
-                                                `);
-                                                printWindow.document.close();
-                                                printWindow.focus();
-                                                setTimeout(() => { printWindow.print(); printWindow.close(); }, 400);
-                                            }}
-                                            className="w-full flex items-center justify-center gap-2 py-2.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-lg font-bold text-sm transition-colors"
-                                        >
-                                            <Printer size={16} /> Imprimir Comprovante
-                                        </button>
-                                    </div>
-                                </>
-                            )}
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* --- ROUTE MODAL (PRINT) --- */}
-            {isRouteModalOpen && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-                    <div className="absolute inset-0 bg-gray-900/60 backdrop-blur-sm" onClick={() => setIsRouteModalOpen(false)}></div>
-                    <div className="bg-white dark:bg-gray-800 w-full max-w-3xl rounded-xl shadow-2xl relative flex flex-col h-[90vh] animate-in fade-in zoom-in-95 duration-200">
-                        <div className="p-5 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center bg-gray-900 text-white">
-                            <h3 className="font-bold text-lg flex items-center gap-2">
-                                <Map size={20} /> Rota de Entrega ({routeSequence.length} paradas)
-                            </h3>
-                            <button onClick={() => setIsRouteModalOpen(false)} className="text-gray-400 hover:text-white">
-                                <X size={20} />
-                            </button>
-                        </div>
-
-                        <div className="flex-1 overflow-y-auto p-4" id="printable-route">
-                            {/* Header - 75mm optimized */}
-                            <div className="mb-4 pb-3 border-b-2 border-dashed border-gray-400 text-center">
-                                <h1 className="text-lg font-bold text-gray-900 dark:text-gray-100 uppercase tracking-wide">Manifesto de Entrega</h1>
-                                <p className="text-xs text-gray-500 mt-1">Data: {new Date().toLocaleDateString('pt-BR')} • {routeSequence.length} paradas</p>
-                            </div>
-
-                            {/* Deliveries - in route order */}
-                            <div className="space-y-3">
-                                {routeSequence
-                                    .map(id => deliveries.find(d => d.id === id))
-                                    .filter(Boolean)
-                                    .map((d, index) => (
-                                        // @ts-ignore
-                                        <div key={d.id} className="border border-gray-200 dark:border-gray-600 rounded-lg p-3 break-inside-avoid bg-white dark:bg-gray-700/50">
-                                            {/* Sequence Number & Value Row */}
-                                            <div className="flex justify-between items-center mb-2">
-                                                <span className="bg-gray-900 text-white text-xs font-bold px-2 py-1 rounded">{index + 1}</span>
-                                                <span className="text-base font-bold text-gray-900 dark:text-white">R$ {d.totalValue.toFixed(2)}</span>
-                                            </div>
-
-                                            {/* Customer Info */}
-                                            <div className="mb-2">
-                                                <p className="font-bold text-sm text-gray-900 dark:text-white truncate">{d.customerName}</p>
-                                                <p className="text-xs text-gray-500">{d.phone}</p>
-                                                {d.paymentMethod && <p className="text-xs font-bold text-gray-700 dark:text-gray-300 mt-1">💳 {d.paymentMethod}</p>}
-                                            </div>
-
-                                            {/* Address */}
-                                            <div className="text-xs text-gray-700 dark:text-gray-300 border-t border-gray-100 dark:border-gray-600 pt-2">
-                                                <p className="break-words">{d.address}</p>
-                                                <p className="text-gray-500">{d.city}</p>
-                                            </div>
-
-                                            {/* Notes */}
-                                            {d.notes && (
-                                                <div className="mt-2 text-[10px] bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-200 p-1.5 rounded">
-                                                    ⚠️ {d.notes}
-                                                </div>
-                                            )}
-
-                                            {/* Status Check */}
-                                            <div className="mt-2 pt-2 border-t border-dashed border-gray-200 dark:border-gray-600 flex items-center gap-3 text-[10px] text-gray-400">
-                                                <span>☐ Entregue</span>
-                                                <span>☐ Ausente</span>
-                                                <span>☐ Recusado</span>
-                                            </div>
-                                        </div>
-                                    ))}
-                            </div>
-
-                            {/* Footer */}
-                            <div className="mt-6 pt-4 border-t-2 border-dashed border-gray-400 space-y-3 text-xs text-gray-600 dark:text-gray-400">
-                                <div className="flex justify-between">
-                                    <span>Saída: {new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
-                                    <span>Retorno: ____:____</span>
-                                </div>
-                                <div className="pt-4 border-t border-gray-200 dark:border-gray-600">
-                                    <p className="text-center mb-8">Assinatura do Entregador</p>
-                                    <div className="border-b border-gray-400 w-full"></div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="p-4 border-t border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/30 flex justify-end gap-3">
-                            <button
-                                onClick={async () => {
-                                    const printContent = document.getElementById('printable-route');
-                                    const windowUrl = 'about:blank';
-                                    const uniqueName = new Date().getTime();
-                                    const windowName = 'Print' + uniqueName;
-                                    const printWindow = window.open(windowUrl, windowName, 'left=50000,top=50000,width=0,height=0');
-
-                                    if (printWindow && printContent) {
-                                        printWindow.document.write(`
-                                            <html>
-                                                <head>
-                                                    <title>Rota de Entrega</title>
-                                                    <style>
-                                                        * { box-sizing: border-box; margin: 0; padding: 0; color: #000; }
-                                                        body { 
-                                                            font-family: 'Courier New', Courier, monospace; 
-                                                            font-size: 13px;
-                                                            font-weight: 700;
-                                                            width: 80mm; 
-                                                            padding: 3mm;
-                                                            color: #000;
-                                                            line-height: 1.3;
-                                                        }
-                                                        .mb-4 { margin-bottom: 12px; }
-                                                        .mb-2 { margin-bottom: 8px; }
-                                                        .mt-2 { margin-top: 8px; }
-                                                        .mt-6 { margin-top: 20px; }
-                                                        .pt-2 { padding-top: 8px; }
-                                                        .pt-4 { padding-top: 12px; }
-                                                        .pb-3 { padding-bottom: 10px; }
-                                                        .p-3 { padding: 10px; }
-                                                        .p-1\\.5 { padding: 4px; }
-                                                        .space-y-3 > * + * { margin-top: 10px; }
-                                                        .border { border: 1px solid #000; }
-                                                        .border-dashed { border-style: dashed; }
-                                                        .border-t { border-top: 1px solid #000; }
-                                                        .border-t-2 { border-top: 2px dashed #000; }
-                                                        .border-b { border-bottom: 1px solid #000; }
-                                                        .border-b-2 { border-bottom: 2px dashed #000; }
-                                                        .rounded { border-radius: 4px; }
-                                                        .rounded-lg { border-radius: 6px; }
-                                                        .text-center { text-align: center; }
-                                                        .text-xs { font-size: 11px; font-weight: 700; }
-                                                        .text-sm { font-size: 12px; font-weight: 700; }
-                                                        .text-base { font-size: 13px; font-weight: 700; }
-                                                        .text-lg { font-size: 15px; font-weight: 900; }
-                                                        .font-bold { font-weight: 900; }
-                                                        .uppercase { text-transform: uppercase; }
-                                                        .tracking-wide { letter-spacing: 1px; }
-                                                        .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-                                                        .break-words { word-wrap: break-word; }
-                                                        .break-inside-avoid { break-inside: avoid; }
-                                                        .flex { display: flex; }
-                                                        .justify-between { justify-content: space-between; }
-                                                        .items-center { align-items: center; }
-                                                        .gap-3 { gap: 10px; }
-                                                        .bg-gray-900 { background: #000; color: #fff; font-weight: 900; }
-                                                        .bg-yellow-100 { background: #fff; border: 1px solid #000; }
-                                                        .text-yellow-800 { color: #000; font-weight: 900; }
-                                                        .text-gray-400 { color: #000; }
-                                                        .text-gray-500 { color: #000; }
-                                                        .text-gray-700 { color: #000; }
-                                                        .text-gray-900 { color: #000; }
-                                                        @media print {
-                                                            @page { size: 80mm auto; margin: 0; }
-                                                            html, body { width: 80mm; max-width: 80mm; margin: 0; padding: 1mm; }
-                                                            * { color: #000 !important; -webkit-print-color-adjust: exact; }
-                                                        }
-                                                    </style>
-                                                </head>
-                                                <body>
-                                                    ${printContent.innerHTML}
-                                                </body>
-                                            </html>
-                                        `);
-                                        printWindow.document.close();
-                                        printWindow.focus();
-                                        printWindow.print();
-                                        printWindow.close();
-
-                                        // Delay to wait for print dialog to close (especially on mobile)
-                                        setTimeout(async () => {
-                                            const pendingIds = routeSequence.filter(id => {
-                                                const d = deliveries.find(del => del.id === id);
-                                                return d && d.status !== 'Em Rota' && d.status !== 'Entregue' && d.status !== 'Cancelado';
-                                            });
-                                            if (pendingIds.length > 0 && window.confirm(`Deseja colocar ${pendingIds.length === 1 ? 'esta entrega' : 'todas as ' + pendingIds.length + ' entregas'} em rota agora?`)) {
-                                                for (const id of pendingIds) {
-                                                    await updateStatus(id, 'Em Rota');
-                                                }
-                                                setRouteSequence([]);
-                                                setIsRouteModalOpen(false);
-                                                refresh();
-                                            }
-                                        }, 1000);
-                                    } else {
-                                        window.print();
-                                    }
-                                }}
-                                className="bg-gray-900 hover:bg-black text-white px-6 py-2 rounded-lg font-bold flex items-center gap-2 shadow-lg"
-                            >
-                                <Printer size={18} /> Imprimir Rota
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* --- CREATE DELIVERY MODAL --- */}
-            {isCreateModalOpen && (
-                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-                    <div className="absolute inset-0 bg-gray-900/60 backdrop-blur-sm" onClick={() => setIsCreateModalOpen(false)}></div>
-                    <div className="bg-white dark:bg-gray-800 w-full max-w-lg rounded-xl shadow-2xl relative flex flex-col max-h-[90vh] overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-                        <div className="p-5 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center bg-gray-50 dark:bg-gray-700/30">
-                            <h3 className="font-bold text-lg text-gray-800 dark:text-white flex items-center gap-2">
-                                <Plus size={20} className="text-pink-600" /> Nova Entrega
-                            </h3>
-                            <button onClick={() => setIsCreateModalOpen(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
-                                <X size={20} />
-                            </button>
-                        </div>
-
-                        <form onSubmit={handleCreateDelivery} className="p-6 space-y-4 overflow-y-auto flex-1">
-                            <div className="bg-gray-50 dark:bg-gray-700/50 p-3 rounded-lg border border-gray-200 dark:border-gray-600 mb-2">
-                                <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-2 flex items-center gap-1">
-                                    <Users size={12} /> Selecionar Cliente
-                                </label>
-                                <select
-                                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                                    onChange={(e) => handleSelectCustomer(e.target.value)}
-                                    defaultValue=""
-                                >
-                                    <option value="" disabled>Selecione...</option>
-                                    {customers.map(c => (
-                                        <option key={c.id} value={c.id}>{c.name}</option>
-                                    ))}
-                                </select>
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Nome Cliente</label>
-                                    <input
-                                        required type="text"
-                                        className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                                        value={newDeliveryForm.customerName}
-                                        onChange={e => setNewDeliveryForm({ ...newDeliveryForm, customerName: e.target.value })}
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Telefone</label>
-                                    <input
-                                        type="text"
-                                        className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                                        value={newDeliveryForm.phone}
-                                        onChange={e => setNewDeliveryForm({ ...newDeliveryForm, phone: e.target.value })}
-                                    />
-                                </div>
-                            </div>
-
-                            <div>
-                                <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Endereço</label>
-                                <input
-                                    required type="text"
-                                    className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                                    value={newDeliveryForm.address}
-                                    onChange={e => setNewDeliveryForm({ ...newDeliveryForm, address: e.target.value })}
-                                />
-                            </div>
-
-                            {/* Motoboy Selection */}
-                            <div>
-                                <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1 flex items-center gap-1">
-                                    <Bike size={12} className="text-indigo-500" /> Entregador Responsável
-                                </label>
-                                <select
-                                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                                    value={newDeliveryForm.motoboyName}
-                                    onChange={(e) => setNewDeliveryForm({ ...newDeliveryForm, motoboyName: e.target.value })}
-                                >
-                                    <option value="">Aberto (Qualquer um)</option>
-                                    {availableMotoboys.map(boy => (
-                                        <option key={boy.id} value={boy.name}>{boy.name}</option>
-                                    ))}
-                                </select>
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Valor Pedido (R$)</label>
-                                    <input
-                                        type="number"
-                                        className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                                        value={newDeliveryForm.totalValue || ''}
-                                        onChange={e => setNewDeliveryForm({ ...newDeliveryForm, totalValue: parseFloat(e.target.value) })}
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-bold text-emerald-600 dark:text-emerald-400 mb-1">Taxa Entrega (R$)</label>
-                                    <input
-                                        type="number"
-                                        className="w-full px-3 py-2 border border-emerald-200 dark:border-emerald-800 rounded-lg bg-emerald-50 dark:bg-emerald-900/10 text-gray-900 dark:text-white font-bold"
-                                        value={newDeliveryForm.fee || ''}
-                                        onChange={e => setNewDeliveryForm({ ...newDeliveryForm, fee: parseFloat(e.target.value) })}
-                                        placeholder="Para repasse"
-                                    />
-                                </div>
-                            </div>
-
-                            {/* Payment Method */}
-                            <div>
-                                <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Forma de Pagamento</label>
-                                <select
-                                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                                    value={newDeliveryForm.paymentMethod}
-                                    onChange={e => setNewDeliveryForm({ ...newDeliveryForm, paymentMethod: e.target.value })}
-                                >
-                                    <option value="">Selecione...</option>
-                                    <option value="PIX">PIX</option>
-                                    <option value="Dinheiro">Dinheiro</option>
-                                    <option value="Cartão Crédito">Cartão Crédito</option>
-                                    <option value="Cartão Débito">Cartão Débito</option>
-                                    <option value="Já Pago">Já Pago</option>
-                                </select>
-                            </div>
-
-                            <button
-                                onClick={handleCreateDelivery}
-                                className="w-full py-3 bg-pink-600 hover:bg-pink-700 text-white font-bold rounded-lg shadow-md mt-4"
-                            >
-                                Salvar Entrega
-                            </button>
-                        </form>
-                    </div>
-                </div>
-            )}
-        </div>
-    );
+ // Load deliveries from Supabase
+ const { deliveries, loading, error, refresh } = useDeliveries();
+ // Load customers for selection
+ const { customers } = useCustomers();
+ // Load users (motoboys)
+ const { users } = useUsers();
+
+ // View State (Active vs Archived)
+  const toast = useToast();
+ const [viewMode, setViewMode] = useState<'active'|'archived'>('active');
+ const [historyDate, setHistoryDate] = useState(new Date().toISOString().split('T')[0]);
+
+ // Filter State
+ const [filterMethod, setFilterMethod] = useState<'All'|'Local'|'Dispatch'>('All');
+ const [filterMotoboy, setFilterMotoboy] = useState<string>('Todos');
+ const [searchTerm, setSearchTerm] = useState('');
+
+ // --- ROUTE SELECTION STATE ---
+ // routeSequence is an ORDERED array: position 0 = stop #1, position 1 = stop #2, etc.
+ const [routeSequence, setRouteSequence] = useState<string[]>([]);
+ const [isRouteModalOpen, setIsRouteModalOpen] = useState(false);
+ const [isSavingRoute, setIsSavingRoute] = useState(false);
+
+ // --- STATUS SUB-FILTER (active view) ---
+ const [filterStatus, setFilterStatus] = useState<'Todos'|'Iniciar'|'Em Rota'|'Problema'|'Retornar'>('Todos');
+
+ // --- CARD INLINE FINALIZE MENU ---
+ const [finalizeMenuId, setFinalizeMenuId] = useState<string | null>(null);
+
+ // --- MODAL STATES ---
+ const [selectedDelivery, setSelectedDelivery] = useState<DeliveryOrder | null>(null);
+ const [receiptDelivery, setReceiptDelivery] = useState<DeliveryOrder | null>(null);
+ const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+ const [isPayoutModalOpen, setIsPayoutModalOpen] = useState(false);
+ const [payoutTab, setPayoutTab] = useState<'pending'|'paid'>('pending');
+
+ // --- EDIT STATES (Inside Details Modal) ---
+ const [isEditing, setIsEditing] = useState(false);
+ const [editForm, setEditForm] = useState<{ status: string, notes: string }>({ status:'', notes:''});
+
+ // --- NEW DELIVERY FORM STATE ---
+ const [newDeliveryForm, setNewDeliveryForm] = useState<Partial<DeliveryOrder>>({
+ customerName:'',
+ phone:'',
+ address:'',
+ city:'',
+ source:'WhatsApp',
+ method:'Motoboy',
+ itemsSummary:'',
+ totalValue: 0,
+ fee: 0,
+ motoboyName:'', // Added motoboy selection
+ paymentMethod:''// Payment method
+ });
+
+ const isSalesperson = user?.role ==='Vendedor';
+ const isMotoboy = user?.role ==='Motoboy';
+ const isAdmin = user?.role ==='Administrador'|| user?.role ==='Gerente';
+
+ // Get list of available motoboys from real users
+ const availableMotoboys = users.filter(u => u.role ==='Motoboy');
+
+ // --- LOGIC ---
+ const filteredDeliveries = deliveries.filter(d => {
+ // 1. Search Filter
+ const matchesSearch = d.customerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+ d.id.toLowerCase().includes(searchTerm.toLowerCase());
+
+ // 2. Method Filter
+ const matchesMethod = filterMethod ==='All'
+ ? true
+ : filterMethod ==='Local'
+ ? d.method ==='Motoboy'
+ : (d.method ==='Correios'|| d.method ==='Jadlog');
+
+ // 3. User Permission Filter (The core request)
+ // If current user is Motoboy, ONLY show deliveries assigned to them.
+ // If Admin/Sales, show all.
+ let isAuthorized = true;
+ if (isMotoboy) {
+ isAuthorized = d.motoboyName === user?.name;
+ }
+
+ // 5. Motoboy Filter (Admin only)
+ const matchesMotoboy = filterMotoboy ==='Todos'|| d.motoboyName === filterMotoboy;
+
+ // 4. Archive vs Active Filter
+ const isFinished = d.status ==='Entregue'|| d.status ==='Cancelado';
+ let matchesView = true;
+
+ if (viewMode ==='active') {
+ matchesView = !isFinished; // Show pending, in route, retornar, etc.
+ // Apply status sub-filter
+ if (filterStatus ==='Iniciar') {
+ matchesView = matchesView && (d.status ==='Pendente'|| d.status ==='Em Preparo');
+ } else if (filterStatus ==='Em Rota') {
+ matchesView = matchesView && d.status ==='Em Rota';
+ } else if (filterStatus ==='Problema') {
+ matchesView = matchesView && d.status ==='Problema';
+ } else if (filterStatus ==='Retornar') {
+ matchesView = matchesView && d.status ==='Retornar a Loja';
+ }
+ } else {
+ // History Mode
+ matchesView = isFinished;
+ // Apply Date Filter in History Mode
+ if (historyDate) {
+ matchesView = matchesView && d.date.startsWith(historyDate);
+ }
+ }
+
+ return matchesSearch && matchesMethod && isAuthorized && matchesMotoboy && matchesView;
+ });
+
+ const updateStatus = async (id: string, newStatus: DeliveryOrder['status']) => {
+ try {
+ await DeliveryService.update(id, { status: newStatus });
+ await refresh();
+ if (selectedDelivery && selectedDelivery.id === id) {
+ setSelectedDelivery(prev => prev ? { ...prev, status: newStatus } : null);
+ }
+ } catch (err) {
+ console.error('Erro ao atualizar status:', err);
+ toast.error('Erro ao atualizar status da entrega');
+ }
+ };
+
+ const handleCreateDelivery = async (e: React.FormEvent) => {
+ e.preventDefault();
+ try {
+ const newOrder: Partial<DeliveryOrder> = {
+ id: `DEL-${Date.now().toString().slice(-6)}`,
+ customerName: newDeliveryForm.customerName ||'Cliente sem nome',
+ phone: newDeliveryForm.phone ||'',
+ address: newDeliveryForm.address ||'',
+ city: newDeliveryForm.city ||'',
+ source: newDeliveryForm.source as any,
+ method: newDeliveryForm.method as any,
+ status:'Pendente',
+ itemsSummary: newDeliveryForm.itemsSummary ||'Itens diversos',
+ totalValue: Number(newDeliveryForm.totalValue),
+ fee: Number(newDeliveryForm.fee),
+ motoboyName: newDeliveryForm.motoboyName,
+ trackingCode: newDeliveryForm.trackingCode,
+ paymentMethod: newDeliveryForm.paymentMethod ||''
+ };
+
+ await DeliveryService.create(newOrder);
+ await refresh();
+ setIsCreateModalOpen(false);
+ setNewDeliveryForm({
+ customerName:'', phone:'', address:'', city:'',
+ source:'WhatsApp', method:'Motoboy', itemsSummary:'', totalValue: 0, fee: 0, motoboyName:'', paymentMethod:''
+ });
+ } catch (err) {
+ console.error('Erro ao criar entrega:', err);
+ toast.error('Erro ao criar entrega');
+ }
+ };
+
+ const handleSelectCustomer = (customerId: string) => {
+ const customer = customers.find(c => c.id === customerId);
+ if (customer) {
+ setNewDeliveryForm(prev => ({
+ ...prev,
+ customerName: customer.name,
+ phone: customer.phone ||'',
+ address: customer.address ||'',
+ city: customer.city ||''
+ }));
+ }
+ };
+
+ const handleSaveEdit = async () => {
+ if (selectedDelivery) {
+ try {
+ const updated = await DeliveryService.update(selectedDelivery.id, {
+ status: editForm.status as any,
+ notes: editForm.notes
+ });
+ await refresh();
+ setSelectedDelivery(updated);
+ setIsEditing(false);
+ } catch (err) {
+ console.error('Erro ao salvar edição:', err);
+ toast.error('Erro ao salvar alterações');
+ }
+ }
+ };
+
+ // --- PAYOUT REPORT LOGIC ---
+ const [payoutData, setPayoutData] = useState<Record<string, { count: number, totalFee: number }>>({});
+ const [paidPayoutData, setPaidPayoutData] = useState<Record<string, { count: number, totalFee: number }>>({});
+ const [selectedPayoutMotoboy, setSelectedPayoutMotoboy] = useState<string | null>(null);
+ const [payoutDeliveries, setPayoutDeliveries] = useState<DeliveryOrder[]>([]);
+ const [payoutDeliveriesLoading, setPayoutDeliveriesLoading] = useState(false);
+
+ const loadPayoutData = async () => {
+ try {
+ const [pending, paid] = await Promise.all([
+ DeliveryService.getPayoutReport(),
+ DeliveryService.getPaidPayoutReport()
+ ]);
+ setPayoutData(pending);
+ setPaidPayoutData(paid);
+ } catch (err) {
+ console.error('Erro ao carregar repasses:', err);
+ }
+ };
+
+ const loadPayoutDeliveries = async (motoboyName: string) => {
+ setPayoutDeliveriesLoading(true);
+ try {
+ const list = await DeliveryService.getPayoutDeliveries(motoboyName);
+ setPayoutDeliveries(list);
+ } catch (err) {
+ console.error('Erro ao carregar detalhes do repasse:', err);
+ } finally {
+ setPayoutDeliveriesLoading(false);
+ }
+ };
+
+ const handleSelectPayoutMotoboy = (name: string) => {
+ setSelectedPayoutMotoboy(name);
+ loadPayoutDeliveries(name);
+ };
+
+ useEffect(() => {
+ if (isPayoutModalOpen) {
+ setPayoutTab('pending');
+ setSelectedPayoutMotoboy(null);
+ setPayoutDeliveries([]);
+ loadPayoutData();
+ }
+ }, [isPayoutModalOpen]);
+
+ const handlePrintPayoutReport = () => {
+ const printWindow = window.open('','PRINT','height=600,width=800');
+ if (!printWindow) return;
+
+ // Print detail for selected motoboy, or summary of all
+ const isSingleMotoboy = selectedPayoutMotoboy && payoutDeliveries.length > 0;
+ const motoboyName = selectedPayoutMotoboy ||'Todos';
+ const totalFee = isSingleMotoboy
+ ? payoutDeliveries.reduce((s, d) => s + (Number(d.fee) || 0), 0)
+ : Object.values(payoutData).reduce((s, v: any) => s + v.totalFee, 0);
+
+ const deliveryRows = isSingleMotoboy
+ ? payoutDeliveries.map((d, i) => {
+ const dt = d.date ? new Date(d.date).toLocaleDateString('pt-BR') :'';
+ return `
+ <div class="item">
+ <div class="item-row"style="font-weight:900">
+ <span>#${i + 1} — ${d.customerName ||''}</span>
+ <span>R$ ${(Number(d.fee) || 0).toFixed(2)}</span>
+ </div>
+ <div class="item-sub">${dt}${d.address ?'·'+ d.address :''}</div>
+ ${d.itemsSummary ? `<div class="item-sub">${d.itemsSummary}</div>` :''}
+ </div>`;
+ }).join('')
+ : Object.entries(payoutData).map(([name, data]: [string, any]) => `
+ <div class="item">
+ <div class="item-row">
+ <span>${name.toUpperCase()}</span>
+ <span>R$ ${data.totalFee.toFixed(2)}</span>
+ </div>
+ <div class="item-sub">${data.count} entrega${data.count !== 1 ?'s':''}</div>
+ </div>`).join('');
+
+ printWindow.document.write(`
+ <html>
+ <head>
+ <title>Comprovante de Repasse</title>
+ <style>
+ @page { size: 80mm auto; margin: 0; }
+ * { box-sizing: border-box; margin: 0; padding: 0; }
+ body {
+ font-family:'Courier New', Courier, monospace;
+ font-size: 12px;
+ font-weight: 700;
+ width: 80mm;
+ max-width: 80mm;
+ padding: 2mm;
+ margin: 0 auto;
+ color: #000;
+ line-height: 1.4;
+ -webkit-print-color-adjust: exact;
+ }
+ .header { text-align: center; margin-bottom: 12px; border-bottom: 2px dashed #000; padding-bottom: 10px; }
+ .title { font-size: 16px; font-weight: 900; text-transform: uppercase; letter-spacing: 1px; }
+ .subtitle { font-size: 11px; margin-top: 4px; font-weight: 700; }
+ .motoboy-name { font-size: 13px; font-weight: 900; margin-top: 6px; border: 1px solid #000; padding: 2px 6px; display: inline-block; }
+ .datetime { font-size: 10px; margin-top: 6px; font-weight: 700; }
+ .section-title { font-size: 11px; font-weight: 900; margin: 10px 0 6px; text-transform: uppercase; border-bottom: 1px dotted #000; padding-bottom: 3px; }
+ .item { margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px dotted #000; }
+ .item-row { display: flex; justify-content: space-between; font-size: 12px; font-weight: 900; }
+ .item-sub { font-size: 10px; font-weight: 700; color: #333; margin-top: 2px; word-break: break-word; }
+ .total { margin-top: 12px; border-top: 2px dashed #000; padding-top: 10px; font-size: 16px; font-weight: 900; text-align: center; }
+ .signature-block { margin-top: 28px; }
+ .signature { text-align: center; margin-top: 22px; }
+ .signature-line { border-top: 1px solid #000; width: 90%; margin: 0 auto; padding-top: 4px; font-size: 10px; font-weight: 700; }
+ .footer { margin-top: 18px; text-align: center; font-size: 10px; color: #000; font-weight: 700; }
+ @media print { body { width: 80mm; } }
+ </style>
+ </head>
+ <body>
+ <div class="header">
+ <div class="title">PriMAKE</div>
+ <div class="subtitle">Comprovante de Repasse</div>
+ ${isSingleMotoboy ? `<div class="motoboy-name"> ${motoboyName}</div>` :''}
+ <div class="datetime">
+ ${new Date().toLocaleDateString('pt-BR')} &nbsp;
+ ${new Date().toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit'})}
+ </div>
+ </div>
+
+ <div class="section-title">${isSingleMotoboy ? `Entregas — ${payoutDeliveries.length} pedido(s)` :'Resumo por Motoboy'}</div>
+
+ ${deliveryRows}
+
+ <div class="total">
+ TOTAL A PAGAR: R$ ${totalFee.toFixed(2)}
+ </div>
+
+ <div class="signature-block">
+ <div class="signature">
+ <div class="signature-line">Responsável Financeiro</div>
+ </div>
+ <div class="signature">
+ <div class="signature-line">Entregador: ${motoboyName}</div>
+ </div>
+ </div>
+
+ <div class="footer">
+ Sistema PriMAKE • Gerado automaticamente<br/>
+ Impresso em: ${new Date().toLocaleString('pt-BR')}
+ </div>
+ </body>
+ </html>
+ `);
+
+ printWindow.document.close();
+ printWindow.focus();
+ // Após imprimir, perguntar se deseja marcar como pago
+ setTimeout(async () => {
+ printWindow.print();
+ printWindow.close();
+
+ if (isSingleMotoboy && selectedPayoutMotoboy) {
+ const total = (payoutDeliveries.reduce((s, d) => s + (Number(d.fee) || 0), 0)).toFixed(2);
+ const confirmar = window.confirm(
+ ` Comprovante impresso!\n\nDeseja marcar o repasse de ${selectedPayoutMotoboy} como PAGO?\n\nTotal: R$ ${total}\n${payoutDeliveries.length} entrega(s)`
+ );
+ if (confirmar) {
+ await DeliveryService.markAsPaid(selectedPayoutMotoboy);
+ setSelectedPayoutMotoboy(null);
+ setPayoutDeliveries([]);
+ loadPayoutData();
+ refresh();
+ }
+ }
+ }, 500);
+ };
+
+
+ // --- WHATSAPP LINK ---
+ const openWhatsApp = (phone: string, name: string) => {
+ const cleanPhone = phone.replace(/\D/g,'');
+ if (cleanPhone) {
+ const text = `Olá ${name}, aqui é da entrega da Pri MAKE. Estou com seu pedido!`;
+ window.open(`https://wa.me/55${cleanPhone}?text=${encodeURIComponent(text)}`,'_blank');
+ } else {
+ toast.info('Telefone inválido para WhatsApp.');
+ }
+ };
+
+ // --- ROUTE HANDLERS ---
+ const toggleRouteSelection = (id: string) => {
+ setRouteSequence(prev =>
+ prev.includes(id)
+ ? prev.filter(i => i !== id) // remove -> deselect
+ : [...prev, id] // append at end = next stop number
+ );
+ };
+
+ const selectableDeliveries = filteredDeliveries.filter(
+ d => d.status !=='Entregue'&& d.status !=='Cancelado'
+ );
+ const allSelected = selectableDeliveries.length > 0 && selectableDeliveries.every(d => routeSequence.includes(d.id));
+
+ const toggleSelectAll = () => {
+ if (allSelected) {
+ setRouteSequence([]);
+ } else {
+ // Add only the ones not already in the sequence, preserving existing order
+ const existing = routeSequence.filter(id => selectableDeliveries.some(d => d.id === id));
+ const newOnes = selectableDeliveries.filter(d => !routeSequence.includes(d.id)).map(d => d.id);
+ setRouteSequence([...existing, ...newOnes]);
+ }
+ };
+
+ // Save the route order to the database
+ const saveRouteOrder = async () => {
+ setIsSavingRoute(true);
+ try {
+ // Update each delivery in routeSequence with its position number
+ const updates = routeSequence.map((id, idx) =>
+ DeliveryService.update(id, { routeOrder: idx + 1 })
+ );
+ // Also clear routeOrder for deliveries that were removed from the sequence
+ const removedIds = selectableDeliveries
+ .filter(d => !routeSequence.includes(d.id) && d.routeOrder != null)
+ .map(d => DeliveryService.update(d.id, { routeOrder: null }));
+ await Promise.all([...updates, ...removedIds]);
+ await refresh();
+ toast.info(` Rota salva! ${routeSequence.length} paradas organizadas.`);
+ } catch (err) {
+ console.error('Erro ao salvar rota:', err);
+ toast.error('Erro ao salvar rota. Tente novamente.');
+ } finally {
+ setIsSavingRoute(false);
+ }
+ };
+
+
+
+ const getStatusColor = (status: string) => {
+ switch (status) {
+ case'Pendente': return'bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-800';
+ case'Em Preparo': return'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-900/20 dark:text-blue-300 dark:border-blue-800';
+ case'Em Rota': return'bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-800';
+ case'Entregue': return'bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-800';
+ case'Cancelado': return'bg-rose-100 text-rose-800 border-rose-200 dark:bg-rose-900/30 dark:text-rose-300 dark:border-rose-800';
+ case'Problema': return'bg-red-100 text-red-800 border-red-200 dark:bg-red-900/30 dark:text-red-300 dark:border-red-800';
+ case'Retornar a Loja': return'bg-orange-100 text-orange-800 border-orange-200 dark:bg-orange-900/30 dark:text-orange-300 dark:border-orange-800';
+ default: return'bg-slate-100 text-slate-700';
+ }
+ };
+
+ return (
+ <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 relative pb-20">
+ {/* Header */}
+ <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+ <div>
+ <h2 className="text-2xl font-bold text-slate-800 dark:text-white flex items-center gap-2">
+ <Bike className="text-primary dark:text-primary"/> Central de Entregas
+ </h2>
+ <p className="text-slate-500 dark:text-slate-400">
+ {isMotoboy ? `Olá, ${user?.name}. Aqui estão suas entregas.` :'Gerencie a rota do motoboy e repasses.'}
+ </p>
+ </div>
+
+ <div className="flex flex-wrap gap-2 w-full md:w-auto">
+  <SmoothTabs
+  tabs={[
+  { key: 'active', label: 'Em Andamento', icon: <Truck size={14} /> },
+  { key: 'archived', label: 'Arquivados', icon: <Archive size={14} /> },
+  ]}
+  activeKey={viewMode}
+  onChange={(k) => setViewMode(k as 'active' | 'archived')}
+  size="sm"
+  />
+
+ {!isSalesperson && !isMotoboy && (
+ <DSButton onClick={() => setIsPayoutModalOpen(true)} variant="primary" style={{background:"#059669"}} startIcon={<DollarSign size={18} />}>Repasse</DSButton>
+ )}
+
+ {viewMode ==='active'&& selectableDeliveries.length > 0 && (
+ <DSButton
+ onClick={toggleSelectAll}
+ variant="primary"
+ >
+ <CheckCircle size={16} />
+ {allSelected ? `Desmarcar Todas (${selectableDeliveries.length})` : `Selecionar Todas (${selectableDeliveries.length})`}
+ </DSButton>
+ )}
+
+ {routeSequence.length > 0 && (
+ <>
+ <button
+ onClick={() => setIsRouteModalOpen(true)}
+ className="flex-1 md:flex-none bg-slate-900 hover:bg-black text-white px-4 py-2 rounded-lg text-sm font-bold shadow-md transition-all animate-in zoom-in-95 flex items-center justify-center gap-2"
+ >
+ <Map size={18} /> Ver Rota ({routeSequence.length})
+ </button>
+ <button
+ onClick={saveRouteOrder}
+ disabled={isSavingRoute}
+ className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-md transition-all disabled:opacity-60"
+ >
+ <Save size={16} /> {isSavingRoute ?'Salvando...':'Salvar Rota'}
+ </button>
+ </>
+ )}
+
+ {!isMotoboy && (
+ <DSButton
+ onClick={() => setIsCreateModalOpen(true)}
+ variant="primary"
+ >
+ <Plus size={18} /> <span className={routeSequence.length > 0 ?"hidden lg:inline":""}>Nova Entrega</span>
+ </DSButton>
+ )}
+ </div>
+ </div>
+
+ {/* Filter Bar */}
+ <div className="bg-white dark:bg-slate-800 p-4 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700 flex flex-col md:flex-row gap-4 justify-between items-center">
+ <div className="relative w-full md:w-96">
+ <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"size={18} />
+ <input
+ type="text"
+ placeholder="Buscar por cliente ou ID..."
+ className="w-full pl-10 pr-4 py-2 border border-slate-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-primary200 focus:border-primary outline-none bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white"
+ value={searchTerm}
+ onChange={(e) => setSearchTerm(e.target.value)}
+ />
+ </div>
+
+ <div className="flex items-center gap-4 w-full md:w-auto">
+ {/* Date Picker for History */}
+ {viewMode ==='archived'&& (
+ <div className="flex items-center gap-2 bg-indigo-50 dark:bg-indigo-900/20 p-1.5 rounded-lg border border-indigo-100 dark:border-indigo-800">
+ <Calendar size={16} className="text-indigo-600 dark:text-indigo-400 ml-1"/>
+ <input
+ type="date"
+ className="bg-transparent text-sm text-indigo-700 dark:text-indigo-300 outline-none"
+ value={historyDate}
+ onChange={(e) => setHistoryDate(e.target.value)}
+ />
+ </div>
+ )}
+
+ {/* Method Tabs */}
+  <SmoothTabs
+  tabs={[
+  { key: 'All', label: 'Todas' },
+  { key: 'Local', label: 'Entrega Cliente', icon: <Home size={14} /> },
+  { key: 'Dispatch', label: 'Levar Correios', icon: <Package size={14} /> },
+  ]}
+  activeKey={filterMethod}
+  onChange={(k) => setFilterMethod(k as 'All' | 'Local' | 'Dispatch')}
+  size="sm"
+  />
+
+ {/* Motoboy Filter (Admin only) */}
+ {!isMotoboy && availableMotoboys.length > 0 && (
+ <CustomDropdown value={filterMotoboy} onChange={setFilterMotoboy} options={[{ value: 'Todos', label: 'Todos Motoboys' }, ...availableMotoboys.map(m => ({ value: m.name, label: m.name }))]} placeholder="Motoboy" />
+ )}
+ </div>
+ </div>
+
+ {/* ── Status Sub-Filter Chips (active view only) ── */}
+ {viewMode ==='active'&& (() => {
+ const activeAll = deliveries.filter(d => d.status !=='Entregue'&& d.status !=='Cancelado');
+ const counts = {
+ Todos: activeAll.length,
+ Iniciar: activeAll.filter(d => d.status ==='Pendente'|| d.status ==='Em Preparo').length,
+'Em Rota': activeAll.filter(d => d.status ==='Em Rota').length,
+ Problema: activeAll.filter(d => d.status ==='Problema').length,
+ Retornar: activeAll.filter(d => d.status ==='Retornar a Loja').length };
+ const chips: { key:'Todos'|'Iniciar'|'Em Rota'|'Problema'|'Retornar'; label: string; icon: string; activeClass: string }[] = [
+ { key:'Todos', label:'Todas', icon:'', activeClass:'bg-slate-900 text-white border-gray-900'},
+ { key:'Iniciar', label:'Iniciar', icon:'', activeClass:'bg-amber-500 text-white border-amber-500'},
+ { key:'Em Rota', label:'Em Rota', icon:'', activeClass:'bg-blue-600 text-white border-blue-600'},
+ { key:'Problema', label:'Problema', icon:'', activeClass:'bg-red-600 text-white border-red-600'},
+ { key:'Retornar', label:'Retornar', icon:'', activeClass:'bg-orange-500 text-white border-orange-500'},
+ ];
+ return (
+ <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide">
+ {chips.map(chip => {
+ const count = counts[chip.key];
+ const isActive = filterStatus === chip.key;
+ return (
+ <button
+ key={chip.key}
+ onClick={() => setFilterStatus(chip.key)}
+ className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border-2 transition-all ${isActive
+ ? chip.activeClass +'shadow-sm scale-105'
+ :'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-slate-300'
+ }`}
+ >
+ <span>{chip.icon}</span>
+ <span>{chip.label}</span>
+ {count > 0 && (
+ <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-black leading-none ${isActive ?'bg-white/30':'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200'}`}>
+ {count}
+ </span>
+ )}
+ </button>
+ );
+ })}
+ </div>
+ );
+ })()}
+
+ {/* ── Route Summary Bar (mobile-first) ── */}
+ {viewMode ==='active'&& filteredDeliveries.some(d => d.status !=='Entregue'&& d.status !=='Cancelado') && (() => {
+ // Build per-motoboy counts from ALL active deliveries (not just filtered)
+ const activeDeliveries = deliveries.filter(d => d.status !=='Entregue'&& d.status !=='Cancelado');
+ const byMotoboy: Record<string, number> = {};
+ activeDeliveries.forEach(d => {
+ const name = d.motoboyName ||'(Sem motoboy)';
+ byMotoboy[name] = (byMotoboy[name] || 0) + 1;
+ });
+ const total = activeDeliveries.length;
+ const inRoute = routeSequence.filter(id => activeDeliveries.some(d => d.id === id)).length;
+
+ return (
+ <div className="flex items-center gap-2 overflow-x-auto pb-1 -mb-1 scrollbar-hide">
+ {/* Total pill */}
+ <div className="flex-shrink-0 flex items-center gap-1.5 bg-slate-900 dark:bg-slate-700 text-white rounded-full px-3 py-1.5 text-xs font-black shadow-sm">
+ <Bike size={12} />
+ <span>{total} entrega{total !== 1 ?'s':''}</span>
+ {inRoute > 0 && (
+ <span className="bg-primary text-white rounded-full px-1.5 py-0.5 text-[10px] font-black ml-0.5">
+ {inRoute} em rota
+ </span>
+ )}
+ </div>
+
+ {/* Per-motoboy chips */}
+ {Object.entries(byMotoboy).map(([name, count]) => (
+ <div
+ key={name}
+ className="flex-shrink-0 flex items-center gap-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-full px-3 py-1.5 text-xs font-bold text-slate-700 dark:text-slate-300 shadow-sm"
+ >
+ <span className="w-4 h-4 rounded-full bg-primary-50 dark:bg-primary/900 flex items-center justify-center text-primary dark:text-primary/70 font-black text-[10px]">{count}</span>
+ <span className="max-w-[100px] truncate">{name}</span>
+ </div>
+ ))}
+ </div>
+ );
+ })()}
+
+ {/* Cards Grid — sorted by routeOrder first, then by date descending */}
+ <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+ {filteredDeliveries
+ .slice()
+ .sort((a, b) => {
+ const aOrder = a.routeOrder ?? null;
+ const bOrder = b.routeOrder ?? null;
+ if (viewMode ==='active') {
+ //'Retornar a Loja'always goes LAST
+ const aReturn = a.status ==='Retornar a Loja'? 1 : 0;
+ const bReturn = b.status ==='Retornar a Loja'? 1 : 0;
+ if (aReturn !== bReturn) return aReturn - bReturn;
+ // Both have order: sort numerically
+ if (aOrder !== null && bOrder !== null) return aOrder - bOrder;
+ // Only a has order: a goes first
+ if (aOrder !== null) return -1;
+ // Only b has order: b goes first
+ if (bOrder !== null) return 1;
+ }
+ // Fallback: most recent first
+ return new Date(b.date).getTime() - new Date(a.date).getTime();
+ })
+ .map(delivery => {
+ const isSelectable = delivery.status !=='Entregue'&& delivery.status !=='Cancelado';
+ const routePosition = routeSequence.indexOf(delivery.id); // -1 = not in route
+ const isSelected = routePosition >= 0;
+
+ return (
+ <div
+ key={delivery.id}
+ className={`
+ bg-white dark:bg-slate-800 rounded-xl border shadow-sm overflow-hidden flex flex-col group transition-all cursor-pointer relative
+ ${isSelected ?'border-primary ring-1 ring-primary500':'border-slate-200 dark:border-slate-700 hover:border-primary300'}
+ `}
+ onClick={() => {
+ setSelectedDelivery(delivery);
+ setEditForm({ status: delivery.status, notes: delivery.notes ||''});
+ setIsEditing(false);
+ }}
+ >
+ {/* Route Order Badge — shows number (1, 2, 3...) instead of checkmark */}
+ {isSelectable && viewMode ==='active'&& (
+ <div
+ className="absolute top-3 left-3 z-10"
+ onClick={(e) => {
+ e.stopPropagation();
+ toggleRouteSelection(delivery.id);
+ }}
+ >
+ <div className={`w-7 h-7 rounded-full border-2 flex items-center justify-center font-black text-sm transition-all shadow-sm ${isSelected
+ ?'bg-primary border-primary text-white'
+ :'bg-white dark:bg-slate-700 border-slate-300 dark:border-slate-500 text-slate-400'
+ }`}>
+ {isSelected ? routePosition + 1 :'+'}
+ </div>
+ </div>
+ )}
+
+ {/* Card Header */}
+ <div className={`px-3 py-2 border-b border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-700/20 flex justify-between items-start ${isSelectable && viewMode ==='active'?'pl-12':''}`}>
+ <div className="flex-1 min-w-0">
+ <div className="flex items-center gap-1.5 mb-0.5">
+ <span className="text-[10px] font-mono font-bold text-slate-400 dark:text-slate-500 truncate max-w-[80px]">{delivery.id}</span>
+ <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold border ${getStatusColor(delivery.status)}`}>
+ {delivery.status.toUpperCase()}
+ </span>
+ {/* Receipt icon — opens comprovante modal */}
+ <button
+ onClick={(e) => { e.stopPropagation(); setReceiptDelivery(delivery); }}
+ className="text-slate-400 hover:text-indigo-500 transition-colors"
+ title="Ver comprovante do pedido"
+ >
+ <FileText size={13} />
+ </button>
+ </div>
+ <h3 className="font-bold text-slate-800 dark:text-white text-sm leading-tight line-clamp-1">{delivery.customerName}</h3>
+ </div>
+ <div className="flex flex-col items-end ml-2 flex-shrink-0">
+ <span className="text-[10px] text-slate-400">{new Date(delivery.date).toLocaleDateString('pt-BR')}</span>
+ {!isMotoboy && delivery.motoboyName && (
+ <span className="text-[9px] bg-slate-200 dark:bg-slate-600 text-slate-600 dark:text-slate-300 px-1.5 py-0.5 rounded mt-0.5 flex items-center gap-1">
+ <Bike size={9} /> {delivery.motoboyName}
+ </span>
+ )}
+ </div>
+ </div>
+
+ {/* Card Body */}
+ <div className="px-3 py-2 flex-1 flex flex-col gap-1.5 pointer-events-none">
+ <div className={`flex items-start gap-1.5 text-xs p-1.5 rounded-lg ${delivery.method ==='Motoboy'?'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-800 dark:text-emerald-300':'bg-purple-50 dark:bg-purple-900/20 text-purple-800 dark:text-purple-300'}`}>
+ <MapPin size={13} className="mt-0.5 flex-shrink-0"/>
+ <div className="flex-1 min-w-0">
+ <div className="flex justify-between items-start">
+ <p className="text-[9px] font-bold uppercase opacity-70">
+ {delivery.method ==='Motoboy'?'Entregar:':'Despacho:'}
+ </p>
+ {delivery.payoutStatus ==='Paid'&& (
+ <span className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300 text-[9px] font-black px-1 py-0.5 rounded border border-emerald-200 dark:border-emerald-700 flex items-center gap-0.5">
+ <DollarSign size={8} /> PAGO
+ </span>
+ )}
+ </div>
+ <p className="font-medium leading-snug text-xs">{delivery.address}</p>
+ <p className="text-[10px] opacity-80">{delivery.city}</p>
+ </div>
+ </div>
+ {delivery.notes && (
+ <div className="bg-yellow-50 dark:bg-yellow-900/10 px-2 py-1 rounded border border-yellow-100 dark:border-yellow-800 text-[10px] text-yellow-800 dark:text-yellow-200">
+ <span className="font-bold">Obs:</span> {delivery.notes}
+ </div>
+ )}
+ </div>
+
+ {/* Card Footer Actions */}
+ <div className="px-3 py-2 bg-slate-50 dark:bg-slate-900/50 border-t border-slate-100 dark:border-slate-700 flex justify-between items-center gap-1.5"onClick={(e) => e.stopPropagation()}>
+ {/* WhatsApp Button */}
+ <button
+ onClick={() => openWhatsApp(delivery.phone, delivery.customerName)}
+ className="flex items-center gap-1 bg-emerald-500 hover:bg-emerald-600 text-white text-[11px] font-bold px-2 py-1 rounded-lg transition-colors shadow-sm flex-shrink-0"
+ title="WhatsApp"
+ >
+ <MessageCircle size={12} /> WA
+ </button>
+
+ <div className="flex gap-1 flex-1 justify-end">
+ {/* Iniciar — shown when Pendente or Em Preparo */}
+ {(delivery.status ==='Pendente'|| delivery.status ==='Em Preparo') && viewMode ==='active'&& (
+ <DSButton
+ onClick={() => updateStatus(delivery.id,'Em Rota')}
+ variant="primary"
+ >
+ <ArrowRight size={12} /> Iniciar
+ </DSButton>
+ )}
+
+ {/* Finalizado — inline dropdown for em-rota and others */}
+ {delivery.status !=='Entregue'&& delivery.status !=='Cancelado'&& viewMode ==='active'&& (
+ <div className="relative">
+ <button
+ onClick={() => setFinalizeMenuId(finalizeMenuId === delivery.id ? null : delivery.id)}
+ className="bg-slate-700 hover:bg-slate-900 dark:bg-slate-600 dark:hover:bg-slate-500 text-white text-[11px] font-bold px-2 py-1 rounded-lg flex items-center gap-1 shadow-sm transition-colors"
+ >
+ <CheckCircle size={12} /> Finalizar
+ </button>
+ {finalizeMenuId === delivery.id && (
+ <div className="absolute bottom-full right-0 mb-1 bg-white dark:bg-slate-800 rounded-xl shadow-xl border border-slate-200 dark:border-slate-700 z-30 overflow-hidden w-36 animate-in fade-in zoom-in-95 duration-150">
+ <button onClick={() => { updateStatus(delivery.id,'Entregue'); setFinalizeMenuId(null); }} className="w-full text-left px-3 py-2 text-xs font-bold text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 flex items-center gap-2">
+ <CheckCircle size={13} /> Entregue
+ </button>
+ <button onClick={() => { updateStatus(delivery.id,'Problema'); setFinalizeMenuId(null); }} className="w-full text-left px-3 py-2 text-xs font-bold text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 flex items-center gap-2">
+ <AlertCircle size={13} /> Problema
+ </button>
+ <button onClick={() => { updateStatus(delivery.id,'Retornar a Loja'); setFinalizeMenuId(null); }} className="w-full text-left px-3 py-2 text-xs font-bold text-orange-700 dark:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-900/20 flex items-center gap-2">
+ <Store size={13} /> Retornar a Loja
+ </button>
+ <button onClick={() => { updateStatus(delivery.id,'Cancelado'); setFinalizeMenuId(null); }} className="w-full text-left px-3 py-2 text-xs font-bold text-rose-700 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 flex items-center gap-2">
+ <X size={13} /> Cancelado
+ </button>
+ </div>
+ )}
+ </div>
+ )}
+
+ {/* Details button (3-dot) */}
+ <button onClick={() => {
+ setSelectedDelivery(delivery);
+ setEditForm({ status: delivery.status, notes: delivery.notes ||''});
+ }} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-700">
+ <MoreVertical size={14} />
+ </button>
+ </div>
+ </div>
+ </div>
+ );
+ })}
+ {filteredDeliveries.length === 0 && (
+ <div className="col-span-full py-12 text-center text-slate-400 dark:text-slate-500">
+ {viewMode ==='active'? (
+ <>
+ <Bike size={48} className="mx-auto mb-2 opacity-20"/>
+ <p>Nenhuma entrega ativa no momento.</p>
+ </>
+ ) : (
+ <>
+ <Archive size={48} className="mx-auto mb-2 opacity-20"/>
+ <p>Nenhuma entrega arquivada para esta data.</p>
+ </>
+ )}
+ </div>
+ )}
+ </div>
+
+ {/* --- DELIVERY RECEIPT / COMPROVANTE MODAL --- */}
+ {receiptDelivery && (
+ <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+ <div className="absolute inset-0 bg-slate-900/70 backdrop-blur-sm"onClick={() => setReceiptDelivery(null)} />
+ <div className="bg-white dark:bg-slate-800 w-full max-w-sm rounded-2xl shadow-2xl relative flex flex-col max-h-[90vh] animate-in fade-in zoom-in-95 duration-200 overflow-hidden">
+ <div className="bg-primary/30 p-4 text-slate-900">
+ <div className="flex justify-between items-start">
+ <div>
+ <p className="text-xs font-bold uppercase tracking-widest opacity-70">Comprovante de Pedido</p>
+ <h3 className="text-lg font-black mt-0.5">{receiptDelivery.customerName}</h3>
+ <p className="text-xs opacity-80 mt-0.5">{receiptDelivery.id}</p>
+ </div>
+ <button onClick={() => setReceiptDelivery(null)} className="bg-black/10 hover:bg-black/20 p-1.5 rounded-full transition-colors">
+ <X size={16} />
+ </button>
+ </div>
+ {/* Status badge */}
+ <div className="mt-3">
+ <span className={`px-2.5 py-1 rounded-full text-[11px] font-black uppercase tracking-wide ${receiptDelivery.status ==='Entregue'?'bg-emerald-400/30 text-emerald-900': receiptDelivery.status ==='Cancelado'?'bg-rose-400/30 text-rose-900': receiptDelivery.status ==='Problema'?'bg-amber-400/30 text-amber-900': receiptDelivery.status ==='Retornar a Loja'?'bg-orange-400/30 text-orange-900': receiptDelivery.status ==='Em Rota'?'bg-blue-400/30 text-blue-900':'bg-white/40 text-slate-900'}`}>
+ {receiptDelivery.status}
+ </span>
+ </div>
+ </div>
+
+ {/* Receipt Body — scrollable */}
+ <div className="overflow-y-auto flex-1 p-4 space-y-4">
+ {/* Date + Source */}
+ <div className="flex justify-between text-xs text-slate-500 dark:text-slate-400">
+ <span className="flex items-center gap-1"><Calendar size={12} /> {new Date(receiptDelivery.date).toLocaleString('pt-BR')}</span>
+ <span className="font-medium text-slate-700 dark:text-slate-300">{receiptDelivery.source}</span>
+ </div>
+
+ {/* Items */}
+ <div>
+ <p className="text-[10px] font-bold uppercase text-slate-400 mb-1">Itens do Pedido</p>
+ <div className="bg-slate-50 dark:bg-slate-700/50 rounded-xl p-3">
+ <p className="text-sm text-slate-800 dark:text-white font-medium whitespace-pre-line">{receiptDelivery.itemsSummary ||'—'}</p>
+ </div>
+ </div>
+
+ {/* Delivery Info */}
+ <div>
+ <p className="text-[10px] font-bold uppercase text-slate-400 mb-1">Endereço de Entrega</p>
+ <div className="bg-slate-50 dark:bg-slate-700/50 rounded-xl p-3 flex items-start gap-2">
+ <MapPin size={15} className="text-indigo-500 mt-0.5 flex-shrink-0"/>
+ <div>
+ <p className="text-sm font-semibold text-slate-800 dark:text-white">{receiptDelivery.address}</p>
+ <p className="text-xs text-slate-500 dark:text-slate-400">{receiptDelivery.city}</p>
+ </div>
+ </div>
+ </div>
+
+ {/* Contact */}
+ <div className="flex gap-3">
+ <div className="flex-1 bg-slate-50 dark:bg-slate-700/50 rounded-xl p-3">
+ <p className="text-[10px] font-bold uppercase text-slate-400 mb-1">Telefone</p>
+ <p className="text-sm font-semibold text-slate-800 dark:text-white flex items-center gap-1">
+ <Phone size={12} className="text-emerald-500"/> {receiptDelivery.phone ||'—'}
+ </p>
+ </div>
+ <div className="flex-1 bg-slate-50 dark:bg-slate-700/50 rounded-xl p-3">
+ <p className="text-[10px] font-bold uppercase text-slate-400 mb-1">Método</p>
+ <p className="text-sm font-semibold text-slate-800 dark:text-white flex items-center gap-1">
+ <Truck size={12} className="text-purple-500"/> {receiptDelivery.method}
+ </p>
+ </div>
+ </div>
+
+ {/* Motoboy + Payment */}
+ {(receiptDelivery.motoboyName || receiptDelivery.paymentMethod) && (
+ <div className="flex gap-3">
+ {receiptDelivery.motoboyName && (
+ <div className="flex-1 bg-slate-50 dark:bg-slate-700/50 rounded-xl p-3">
+ <p className="text-[10px] font-bold uppercase text-slate-400 mb-1">Motoboy</p>
+ <p className="text-sm font-semibold text-slate-800 dark:text-white flex items-center gap-1">
+ <Bike size={12} className="text-indigo-500"/> {receiptDelivery.motoboyName}
+ </p>
+ </div>
+ )}
+ {receiptDelivery.paymentMethod && (
+ <div className="flex-1 bg-slate-50 dark:bg-slate-700/50 rounded-xl p-3">
+ <p className="text-[10px] font-bold uppercase text-slate-400 mb-1">Pagamento</p>
+ <p className="text-sm font-semibold text-slate-800 dark:text-white">{receiptDelivery.paymentMethod}</p>
+ </div>
+ )}
+ </div>
+ )}
+
+ {/* Notes */}
+ {receiptDelivery.notes && (
+ <div className="bg-yellow-50 dark:bg-yellow-900/20 rounded-xl p-3 border border-yellow-200 dark:border-yellow-800">
+ <p className="text-[10px] font-bold uppercase text-yellow-600 dark:text-yellow-400 mb-1">Observações</p>
+ <p className="text-xs text-yellow-800 dark:text-yellow-200">{receiptDelivery.notes}</p>
+ </div>
+ )}
+
+ {/* Totals */}
+ <div className="border-t border-dashed border-slate-200 dark:border-slate-600 pt-3 space-y-1">
+ {receiptDelivery.fee ? (
+ <>
+ <div className="flex justify-between text-sm text-slate-600 dark:text-slate-400">
+ <span>Subtotal</span>
+ <span>R$ {(receiptDelivery.totalValue - receiptDelivery.fee).toFixed(2)}</span>
+ </div>
+ <div className="flex justify-between text-sm text-slate-600 dark:text-slate-400">
+ <span>Taxa de entrega</span>
+ <span>R$ {receiptDelivery.fee.toFixed(2)}</span>
+ </div>
+ </>
+ ) : null}
+ <div className="flex justify-between text-base font-black text-slate-900 dark:text-white mt-1">
+ <span>TOTAL</span>
+ <span className="text-indigo-600 dark:text-indigo-400">R$ {receiptDelivery.totalValue.toFixed(2)}</span>
+ </div>
+ </div>
+ </div>
+
+ {/* Footer actions */}
+ <div className="p-4 border-t border-slate-100 dark:border-slate-700 flex gap-2">
+ <button
+ onClick={() => openWhatsApp(receiptDelivery.phone, receiptDelivery.customerName)}
+ className="flex-1 flex items-center justify-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-2.5 rounded-xl text-sm transition-colors"
+ >
+ <MessageCircle size={15} /> WhatsApp
+ </button>
+ <button
+ onClick={() => { setSelectedDelivery(receiptDelivery); setEditForm({ status: receiptDelivery.status, notes: receiptDelivery.notes ||''}); setIsEditing(false); setReceiptDelivery(null); }}
+ className="flex items-center justify-center gap-1 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 font-bold py-2.5 px-3 rounded-xl text-sm transition-colors"
+ >
+ <Edit size={15} /> Editar
+ </button>
+ </div>
+ </div>
+ </div>
+ )}
+
+ {/* --- PAYOUT REPORT MODAL --- */}
+ {isPayoutModalOpen && (
+ <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+ <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"onClick={() => setIsPayoutModalOpen(false)}></div>
+ <div className="bg-white dark:bg-slate-800 w-full max-w-lg rounded-xl shadow-2xl relative flex flex-col max-h-[85vh] animate-in fade-in zoom-in-95 duration-200">
+ {/* Header */}
+ <div className="p-5 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center bg-emerald-50 dark:bg-emerald-900/20">
+ <h3 className="font-bold text-lg text-emerald-900 dark:text-emerald-300 flex items-center gap-2">
+ <DollarSign size={20} /> Relatório de Repasse
+ </h3>
+ <button onClick={() => setIsPayoutModalOpen(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+ <X size={20} />
+ </button>
+ </div>
+
+ {/* Tab Switcher */}
+ <div className="px-5 pt-4 pb-2">
+ <div className="bg-slate-100 dark:bg-slate-700 p-1 rounded-lg flex">
+ <button
+ onClick={() => setPayoutTab('pending')}
+ className={`flex-1 px-3 py-2 rounded-md text-sm font-bold transition-all flex items-center justify-center gap-2 ${payoutTab ==='pending'?'bg-white dark:bg-slate-600 shadow text-amber-600 dark:text-amber-400':'text-slate-500 dark:text-slate-400'}`}
+ >
+ <DollarSign size={16} /> Pendente
+ {Object.keys(payoutData).length > 0 && (
+ <span className="bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-300 text-[10px] font-black px-1.5 py-0.5 rounded-full">
+ {Object.keys(payoutData).length}
+ </span>
+ )}
+ </button>
+ <button
+ onClick={() => setPayoutTab('paid')}
+ className={`flex-1 px-3 py-2 rounded-md text-sm font-bold transition-all flex items-center justify-center gap-2 ${payoutTab ==='paid'?'bg-white dark:bg-slate-600 shadow text-emerald-600 dark:text-emerald-400':'text-slate-500 dark:text-slate-400'}`}
+ >
+ <Archive size={16} /> Pagos
+ {Object.keys(paidPayoutData).length > 0 && (
+ <span className="bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 text-[10px] font-black px-1.5 py-0.5 rounded-full">
+ {Object.keys(paidPayoutData).length}
+ </span>
+ )}
+ </button>
+ </div>
+ </div>
+
+ {/* Content */}
+ <div className="p-5 overflow-y-auto flex-1">
+ {payoutTab ==='pending'? (
+ /* --- PENDING TAB --- */
+ <div className="space-y-3">
+ {/* DRILL-DOWN: Motoboy Detail View */}
+ {selectedPayoutMotoboy ? (
+ <div>
+ {/* Back + motoboy header */}
+ <div className="flex items-center gap-3 mb-4">
+ <button
+ onClick={() => { setSelectedPayoutMotoboy(null); setPayoutDeliveries([]); }}
+ className="text-slate-500 hover:text-slate-800 dark:hover:text-white flex items-center gap-1 text-xs font-bold border border-slate-200 dark:border-slate-600 px-2 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+ >
+ ← Voltar
+ </button>
+ <div>
+ <p className="font-bold text-slate-800 dark:text-white flex items-center gap-2">
+ <Bike size={16} className="text-amber-600"/> {selectedPayoutMotoboy}
+ </p>
+ <p className="text-xs text-slate-500 dark:text-slate-400">
+ {payoutData[selectedPayoutMotoboy]?.count || 0} entrega(s) · R$ {(payoutData[selectedPayoutMotoboy]?.totalFee || 0).toFixed(2)} a pagar
+ </p>
+ </div>
+ </div>
+
+ {/* Delivery List */}
+ {payoutDeliveriesLoading ? (
+ <div className="text-center py-8 text-slate-400 text-sm">Carregando entregas...</div>
+ ) : payoutDeliveries.length === 0 ? (
+ <EmptyState title="Nenhuma entrega encontrada" description="Nenhum resultado para os filtros selecionados." />
+ ) : (
+ <div className="space-y-2">
+ {payoutDeliveries.map((d, i) => (
+ <div key={d.id} className="p-3 bg-slate-50 dark:bg-slate-700/40 rounded-xl border border-slate-200 dark:border-slate-600">
+ <div className="flex justify-between items-start">
+ <div className="flex-1 min-w-0">
+ <p className="font-bold text-sm text-slate-800 dark:text-white">
+ #{i + 1} — {d.customerName}
+ </p>
+ <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate">
+ {d.date ? new Date(d.date).toLocaleDateString('pt-BR') :''}
+ {d.address ? ` · ${d.address}` :''}
+ </p>
+ {d.itemsSummary && (
+ <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5 line-clamp-1">{d.itemsSummary}</p>
+ )}
+ </div>
+ <span className="ml-3 font-bold text-emerald-700 dark:text-emerald-400 text-sm whitespace-nowrap">
+ R$ {(Number(d.fee) || 0).toFixed(2)}
+ </span>
+ </div>
+ </div>
+ ))}
+ {/* Summary row */}
+ <div className="flex justify-between items-center pt-2 mt-2 border-t border-dashed border-slate-300 dark:border-slate-600 font-bold text-slate-800 dark:text-white">
+ <span>Total a pagar</span>
+ <span className="text-lg text-amber-700 dark:text-amber-300">
+ R$ {payoutDeliveries.reduce((s, d) => s + (Number(d.fee) || 0), 0).toFixed(2)}
+ </span>
+ </div>
+ </div>
+ )}
+ </div>
+ ) : (
+ /* MOTOBOY LIST */
+ <>
+ <p className="text-xs text-slate-500 dark:text-slate-400 mb-2">Selecione um motoboy para ver o detalhamento e confirmar o pagamento.</p>
+ {Object.entries(payoutData).map(([motoboy, data]: [string, { count: number, totalFee: number }]) => (
+ <div key={motoboy} className="p-4 bg-amber-50 dark:bg-amber-900/10 rounded-xl border border-amber-200 dark:border-amber-800">
+ <div className="flex justify-between items-center">
+ <div>
+ <p className="font-bold text-slate-800 dark:text-white flex items-center gap-2">
+ <Bike size={16} className="text-amber-600"/> {motoboy}
+ </p>
+ <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{data.count} entrega{data.count !== 1 ?'s':''} pendente{data.count !== 1 ?'s':''}</p>
+ </div>
+ <div className="text-right flex items-center gap-3">
+ <div>
+ <p className="text-[10px] text-amber-600 dark:text-amber-400 uppercase font-bold">A Pagar</p>
+ <p className="text-xl font-bold text-amber-700 dark:text-amber-300">R$ {data.totalFee.toFixed(2)}</p>
+ </div>
+ <button
+ onClick={() => handleSelectPayoutMotoboy(motoboy)}
+ className="bg-amber-500 hover:bg-amber-600 text-white px-3 py-2 rounded-lg shadow-sm font-bold text-xs flex items-center gap-1.5 transition-colors"
+ >
+ Ver Detalhes →
+ </button>
+ </div>
+ </div>
+ </div>
+ ))}
+ {Object.keys(payoutData).length === 0 && (
+ <div className="text-center py-8">
+ <CheckCircle size={40} className="mx-auto mb-2 text-emerald-300 dark:text-emerald-700"/>
+ <p className="text-slate-400 dark:text-slate-500 italic">Nenhum repasse pendente!</p>
+ <p className="text-xs text-slate-300 dark:text-slate-600 mt-1">Todos os motoboys foram pagos.</p>
+ </div>
+ )}
+ </>
+ )}
+ </div>
+ ) : (
+ /* --- PAID TAB --- */
+ <div className="space-y-3">
+ <p className="text-xs text-slate-500 dark:text-slate-400 mb-2">Histórico de pagamentos realizados aos motoboys.</p>
+ {Object.entries(paidPayoutData).map(([motoboy, data]: [string, { count: number, totalFee: number }]) => (
+ <div key={motoboy} className="flex justify-between items-center p-4 bg-emerald-50 dark:bg-emerald-900/10 rounded-xl border border-emerald-200 dark:border-emerald-800">
+ <div>
+ <p className="font-bold text-slate-800 dark:text-white flex items-center gap-2">
+ <Bike size={16} className="text-emerald-600"/> {motoboy}
+ </p>
+ <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{data.count} entrega{data.count !== 1 ?'s':''} paga{data.count !== 1 ?'s':''}</p>
+ </div>
+ <div className="text-right flex items-center gap-2">
+ <div>
+ <p className="text-[10px] text-emerald-600 dark:text-emerald-400 uppercase font-bold">Pago</p>
+ <p className="text-xl font-bold text-emerald-600 dark:text-emerald-400">R$ {data.totalFee.toFixed(2)}</p>
+ </div>
+ <span className="bg-emerald-100 dark:bg-emerald-900/50 p-2 rounded-lg">
+ <CheckCircle size={20} className="text-emerald-600 dark:text-emerald-400"/>
+ </span>
+ </div>
+ </div>
+ ))}
+ {Object.keys(paidPayoutData).length === 0 && (
+ <div className="text-center py-8">
+ <Archive size={40} className="mx-auto mb-2 text-slate-300 dark:text-slate-700"/>
+ <p className="text-slate-400 dark:text-slate-500 italic">Nenhum repasse pago ainda.</p>
+ </div>
+ )}
+ </div>
+ )}
+ </div>
+
+ {/* Footer */}
+ <div className="p-4 bg-slate-50 dark:bg-slate-900/30 border-t border-slate-100 dark:border-slate-700 flex gap-2">
+ <button
+ onClick={handlePrintPayoutReport}
+ className="flex-1 text-emerald-600 dark:text-emerald-400 text-sm font-bold hover:underline flex items-center justify-center gap-2 border border-emerald-200 dark:border-emerald-800 rounded-lg py-2 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-colors"
+ >
+ <Printer size={16} /> {selectedPayoutMotoboy ? `Imprimir — ${selectedPayoutMotoboy}` :'Imprimir Comprovante'}
+ </button>
+ {selectedPayoutMotoboy && payoutDeliveries.length > 0 && (
+ <button
+ onClick={async () => {
+ const total = payoutDeliveries.reduce((s, d) => s + (Number(d.fee) || 0), 0);
+ if (window.confirm(`Confirma pagamento de R$ ${total.toFixed(2)} para ${selectedPayoutMotoboy}?\n\n${payoutDeliveries.length} entrega(s) serão marcadas como pagas.`)) {
+ await DeliveryService.markAsPaid(selectedPayoutMotoboy);
+ setSelectedPayoutMotoboy(null);
+ setPayoutDeliveries([]);
+ loadPayoutData();
+ refresh();
+ }
+ }}
+ className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg shadow-sm font-bold text-sm flex items-center gap-2 transition-colors"
+ >
+ <CheckCircle size={16} /> Confirmar Pagamento
+ </button>
+ )}
+ </div>
+
+ </div>
+ </div>
+ )}
+
+ {/* --- DELIVERY DETAILS / EDIT MODAL --- */}
+ {selectedDelivery && (
+ <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+ <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"onClick={() => setSelectedDelivery(null)}></div>
+ <div className="bg-white dark:bg-slate-800 w-full max-w-xl rounded-xl shadow-2xl relative flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+ <div className="p-5 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-700/30">
+ <h3 className="font-bold text-lg text-slate-800 dark:text-white flex items-center gap-2">
+ {isEditing ? <Edit size={20} className="text-primary"/> : <Package size={20} className="text-primary"/>}
+ {isEditing ?'Atualizar Status/Obs':'Detalhes da Entrega'}
+ </h3>
+ <button onClick={() => setSelectedDelivery(null)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+ <X size={20} />
+ </button>
+ </div>
+
+ <div className="p-6 space-y-4">
+ {isEditing ? (
+ <div className="space-y-4">
+ <div>
+ <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-2">Status do Pedido</label>
+ <div className="flex flex-wrap gap-2">
+ {[
+ { value:'Pendente', label:'Pendente (Atenção)', color:'bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-800'},
+ { value:'Em Rota', label:'Em Rota', color:'bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-800'},
+ { value:'Entregue', label:'Entregue', color:'bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-800'},
+ { value:'Problema', label:'Problema', color:'bg-red-100 text-red-800 border-red-200 dark:bg-red-900/30 dark:text-red-300 dark:border-red-800'},
+ { value:'Retornar a Loja', label:'Retornar a Loja', color:'bg-orange-100 text-orange-800 border-orange-200 dark:bg-orange-900/30 dark:text-orange-300 dark:border-orange-800'},
+ { value:'Cancelado', label:'Cancelado', color:'bg-rose-100 text-rose-800 border-rose-200 dark:bg-rose-900/30 dark:text-rose-300 dark:border-rose-800'}
+ ].map((option) => (
+ <button
+ key={option.value}
+ onClick={() => setEditForm({ ...editForm, status: option.value })}
+ className={`
+ px-3 py-2 rounded-xl text-xs font-bold border-2 transition-all flex-1 whitespace-nowrap
+ ${option.color}
+ ${editForm.status === option.value
+ ?'ring-2 ring-offset-1 ring-slate-400 dark:ring-slate-500 scale-105 shadow-md opacity-100'
+ :'opacity-60 hover:opacity-100 hover:scale-105 border-transparent'}
+ `}
+ >
+ {option.label}
+ </button>
+ ))}
+ </div>
+ </div>
+ <div>
+ <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Observações do Motoboy</label>
+ <textarea
+ className="w-full p-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-white h-24"
+ value={editForm.notes}
+ onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })}
+ placeholder="Ex: Campainha quebrada, deixei com vizinho..."
+ />
+ </div>
+ <DSButton
+ onClick={handleSaveEdit}
+ variant="primary"
+ >
+ Salvar Alterações
+ </DSButton>
+ </div>
+ ) : (
+ <>
+ {/* Read-Only View */}
+ <div className="flex justify-between items-start">
+ <div>
+ <p className="text-xl font-bold text-slate-900 dark:text-white">{selectedDelivery.customerName}</p>
+ <p className="text-sm text-slate-500">{selectedDelivery.address}</p>
+ {selectedDelivery.motoboyName && (
+ <p className="text-xs text-indigo-600 dark:text-indigo-400 mt-1 font-bold flex items-center gap-1">
+ <Bike size={12} /> {selectedDelivery.motoboyName}
+ </p>
+ )}
+ </div>
+ <div className="flex flex-col items-end gap-2">
+ <span className={`px-2 py-1 rounded text-xs font-bold border ${getStatusColor(selectedDelivery.status)}`}>
+ {selectedDelivery.status}
+ </span>
+ {/* Route stop number badge */}
+ {selectedDelivery.routeOrder != null && (
+ <span className="flex items-center gap-1 bg-slate-900 text-white text-xs font-black px-2 py-1 rounded-full">
+ <Map size={10} /> Parada #{selectedDelivery.routeOrder}
+ </span>
+ )}
+ </div>
+ </div>
+
+ <div className="flex gap-2 mt-4">
+ <button
+ onClick={() => openWhatsApp(selectedDelivery.phone, selectedDelivery.customerName)}
+ className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white py-2 rounded-lg font-bold text-sm flex items-center justify-center gap-2"
+ >
+ <MessageCircle size={16} /> Chamar no WhatsApp
+ </button>
+ <button
+ onClick={() => setIsEditing(true)}
+ className="flex-1 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-800 dark:text-white py-2 rounded-lg font-bold text-sm flex items-center justify-center gap-2"
+ >
+ <Edit size={16} /> Editar Status/Obs
+ </button>
+ </div>
+
+ {selectedDelivery.notes && (
+ <div className="mt-4 p-3 bg-yellow-50 dark:bg-yellow-900/10 border border-yellow-100 dark:border-yellow-800 rounded-lg">
+ <p className="text-xs font-bold text-yellow-800 dark:text-yellow-200 mb-1">Observação:</p>
+ <p className="text-sm text-yellow-900 dark:text-yellow-100">{selectedDelivery.notes}</p>
+ </div>
+ )}
+ {/* Imprimir Comprovante individual */}
+ <div className="mt-4 border-t border-slate-100 dark:border-slate-700 pt-4">
+ <button
+ onClick={() => {
+ const d = selectedDelivery;
+ const routeNum = d.routeOrder != null ? `PARADA #${d.routeOrder}` : null;
+ const printWindow = window.open('','PRINT','height=700,width=420');
+ if (!printWindow) return;
+ printWindow.document.write(`
+ <html><head><title>Comprovante ${d.id}</title>
+ <style>
+ @page { size: 80mm auto; margin: 0; }
+ * { box-sizing: border-box; margin: 0; padding: 0; }
+ body { font-family:'Courier New', monospace; font-size: 13px; font-weight: 700; width: 80mm; padding: 4mm; color: #000; line-height: 1.5; }
+ .center { text-align: center; }
+ .divider { border-top: 2px dashed #000; margin: 7px 0; }
+ .row { display: flex; justify-content: space-between; align-items: flex-start; }
+ .stop-badge { display: block; background: #111; color: #fff; font-size: 22px; font-weight: 900; letter-spacing: 2px; padding: 6px 0; border-radius: 6px; margin: 8px 0; text-align: center; }
+ .label { font-size: 10px; text-transform: uppercase; color: #666; letter-spacing: 0.5px; }
+ .value { font-size: 14px; font-weight: 900; }
+ .sm { font-size: 12px; }
+ </style>
+ </head><body>
+ <div class="center">
+ <div class="value"style="font-size:17px"> PriMAKE</div>
+ <div class="label">Comprovante de Entrega</div>
+ </div>
+ ${routeNum ? `<div class="stop-badge">${routeNum}</div>` :'<div class="divider"></div>'}
+ <div class="divider"></div>
+ <div class="label">Cliente</div>
+ <div class="value">${d.customerName}</div>
+ ${d.phone ? `<div class="sm">${d.phone}</div>` :''}
+ <div class="divider"></div>
+ <div class="label">Endereço</div>
+ <div class="value sm">${d.address}${d.city ?','+ d.city :''}</div>
+ <div class="divider"></div>
+ <div class="label">Itens</div>
+ <div class="sm"style="padding: 2px 0">${d.itemsSummary}</div>
+ <div class="divider"></div>
+ <div class="row">
+ <div><div class="label">Total</div><div class="value">R$ ${d.totalValue.toFixed(2)}</div></div>
+ ${d.paymentMethod ? `<div style="text-align:right"><div class="label">Pagamento</div><div class="value sm">${d.paymentMethod}</div></div>` :''}
+ </div>
+ <div class="divider"></div>
+ <div class="center sm">ID: ${d.id}</div>
+ <div class="center"style="font-size:11px">${new Date(d.date).toLocaleDateString('pt-BR')}</div>
+ ${d.notes ? `<div class="divider"></div><div class="label">Obs:</div><div class="sm">${d.notes}</div>` :''}
+ <div class="divider"></div>
+ <div class="center"style="font-size:10px">Sistema PriMAKE • Obrigado!</div>
+ </body></html>
+ `);
+ printWindow.document.close();
+ printWindow.focus();
+ setTimeout(() => { printWindow.print(); printWindow.close(); }, 400);
+ }}
+ className="w-full flex items-center justify-center gap-2 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-lg font-bold text-sm transition-colors"
+ >
+ <Printer size={16} /> Imprimir Comprovante
+ </button>
+ </div>
+ </>
+ )}
+ </div>
+ </div>
+ </div>
+ )}
+
+ {/* --- ROUTE MODAL (PRINT) --- */}
+ {isRouteModalOpen && (
+ <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+ <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"onClick={() => setIsRouteModalOpen(false)}></div>
+ <div className="bg-white dark:bg-slate-800 w-full max-w-3xl rounded-xl shadow-2xl relative flex flex-col h-[90vh] animate-in fade-in zoom-in-95 duration-200">
+ <div className="p-5 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center bg-slate-900 text-white">
+ <h3 className="font-bold text-lg flex items-center gap-2">
+ <Map size={20} /> Rota de Entrega ({routeSequence.length} paradas)
+ </h3>
+ <button onClick={() => setIsRouteModalOpen(false)} className="text-slate-400 hover:text-white">
+ <X size={20} />
+ </button>
+ </div>
+
+ <div className="flex-1 overflow-y-auto p-4"id="printable-route">
+ {/* Header - 75mm optimized */}
+ <div className="mb-4 pb-3 border-b-2 border-dashed border-slate-400 text-center">
+ <h1 className="text-lg font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wide">Manifesto de Entrega</h1>
+ <p className="text-xs text-slate-500 mt-1">Data: {new Date().toLocaleDateString('pt-BR')} • {routeSequence.length} paradas</p>
+ </div>
+
+ {/* Deliveries - in route order */}
+ <div className="space-y-3">
+ {routeSequence
+ .map(id => deliveries.find(d => d.id === id))
+ .filter(Boolean)
+ .map((d, index) => (
+ // @ts-ignore
+ <div key={d.id} className="border border-slate-200 dark:border-slate-600 rounded-lg p-3 break-inside-avoid bg-white dark:bg-slate-700/50">
+ {/* Sequence Number & Value Row */}
+ <div className="flex justify-between items-center mb-2">
+ <span className="bg-slate-900 text-white text-xs font-bold px-2 py-1 rounded">{index + 1}</span>
+ <span className="text-base font-bold text-slate-900 dark:text-white">R$ {d.totalValue.toFixed(2)}</span>
+ </div>
+
+ {/* Customer Info */}
+ <div className="mb-2">
+ <p className="font-bold text-sm text-slate-900 dark:text-white truncate">{d.customerName}</p>
+ <p className="text-xs text-slate-500">{d.phone}</p>
+ {d.paymentMethod && <p className="text-xs font-bold text-slate-700 dark:text-slate-300 mt-1"> {d.paymentMethod}</p>}
+ </div>
+
+ {/* Address */}
+ <div className="text-xs text-slate-700 dark:text-slate-300 border-t border-slate-100 dark:border-slate-600 pt-2">
+ <p className="break-words">{d.address}</p>
+ <p className="text-slate-500">{d.city}</p>
+ </div>
+
+ {/* Notes */}
+ {d.notes && (
+ <div className="mt-2 text-[10px] bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-200 p-1.5 rounded">
+ {d.notes}
+ </div>
+ )}
+
+ {/* Status Check */}
+ <div className="mt-2 pt-2 border-t border-dashed border-slate-200 dark:border-slate-600 flex items-center gap-3 text-[10px] text-slate-400">
+ <span> Entregue</span>
+ <span> Ausente</span>
+ <span> Recusado</span>
+ </div>
+ </div>
+ ))}
+ </div>
+
+ {/* Footer */}
+ <div className="mt-6 pt-4 border-t-2 border-dashed border-slate-400 space-y-3 text-xs text-slate-600 dark:text-slate-400">
+ <div className="flex justify-between">
+ <span>Saída: {new Date().toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit'})}</span>
+ <span>Retorno: ____:____</span>
+ </div>
+ <div className="pt-4 border-t border-slate-200 dark:border-slate-600">
+ <p className="text-center mb-8">Assinatura do Entregador</p>
+ <div className="border-b border-slate-400 w-full"></div>
+ </div>
+ </div>
+ </div>
+
+ <div className="p-4 border-t border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-700/30 flex justify-end gap-3">
+ <button
+ onClick={async () => {
+ const printContent = document.getElementById('printable-route');
+ const windowUrl ='about:blank';
+ const uniqueName = new Date().getTime();
+ const windowName ='Print'+ uniqueName;
+ const printWindow = window.open(windowUrl, windowName,'left=50000,top=50000,width=0,height=0');
+
+ if (printWindow && printContent) {
+ printWindow.document.write(`
+ <html>
+ <head>
+ <title>Rota de Entrega</title>
+ <style>
+ * { box-sizing: border-box; margin: 0; padding: 0; color: #000; }
+ body { 
+ font-family:'Courier New', Courier, monospace; 
+ font-size: 13px;
+ font-weight: 700;
+ width: 80mm; 
+ padding: 3mm;
+ color: #000;
+ line-height: 1.3;
+ }
+ .mb-4 { margin-bottom: 12px; }
+ .mb-2 { margin-bottom: 8px; }
+ .mt-2 { margin-top: 8px; }
+ .mt-6 { margin-top: 20px; }
+ .pt-2 { padding-top: 8px; }
+ .pt-4 { padding-top: 12px; }
+ .pb-3 { padding-bottom: 10px; }
+ .p-3 { padding: 10px; }
+ .p-1\\.5 { padding: 4px; }
+ .space-y-3 > * + * { margin-top: 10px; }
+ .border { border: 1px solid #000; }
+ .border-dashed { border-style: dashed; }
+ .border-t { border-top: 1px solid #000; }
+ .border-t-2 { border-top: 2px dashed #000; }
+ .border-b { border-bottom: 1px solid #000; }
+ .border-b-2 { border-bottom: 2px dashed #000; }
+ .rounded { border-radius: 4px; }
+ .rounded-lg { border-radius: 6px; }
+ .text-center { text-align: center; }
+ .text-xs { font-size: 11px; font-weight: 700; }
+ .text-sm { font-size: 12px; font-weight: 700; }
+ .text-base { font-size: 13px; font-weight: 700; }
+ .text-lg { font-size: 15px; font-weight: 900; }
+ .font-bold { font-weight: 900; }
+ .uppercase { text-transform: uppercase; }
+ .tracking-wide { letter-spacing: 1px; }
+ .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+ .break-words { word-wrap: break-word; }
+ .break-inside-avoid { break-inside: avoid; }
+ .flex { display: flex; }
+ .justify-between { justify-content: space-between; }
+ .items-center { align-items: center; }
+ .gap-3 { gap: 10px; }
+ .bg-slate-900 { background: #000; color: #fff; font-weight: 900; }
+ .bg-yellow-100 { background: #fff; border: 1px solid #000; }
+ .text-yellow-800 { color: #000; font-weight: 900; }
+ .text-slate-400 { color: #000; }
+ .text-slate-500 { color: #000; }
+ .text-slate-700 { color: #000; }
+ .text-slate-900 { color: #000; }
+ @media print {
+ @page { size: 80mm auto; margin: 0; }
+ html, body { width: 80mm; max-width: 80mm; margin: 0; padding: 1mm; }
+ * { color: #000 !important; -webkit-print-color-adjust: exact; }
+ }
+ </style>
+ </head>
+ <body>
+ ${printContent.innerHTML}
+ </body>
+ </html>
+ `);
+ printWindow.document.close();
+ printWindow.focus();
+ printWindow.print();
+ printWindow.close();
+
+ // Delay to wait for print dialog to close (especially on mobile)
+ setTimeout(async () => {
+ const pendingIds = routeSequence.filter(id => {
+ const d = deliveries.find(del => del.id === id);
+ return d && d.status !=='Em Rota'&& d.status !=='Entregue'&& d.status !=='Cancelado';
+ });
+ if (pendingIds.length > 0 && window.confirm(`Deseja colocar ${pendingIds.length === 1 ?'esta entrega':'todas as'+ pendingIds.length +'entregas'} em rota agora?`)) {
+ for (const id of pendingIds) {
+ await updateStatus(id,'Em Rota');
+ }
+ setRouteSequence([]);
+ setIsRouteModalOpen(false);
+ refresh();
+ }
+ }, 1000);
+ } else {
+ window.print();
+ }
+ }}
+ className="bg-slate-900 hover:bg-black text-white px-6 py-2 rounded-lg font-bold flex items-center gap-2 shadow-lg"
+ >
+ <Printer size={18} /> Imprimir Rota
+ </button>
+ </div>
+ </div>
+ </div>
+ )}
+
+ {/* --- CREATE DELIVERY MODAL --- */}
+ {isCreateModalOpen && (
+ <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+ <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"onClick={() => setIsCreateModalOpen(false)}></div>
+ <div className="bg-white dark:bg-slate-800 w-full max-w-lg rounded-xl shadow-2xl relative flex flex-col max-h-[90vh] overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+ <div className="p-5 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-700/30">
+ <h3 className="font-bold text-lg text-slate-800 dark:text-white flex items-center gap-2">
+ <Plus size={20} className="text-primary"/> Nova Entrega
+ </h3>
+ <button onClick={() => setIsCreateModalOpen(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+ <X size={20} />
+ </button>
+ </div>
+
+ <form onSubmit={handleCreateDelivery} className="p-6 space-y-4 overflow-y-auto flex-1">
+ <div className="bg-slate-50 dark:bg-slate-700/50 p-3 rounded-lg border border-slate-200 dark:border-slate-600 mb-2">
+ <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-2 flex items-center gap-1">
+ <Users size={12} /> Selecionar Cliente
+ </label>
+ <CustomDropdown value="" onChange={(v) => handleSelectCustomer(v)} options={[{ value: '', label: 'Selecione...' }, ...customers.map(c => ({ value: c.id, label: c.name }))]} placeholder="Selecionar cliente" />
+ </div>
+
+ <div className="grid grid-cols-2 gap-4">
+ <div>
+ <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Nome Cliente</label>
+ <input
+ required type="text"
+ className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-white"
+ value={newDeliveryForm.customerName}
+ onChange={e => setNewDeliveryForm({ ...newDeliveryForm, customerName: e.target.value })}
+ />
+ </div>
+ <div>
+ <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Telefone</label>
+ <input
+ type="text"
+ className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-white"
+ value={newDeliveryForm.phone}
+ onChange={e => setNewDeliveryForm({ ...newDeliveryForm, phone: e.target.value })}
+ />
+ </div>
+ </div>
+
+ <div>
+ <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Endereço</label>
+ <input
+ required type="text"
+ className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-white"
+ value={newDeliveryForm.address}
+ onChange={e => setNewDeliveryForm({ ...newDeliveryForm, address: e.target.value })}
+ />
+ </div>
+
+ {/* Motoboy Selection */}
+ <div>
+ <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1 flex items-center gap-1">
+ <Bike size={12} className="text-indigo-500"/> Entregador Responsável
+ </label>
+ <CustomDropdown value={newDeliveryForm.motoboyName} onChange={(v) => setNewDeliveryForm({ ...newDeliveryForm, motoboyName: v })} options={[{ value: '', label: 'Aberto (Qualquer um)' }, ...availableMotoboys.map(b => ({ value: b.name, label: b.name }))]} placeholder="Entregador" />
+ </div>
+
+ <div className="grid grid-cols-2 gap-4">
+ <div>
+ <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Valor Pedido (R$)</label>
+ <input
+ type="number"
+ className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-white"
+ value={newDeliveryForm.totalValue ||''}
+ onChange={e => setNewDeliveryForm({ ...newDeliveryForm, totalValue: parseFloat(e.target.value) })}
+ />
+ </div>
+ <div>
+ <label className="block text-xs font-bold text-emerald-600 dark:text-emerald-400 mb-1">Taxa Entrega (R$)</label>
+ <input
+ type="number"
+ className="w-full px-3 py-2 border border-emerald-200 dark:border-emerald-800 rounded-lg bg-emerald-50 dark:bg-emerald-900/10 text-slate-900 dark:text-white font-bold"
+ value={newDeliveryForm.fee ||''}
+ onChange={e => setNewDeliveryForm({ ...newDeliveryForm, fee: parseFloat(e.target.value) })}
+ placeholder="Para repasse"
+ />
+ </div>
+ </div>
+
+ {/* Payment Method */}
+ <div>
+ <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Forma de Pagamento</label>
+ <CustomDropdown value={newDeliveryForm.paymentMethod} onChange={(v) => setNewDeliveryForm({ ...newDeliveryForm, paymentMethod: v })} options={[{ value: '', label: 'Selecione...' },{ value: 'PIX', label: 'PIX' },{ value: 'Dinheiro', label: 'Dinheiro' },{ value: 'Cartão Crédito', label: 'Cartão Crédito' },{ value: 'Cartão Débito', label: 'Cartão Débito' },{ value: 'Já Pago', label: 'Já Pago' }]} placeholder="Pagamento" />
+ </div>
+
+ <DSButton
+ onClick={handleCreateDelivery}
+ variant="primary"
+ >
+ Salvar Entrega
+ </DSButton>
+ </form>
+ </div>
+ </div>
+ )}
+ </div>
+ );
 };
 
-export default Delivery;
+export default Delivery;

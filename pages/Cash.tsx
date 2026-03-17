@@ -1,848 +1,1162 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { ArrowUpCircle, ArrowDownCircle, Coins, Lock, Unlock, History, Search, Filter, Calendar, X, CheckCircle, AlertTriangle, Save, QrCode, CreditCard, Wallet, FileText, Banknote, ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react';
-import { useCashRegister } from '../lib/useCashRegister';
+import React, { useEffect, useMemo, useState } from 'react';
+import {
+  ArrowDownCircle,
+  ArrowUpCircle,
+  Banknote,
+  Calendar,
+  ChevronLeft,
+  ChevronRight,
+  CreditCard,
+  FileText,
+  Filter,
+  History,
+  Lock,
+  QrCode,
+  RefreshCw,
+  Search,
+  ShieldAlert,
+  Sparkles,
+  Unlock,
+  Wallet,
+  X,
+} from 'lucide-react';
+import { useToast } from '../components/Toast';
+import { EmptyState } from '../components/ds/layout';
+import { CustomDropdown } from '../components/ds/CustomDropdown';
 import { mapCashMovementForDisplay } from '../lib/cash-helpers';
 import { CashService } from '../lib/cash-service';
+import { useCashRegister } from '../lib/useCashRegister';
+
+const formatCurrency = (value: number) =>
+  value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+const getLocalDate = (value: string) => new Date(value).toLocaleDateString('en-CA');
+
+type CashMovementItem = any;
+
+type ModalShellProps = {
+  open: boolean;
+  onClose: () => void;
+  title: string;
+  description: string;
+  icon: React.ReactNode;
+  children: React.ReactNode;
+  footer: React.ReactNode;
+  maxWidthClass?: string;
+};
+
+const primaryPink = '#ffc8cb';
+const pageTone = '#fff9fa';
+
+const glassCard =
+  'rounded-[30px] border border-rose-100/80 bg-white shadow-[0_18px_55px_rgba(15,23,42,0.06)]';
+const softPinkCard =
+  'rounded-[28px] border border-rose-100 bg-[linear-gradient(180deg,#fff6f7_0%,#ffffff_100%)] shadow-[0_18px_42px_rgba(255,200,203,0.22)]';
+const tinyLabel = 'text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500';
+const titleClass = 'text-lg font-semibold tracking-tight text-slate-900';
+const descClass = 'text-sm leading-6 text-slate-500';
+
+const iconToneMap = {
+  rose: 'border-rose-100 bg-rose-50 text-rose-500',
+  emerald: 'border-emerald-100 bg-emerald-50 text-emerald-600',
+  slate: 'border-slate-100 bg-slate-50 text-slate-700',
+  amber: 'border-amber-100 bg-amber-50 text-amber-600',
+};
+
+const KpiCard: React.FC<{
+  label: string;
+  value: string;
+  helper: string;
+  icon: React.ReactNode;
+  tone?: keyof typeof iconToneMap;
+}> = ({ label, value, helper, icon, tone = 'slate' }) => {
+  return (
+    <div className="rounded-[24px] border border-rose-100/70 bg-white p-5 shadow-[0_10px_30px_rgba(15,23,42,0.04)] transition hover:-translate-y-0.5 hover:shadow-[0_18px_34px_rgba(15,23,42,0.08)]">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="text-sm text-slate-500">{label}</p>
+          <h3 className="mt-2 text-[2rem] font-semibold tracking-tight text-slate-900">{value}</h3>
+        </div>
+        <div className={`rounded-[18px] border p-3 ${iconToneMap[tone]}`}>{icon}</div>
+      </div>
+      <p className="mt-3 text-xs leading-5 text-slate-500">{helper}</p>
+    </div>
+  );
+};
+
+const actionIconTones = {
+  rose: 'border-rose-100 bg-rose-50 text-rose-500',
+  emerald: 'border-emerald-100 bg-emerald-50 text-emerald-600',
+  red: 'border-red-100 bg-red-50 text-red-500',
+  slate: 'border-slate-100 bg-slate-50 text-slate-600',
+};
+
+const cardTones = {
+  default: {
+    card: 'border-rose-100 bg-white hover:border-rose-200 hover:shadow-[0_18px_34px_rgba(15,23,42,0.06)]',
+    icon: '',
+    text: 'text-slate-500',
+    title: 'text-slate-900',
+  },
+  slate: {
+    card: 'border-slate-200 bg-slate-50 hover:border-slate-300 hover:shadow-[0_12px_24px_rgba(15,23,42,0.08)]',
+    icon: 'border-slate-200 bg-slate-100 text-slate-600',
+    text: 'text-slate-500',
+    title: 'text-slate-800',
+  },
+  emerald: {
+    card: 'border-emerald-200 bg-emerald-50 hover:border-emerald-300 hover:shadow-[0_12px_24px_rgba(5,150,105,0.1)]',
+    icon: 'border-emerald-200 bg-emerald-100 text-emerald-600',
+    text: 'text-emerald-600/70',
+    title: 'text-emerald-700',
+  },
+  red: {
+    card: 'border-red-200 bg-red-50 hover:border-red-300 hover:shadow-[0_12px_24px_rgba(239,68,68,0.1)]',
+    icon: 'border-red-200 bg-red-100 text-red-500',
+    text: 'text-red-500/70',
+    title: 'text-red-700',
+  },
+};
+
+const ActionCard: React.FC<{
+  title: string;
+  subtitle: string;
+  icon: React.ReactNode;
+  onClick: () => void;
+  disabled?: boolean;
+  cardTone?: keyof typeof cardTones;
+  iconTone?: keyof typeof actionIconTones;
+}> = ({ title, subtitle, icon, onClick, disabled = false, cardTone = 'default', iconTone = 'rose' }) => {
+  const tone = cardTones[cardTone];
+  const isSolid = cardTone !== 'default';
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className={`group flex min-h-[100px] flex-col rounded-[20px] border p-3.5 text-left transition-all hover:-translate-y-0.5 ${tone.card} disabled:cursor-not-allowed disabled:opacity-45`}
+    >
+      <div
+        className={`mb-auto inline-flex rounded-[14px] border p-2 ${isSolid ? tone.icon : actionIconTones[iconTone]}`}
+      >
+        {icon}
+      </div>
+      <div className="mt-2">
+        <p className={`text-[11px] font-medium ${tone.text}`}>{subtitle}</p>
+        <p className={`mt-0.5 text-sm font-semibold tracking-tight ${tone.title}`}>{title}</p>
+      </div>
+    </button>
+  );
+};
+
+const StatusPill: React.FC<{ open: boolean }> = ({ open }) => (
+  <div
+    className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold ${open ? 'bg-rose-100 text-rose-700' : 'bg-slate-100 text-slate-600'
+      }`}
+  >
+    <span className={`h-2 w-2 rounded-full ${open ? 'bg-rose-400' : 'bg-slate-300'}`} />
+    {open ? 'Caixa aberto' : 'Caixa fechado'}
+  </div>
+);
+
+const CompactStat: React.FC<{
+  label: string;
+  value: string;
+  helper: string;
+  emphasis?: boolean;
+}> = ({ label, value, helper, emphasis = false }) => (
+  <div
+    className={`rounded-[22px] border p-4 ${emphasis ? 'border-rose-100 bg-[#fff7f8]' : 'border-rose-100/70 bg-white'
+      }`}
+  >
+    <p className="text-xs font-medium text-slate-500">{label}</p>
+    <p className="mt-1.5 text-xl font-semibold tracking-tight text-slate-900 truncate">{value}</p>
+    <p className="mt-0.5 text-[11px] text-slate-500">{helper}</p>
+  </div>
+);
+
+const InfoRow: React.FC<{
+  label: string;
+  value: string;
+}> = ({ label, value }) => (
+  <div className="rounded-[22px] border border-rose-100 bg-white px-4 py-4">
+    <p className="text-xs font-medium text-slate-500">{label}</p>
+    <p className="mt-2 text-lg font-semibold tracking-tight text-slate-900">{value}</p>
+  </div>
+);
+
+const ModalShell: React.FC<ModalShellProps> = ({
+  open,
+  onClose,
+  title,
+  description,
+  icon,
+  children,
+  footer,
+  maxWidthClass = 'max-w-md',
+}) => {
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-[rgba(15,23,42,0.28)] backdrop-blur-sm" onClick={onClose} />
+      <div className={`relative w-full ${maxWidthClass} overflow-hidden rounded-[32px] border border-rose-100 bg-white shadow-[0_32px_80px_rgba(15,23,42,0.14)]`}>
+        <div className="flex items-start justify-between gap-4 border-b border-rose-100 bg-[linear-gradient(180deg,#fff6f7_0%,#ffffff_100%)] px-6 py-5">
+          <div>
+            <h3 className="flex items-center gap-2 text-xl font-semibold tracking-tight text-slate-900">
+              {icon}
+              {title}
+            </h3>
+            <p className="mt-1 text-sm leading-6 text-slate-500">{description}</p>
+          </div>
+          <button
+            onClick={onClose}
+            className="rounded-full p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="px-6 py-6">{children}</div>
+        <div className="flex gap-3 border-t border-rose-100 bg-white px-6 py-4">{footer}</div>
+      </div>
+    </div>
+  );
+};
 
 const Cash: React.FC = () => {
-    // --- SUPABASE HOOK ---
-    const {
-        currentRegister,
-        movements,
-        loading,
-        isOpen,
-        openRegister,
-        closeRegister,
-        addMovement,
-        calculateTotals,
-        getPreviousBalance
-    } = useCashRegister();
+  const {
+    currentRegister,
+    movements,
+    loading,
+    isOpen,
+    openRegister,
+    closeRegister,
+    addMovement,
+    calculateTotals,
+    getPreviousBalance,
+    refresh,
+  } = useCashRegister();
 
-    // --- LOCAL STATE (UI only) ---
-    const [showHistoryModal, setShowHistoryModal] = useState(false);
-    const [showCloseModal, setShowCloseModal] = useState(false);
-    const [showOpenModal, setShowOpenModal] = useState(false);
-    const [showSangriaModal, setShowSangriaModal] = useState(false);
-    const [showSuprimentoModal, setShowSuprimentoModal] = useState(false);
+  const toast = useToast();
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [showCloseModal, setShowCloseModal] = useState(false);
+  const [showOpenModal, setShowOpenModal] = useState(false);
+  const [showSangriaModal, setShowSangriaModal] = useState(false);
+  const [showSuprimentoModal, setShowSuprimentoModal] = useState(false);
+  const [historyFilters, setHistoryFilters] = useState({
+    search: '',
+    method: 'Todos',
+    date: new Date().toISOString().split('T')[0],
+  });
+  const [historyMovements, setHistoryMovements] = useState<CashMovementItem[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyPage, setHistoryPage] = useState(1);
+  const [openingFloat, setOpeningFloat] = useState<number>(0);
+  const [closingCount, setClosingCount] = useState<number>(0);
+  const [sangriaForm, setSangriaForm] = useState({ amount: '', type: 'sangria', description: '' });
+  const [suprimentoForm, setSuprimentoForm] = useState({ amount: '', description: '' });
 
-    // Filter State
-    const [historyFilters, setHistoryFilters] = useState({
-        search: '',
-        method: 'Todos',
-        date: new Date().toISOString().split('T')[0] // Default: today
+  const totals = calculateTotals();
+  const PAGE_SIZE = 15;
+  const today = new Date().toISOString().split('T')[0];
+
+  useEffect(() => {
+    if (!showSangriaModal) return;
+    if (sangriaForm.type === 'sangria') {
+      setSangriaForm((prev) => ({ ...prev, description: 'Sangria para cofre/banco' }));
+    } else if (sangriaForm.description === 'Sangria para cofre/banco') {
+      setSangriaForm((prev) => ({ ...prev, description: '' }));
+    }
+  }, [sangriaForm.type, sangriaForm.description, showSangriaModal]);
+
+  useEffect(() => {
+    if (!showOpenModal) return;
+    getPreviousBalance().then((prevBal) => {
+      if (prevBal > 0) setOpeningFloat(prevBal);
     });
-    const [historyMovements, setHistoryMovements] = useState<any[]>([]);
-    const [historyLoading, setHistoryLoading] = useState(false);
-    const [historyPage, setHistoryPage] = useState(1);
-    const PAGE_SIZE = 15;
+  }, [getPreviousBalance, showOpenModal]);
 
-    // Closing/Opening State
-    const [openingFloat, setOpeningFloat] = useState<number>(0);
-    const [closingCount, setClosingCount] = useState<number>(0);
+  useEffect(() => {
+    if (!showHistoryModal) return;
 
-    // Sangria Form State
-    const [sangriaForm, setSangriaForm] = useState({
-        amount: '',
-        type: 'sangria', // 'sangria' | 'retirada'
-        description: ''
+    const fetchHistory = async () => {
+      setHistoryLoading(true);
+      try {
+        const data = historyFilters.date
+          ? await CashService.getMovementsForDate(historyFilters.date)
+          : await CashService.getAllMovements();
+        setHistoryMovements(data);
+      } catch (error) {
+        console.error('Erro ao buscar histórico:', error);
+      } finally {
+        setHistoryLoading(false);
+      }
+    };
+
+    fetchHistory();
+  }, [historyFilters.date, showHistoryModal]);
+
+  useEffect(() => {
+    setHistoryPage(1);
+  }, [historyFilters]);
+
+  const metrics = useMemo(() => {
+    const salesMovements = movements.filter((m) => m.type === 'sale');
+    const digitalTotal = totals.cardSales + totals.pixSales;
+    const cashShare = totals.totalSales > 0 ? (totals.cashSales / totals.totalSales) * 100 : 0;
+    const averageTicket = salesMovements.length > 0 ? totals.totalSales / salesMovements.length : 0;
+    const drawerTarget = Math.max(totals.opening, 150);
+    const excessInDrawer = Math.max(0, totals.currentDrawerBalance - drawerTarget);
+    const registerOpenMinutes = currentRegister
+      ? Math.max(0, Math.floor((Date.now() - new Date(currentRegister.openedAt).getTime()) / 60000))
+      : 0;
+
+    const alerts = [
+      !isOpen ? 'Caixa fechado. Abra o caixa para iniciar a operação.' : null,
+      isOpen && registerOpenMinutes >= 600
+        ? 'Caixa aberto há muito tempo. Vale revisar o fechamento.'
+        : null,
+      isOpen && excessInDrawer > 0
+        ? `Dinheiro acima da meta sugerida de gaveta em ${formatCurrency(excessInDrawer)}.`
+        : null,
+      isOpen && totals.withdrawals === 0 && totals.currentDrawerBalance > 500
+        ? 'Sem sangria registrada apesar de alto valor em espécie.'
+        : null,
+    ].filter(Boolean) as string[];
+
+    return {
+      salesCount: salesMovements.length,
+      digitalTotal,
+      cashShare,
+      averageTicket,
+      withdrawalsCount: movements.filter((m) => m.type === 'withdrawal').length,
+      suppliesCount: movements.filter((m) => m.type === 'supply').length,
+      lastMovement: movements[movements.length - 1] ?? null,
+      registerOpenMinutes,
+      drawerTarget,
+      alerts,
+    };
+  }, [currentRegister, isOpen, movements, totals]);
+
+  const filteredMovements = useMemo(() => {
+    return historyMovements.filter((m) => {
+      const query = historyFilters.search.toLowerCase();
+      const methodMap: Record<string, string> = {
+        cash: 'Dinheiro',
+        credit: 'Cartão Crédito',
+        debit: 'Cartão Débito',
+        pix: 'Pix',
+      };
+      const displayMethod = methodMap[m.paymentMethod] || m.paymentMethod || '';
+      const matchSearch =
+        !query ||
+        (m.description || '').toLowerCase().includes(query) ||
+        (m.type || '').toLowerCase().includes(query);
+      const matchMethod = historyFilters.method === 'Todos' || displayMethod === historyFilters.method;
+      return matchSearch && matchMethod;
     });
+  }, [historyFilters.method, historyFilters.search, historyMovements]);
 
-    // Suprimento Form State
-    const [suprimentoForm, setSuprimentoForm] = useState({
-        amount: '',
-        description: ''
-    });
+  const totalPages = Math.max(1, Math.ceil(filteredMovements.length / PAGE_SIZE));
+  const paginatedMovements = filteredMovements.slice(
+    (historyPage - 1) * PAGE_SIZE,
+    historyPage * PAGE_SIZE,
+  );
+  const closeDifference = closingCount > 0 ? closingCount - totals.currentDrawerBalance : 0;
 
-    // Update description based on type selection if empty or default
-    useEffect(() => {
-        if (showSangriaModal) {
-            if (sangriaForm.type === 'sangria') {
-                setSangriaForm(prev => ({ ...prev, description: 'Sangria para Cofre/Banco' }));
-            } else if (sangriaForm.type === 'retirada') {
-                // Clear description only if it was the auto-generated one
-                if (sangriaForm.description === 'Sangria para Cofre/Banco') {
-                    setSangriaForm(prev => ({ ...prev, description: '' }));
-                }
-            }
-        }
-    }, [sangriaForm.type, showSangriaModal]);
-
-    // Auto-fill Opening Balance from previous close
-    useEffect(() => {
-        if (showOpenModal) {
-            getPreviousBalance().then(prevBal => {
-                if (prevBal > 0) setOpeningFloat(prevBal);
-            });
-        }
-    }, [showOpenModal]);
-
-    // --- CALCULATIONS (from hook) ---
-    const totals = calculateTotals();
-
-    // --- HANDLERS ---
-
-    const handleOpenRegister = async () => {
-        // Allow 0 explicitly, block only if undefined/NaN
-        if (openingFloat === undefined || isNaN(openingFloat) || openingFloat < 0) {
-            alert('Informe um valor válido para o fundo de troco.');
-            return;
-        }
-
-        try {
-            await openRegister(openingFloat, 'Usuário Atual'); // TODO: Pegar usuário real
-            setShowOpenModal(false);
-            setOpeningFloat(0);
-            alert('✅ Caixa aberto com sucesso!');
-        } catch (error: any) {
-            console.error('Erro ao abrir caixa:', error);
-            alert('❌ Erro ao abrir caixa: ' + error.message);
-        }
-    };
-
-    const handleCloseRegister = async () => {
-        try {
-            await closeRegister(
-                closingCount,
-                totals.currentDrawerBalance,
-                'Usuário Atual', // TODO: pegar usuário logado
-                `Fechamento - Diferença: R$ ${(closingCount - totals.currentDrawerBalance).toFixed(2)}`
-            );
-            setShowCloseModal(false);
-            setClosingCount(0);
-            alert('✅ Caixa fechado com sucesso!');
-        } catch (error) {
-            console.error('Erro ao fechar caixa:', error);
-            alert('❌ Erro ao fechar caixa. Tente novamente.');
-        }
-    };
-
-    const handleSaveSangria = () => {
-        const amount = parseFloat(sangriaForm.amount);
-        if (!amount || amount <= 0) {
-            alert("Informe um valor válido.");
-            return;
-        }
-        if (!sangriaForm.description.trim()) {
-            alert("Informe uma descrição/motivo para a retirada.");
-            return;
-        }
-        if (amount > totals.currentDrawerBalance) {
-            if (!confirm("Atenção: O valor da retirada é maior que o saldo em dinheiro registrado. Deseja continuar?")) {
-                return;
-            }
-        }
-
-        addMovement({
-            type: 'withdrawal',
-            description: sangriaForm.description,
-            amount: amount,
-            paymentMethod: 'cash'
-        });
-
-        setShowSangriaModal(false);
-        setSangriaForm({ amount: '', type: 'sangria', description: '' });
-    };
-
-    const handleSaveSuprimento = () => {
-        const amount = parseFloat(suprimentoForm.amount);
-        if (!amount || amount <= 0) {
-            alert("Informe um valor válido.");
-            return;
-        }
-        if (!suprimentoForm.description.trim()) {
-            alert("Informe uma descrição para o suprimento.");
-            return;
-        }
-
-        addMovement({
-            type: 'supply',
-            description: suprimentoForm.description,
-            amount: amount,
-            paymentMethod: 'cash'
-        });
-
-        setShowSuprimentoModal(false);
-        setSuprimentoForm({ amount: '', description: '' });
-        alert('✅ Suprimento registrado com sucesso!');
-    };
-
-    // Fetch history from DB when modal opens or date changes
-    useEffect(() => {
-        if (!showHistoryModal) return;
-        const fetchHistory = async () => {
-            setHistoryLoading(true);
-            try {
-                const data = historyFilters.date
-                    ? await CashService.getMovementsForDate(historyFilters.date)
-                    : await CashService.getAllMovements();
-                setHistoryMovements(data);
-            } catch (e) {
-                console.error('Erro ao buscar histórico:', e);
-            } finally {
-                setHistoryLoading(false);
-            }
-        };
-        fetchHistory();
-    }, [showHistoryModal, historyFilters.date]);
-
-    // Reset page when filters change
-    useEffect(() => { setHistoryPage(1); }, [historyFilters]);
-
-    // Filter + paginate
-    const filteredMovements = useMemo(() => {
-        return historyMovements.filter(m => {
-            const q = historyFilters.search.toLowerCase();
-            const matchSearch = !q ||
-                (m.description || '').toLowerCase().includes(q) ||
-                (m.type || '').toLowerCase().includes(q);
-            const methodMap: Record<string, string> = { cash: 'Dinheiro', credit: 'Cartão Crédito', debit: 'Cartão Débito', pix: 'Pix' };
-            const displayMethod = methodMap[m.paymentMethod] || m.paymentMethod || '';
-            const matchMethod = historyFilters.method === 'Todos' || displayMethod === historyFilters.method;
-            return matchSearch && matchMethod;
-        });
-    }, [historyMovements, historyFilters.search, historyFilters.method]);
-
-    const totalPages = Math.max(1, Math.ceil(filteredMovements.length / PAGE_SIZE));
-    const paginatedMovements = filteredMovements.slice((historyPage - 1) * PAGE_SIZE, historyPage * PAGE_SIZE);
-    const today = new Date().toISOString().split('T')[0];
-
-    // Helper for register state since isRegisterOpen was not in destructuring but used in JSX
-    // Assuming 'isOpen' from hook equates to 'isRegisterOpen'
-    const isRegisterOpen = isOpen;
-
-    // Loading state
-    if (loading) {
-        return (
-            <div className="flex items-center justify-center h-96">
-                <div className="text-center">
-                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4"></div>
-                    <p className="text-gray-500 dark:text-gray-400">Carregando caixa...</p>
-                </div>
-            </div>
-        );
+  const handleOpenRegister = async () => {
+    if (openingFloat === undefined || Number.isNaN(openingFloat) || openingFloat < 0) {
+      toast.info('Informe um valor válido para o fundo de troco.');
+      return;
     }
 
+    try {
+      await openRegister(openingFloat, 'Usuário Atual');
+      setShowOpenModal(false);
+      setOpeningFloat(0);
+      toast.success('Caixa aberto com sucesso.');
+    } catch (error: any) {
+      console.error('Erro ao abrir caixa:', error);
+      toast.error(`Erro ao abrir caixa: ${error.message}`);
+    }
+  };
+
+  const handleCloseRegister = async () => {
+    try {
+      await closeRegister(
+        closingCount,
+        totals.currentDrawerBalance,
+        'Usuário Atual',
+        `Fechamento - Diferença: ${formatCurrency(closingCount - totals.currentDrawerBalance)}`,
+      );
+      setShowCloseModal(false);
+      setClosingCount(0);
+      toast.success('Caixa fechado com sucesso.');
+    } catch (error) {
+      console.error('Erro ao fechar caixa:', error);
+      toast.error('Erro ao fechar caixa. Tente novamente.');
+    }
+  };
+
+  const handleSaveSangria = async () => {
+    const amount = parseFloat(sangriaForm.amount);
+    if (!amount || amount <= 0) return toast.info('Informe um valor válido.');
+    if (!sangriaForm.description.trim()) return toast.info('Informe uma descrição para a retirada.');
+    if (
+      amount > totals.currentDrawerBalance &&
+      !confirm('A retirada é maior que o saldo registrado. Deseja continuar?')
+    )
+      return;
+
+    try {
+      await addMovement({
+        type: 'withdrawal',
+        description: sangriaForm.description,
+        amount,
+        paymentMethod: 'cash',
+      });
+      setShowSangriaModal(false);
+      setSangriaForm({ amount: '', type: 'sangria', description: '' });
+      toast.success('Sangria registrada com sucesso.');
+    } catch (error) {
+      console.error('Erro ao registrar sangria:', error);
+      toast.error('Erro ao registrar sangria.');
+    }
+  };
+
+  const handleSaveSuprimento = async () => {
+    const amount = parseFloat(suprimentoForm.amount);
+    if (!amount || amount <= 0) return toast.info('Informe um valor válido.');
+    if (!suprimentoForm.description.trim()) return toast.info('Informe uma descrição para o suprimento.');
+
+    try {
+      await addMovement({
+        type: 'supply',
+        description: suprimentoForm.description,
+        amount,
+        paymentMethod: 'cash',
+      });
+      setShowSuprimentoModal(false);
+      setSuprimentoForm({ amount: '', description: '' });
+      toast.success('Suprimento registrado com sucesso.');
+    } catch (error) {
+      console.error('Erro ao registrar suprimento:', error);
+      toast.error('Erro ao registrar suprimento.');
+    }
+  };
+
+  if (loading) {
     return (
-        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            {/* Header Area */}
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                <div>
-                    <h2 className="text-2xl font-bold text-gray-800 dark:text-white">Controle de Caixa</h2>
-                    <p className="text-gray-500 dark:text-gray-400">
-                        {isRegisterOpen ? 'Fluxo de caixa diário e fechamento.' : 'O caixa está fechado no momento.'}
-                    </p>
-                </div>
-                <div className="flex items-center gap-3">
-                    {isRegisterOpen ? (
-                        <>
-                            <span className="px-3 py-1 bg-emerald-100 text-emerald-800 rounded-full text-sm font-medium flex items-center gap-2">
-                                <Unlock size={14} /> Caixa Aberto
-                            </span>
-                            <button
-                                onClick={() => setShowCloseModal(true)}
-                                className="bg-rose-600 hover:bg-rose-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors shadow-sm"
-                            >
-                                <Lock size={16} /> Fechar Caixa
-                            </button>
-                        </>
-                    ) : (
-                        <>
-                            <span className="px-3 py-1 bg-gray-200 text-gray-600 rounded-full text-sm font-medium flex items-center gap-2">
-                                <Lock size={14} /> Caixa Fechado
-                            </span>
-                            <button
-                                onClick={() => setShowOpenModal(true)}
-                                className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors shadow-sm"
-                            >
-                                <Unlock size={16} /> Abrir Caixa
-                            </button>
-                        </>
-                    )}
-                </div>
-            </div>
-
-            {/* KPIs Grid */}
-            <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 ${!isRegisterOpen ? 'opacity-50 pointer-events-none grayscale' : ''}`}>
-                {/* 1. Saldo Inicial */}
-                <div className="bg-white dark:bg-gray-800 p-5 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm transition-colors">
-                    <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">Saldo Inicial</p>
-                    <h3 className="text-2xl font-bold text-gray-800 dark:text-white">R$ {totals.opening.toFixed(2)}</h3>
-                    <div className="mt-2 text-xs text-gray-400 flex items-center gap-1">
-                        <History size={12} /> Abertura
-                    </div>
-                </div>
-
-                {/* 2. Entradas Dinheiro */}
-                <div className="bg-white dark:bg-gray-800 p-5 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm transition-colors">
-                    <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">Entradas (Dinheiro)</p>
-                    <h3 className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">+ R$ {totals.cashSales.toFixed(2)}</h3>
-                    <div className="mt-2 text-xs text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/30 inline-block px-2 py-0.5 rounded-full">
-                        Vendas em espécie
-                    </div>
-                </div>
-
-                {/* 3. Saídas / Sangrias */}
-                <div className="bg-white dark:bg-gray-800 p-5 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm transition-colors">
-                    <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">Saídas / Sangrias</p>
-                    <h3 className="text-2xl font-bold text-rose-600 dark:text-rose-400">- R$ {totals.withdrawals.toFixed(2)}</h3>
-                    <div className="mt-2 text-xs text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-900/30 inline-block px-2 py-0.5 rounded-full">
-                        Retiradas do caixa
-                    </div>
-                </div>
-
-                {/* 4. Total Cartão (NEW) */}
-                <div className="bg-white dark:bg-gray-800 p-5 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm transition-colors">
-                    <div className="flex justify-between items-start">
-                        <div>
-                            <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">Total em Cartão</p>
-                            <h3 className="text-2xl font-bold text-indigo-600 dark:text-indigo-400">R$ {totals.cardSales.toFixed(2)}</h3>
-                        </div>
-                        <div className="p-2 bg-indigo-50 dark:bg-indigo-900/30 rounded-lg text-indigo-600 dark:text-indigo-400">
-                            <CreditCard size={20} />
-                        </div>
-                    </div>
-                    <div className="mt-2 text-xs text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 inline-block px-2 py-0.5 rounded-full">
-                        Crédito e Débito
-                    </div>
-                </div>
-
-                {/* 5. Total Pix (NEW) */}
-                <div className="bg-white dark:bg-gray-800 p-5 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm transition-colors">
-                    <div className="flex justify-between items-start">
-                        <div>
-                            <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">Total em Pix</p>
-                            <h3 className="text-2xl font-bold text-teal-600 dark:text-teal-400">R$ {totals.pixSales.toFixed(2)}</h3>
-                        </div>
-                        <div className="p-2 bg-teal-50 dark:bg-teal-900/30 rounded-lg text-teal-600 dark:text-teal-400">
-                            <QrCode size={20} />
-                        </div>
-                    </div>
-                    <div className="mt-2 text-xs text-teal-600 dark:text-teal-400 bg-teal-50 dark:bg-teal-900/30 inline-block px-2 py-0.5 rounded-full">
-                        Pagamentos Instantâneos
-                    </div>
-                </div>
-
-                {/* 6. Saldo em Gaveta (Custom Green Card) */}
-                <div className="bg-[#73c883] p-5 rounded-xl shadow-sm border border-[#62b973] dark:border-green-600 transition-colors">
-                    <p className="text-sm font-bold text-green-900 mb-1 opacity-80">Saldo em Gaveta (Físico)</p>
-                    <h3 className="text-3xl font-bold text-white drop-shadow-sm">R$ {totals.currentDrawerBalance.toFixed(2)}</h3>
-                    <div className="mt-2 text-xs font-medium text-green-900 bg-white/20 inline-block px-2 py-1 rounded backdrop-blur-sm">
-                        Total Digital: R$ {(totals.cardSales + totals.pixSales).toFixed(2)}
-                    </div>
-                </div>
-            </div>
-
-            {/* Actions — excluding Histórico which should always be accessible */}
-            <div className={`grid grid-cols-2 md:grid-cols-3 gap-4 ${!isRegisterOpen ? 'opacity-50 pointer-events-none' : ''}`}>
-                <button
-                    onClick={() => setShowSuprimentoModal(true)}
-                    className="p-4 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl hover:border-indigo-500 dark:hover:border-indigo-500 hover:shadow-md transition-all flex flex-col items-center gap-2 group"
-                >
-                    <div className="p-3 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 rounded-full group-hover:bg-emerald-100 dark:group-hover:bg-emerald-900/40 transition-colors">
-                        <ArrowUpCircle size={24} />
-                    </div>
-                    <span className="font-medium text-gray-700 dark:text-gray-300">Suprimento</span>
-                </button>
-                <button
-                    onClick={() => setShowSangriaModal(true)}
-                    className="p-4 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl hover:border-indigo-500 dark:hover:border-indigo-500 hover:shadow-md transition-all flex flex-col items-center gap-2 group"
-                >
-                    <div className="p-3 bg-rose-50 dark:bg-rose-900/20 text-rose-600 dark:text-rose-400 rounded-full group-hover:bg-rose-100 dark:group-hover:bg-rose-900/40 transition-colors">
-                        <ArrowDownCircle size={24} />
-                    </div>
-                    <span className="font-medium text-gray-700 dark:text-gray-300">Sangria</span>
-                </button>
-                <button className="p-4 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl hover:border-indigo-500 dark:hover:border-indigo-500 hover:shadow-md transition-all flex flex-col items-center gap-2 group">
-                    <div className="p-3 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 rounded-full group-hover:bg-indigo-100 dark:group-hover:bg-indigo-900/40 transition-colors">
-                        <Coins size={24} />
-                    </div>
-                    <span className="font-medium text-gray-700 dark:text-gray-300">Conferência</span>
-                </button>
-            </div>
-            {/* Histórico — always enabled */}
-            <button
-                onClick={() => setShowHistoryModal(true)}
-                className="w-full p-4 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl hover:border-amber-400 dark:hover:border-amber-400 hover:shadow-md transition-all flex items-center justify-center gap-3 group"
-            >
-                <div className="p-2 bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 rounded-full group-hover:bg-amber-100 transition-colors">
-                    <History size={20} />
-                </div>
-                <span className="font-medium text-gray-700 dark:text-gray-300">Histórico de Movimentações</span>
-            </button>
-
-            {/* Recent Movements Table (Small view) */}
-            <div className={`bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden transition-colors ${!isRegisterOpen ? 'opacity-60' : ''}`}>
-                <div className="p-4 border-b border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-700/30">
-                    <h3 className="font-bold text-gray-800 dark:text-white">Movimentações do Dia (Recentes)</h3>
-                </div>
-                <div className="overflow-x-auto">
-                    <table className="w-full text-left text-sm">
-                        <thead className="bg-gray-50 dark:bg-gray-700/50 text-gray-500 dark:text-gray-400 uppercase text-xs">
-                            <tr>
-                                <th className="p-4 font-medium">Hora</th>
-                                <th className="p-4 font-medium">Tipo</th>
-                                <th className="p-4 font-medium">Descrição</th>
-                                <th className="p-4 font-medium">Forma Pagto.</th>
-                                <th className="p-4 font-medium text-right">Valor</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-                            {movements.slice().reverse().slice(0, 5).map((mov) => {
-                                const mapped = mapCashMovementForDisplay(mov);
-                                return (
-                                    <tr key={mov.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
-                                        <td className="p-4 text-gray-500 dark:text-gray-400 font-mono">
-                                            {mapped.dateStr} <span className="text-gray-400">|</span> {mapped.timeStr}
-                                        </td>
-                                        <td className="p-4">
-                                            <span className={`px-2 py-1 rounded text-xs font-bold ${mapped.displayType === 'Venda' ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400' :
-                                                mapped.displayType === 'Sangria' ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400' :
-                                                    mapped.displayType === 'Suprimento' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' :
-                                                        'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
-                                                }`}>
-                                                {mapped.displayType}
-                                            </span>
-                                        </td>
-                                        <td className="p-4 text-gray-800 dark:text-white">{mov.description}</td>
-                                        <td className="p-4 text-gray-500 dark:text-gray-400 flex items-center gap-1">
-                                            {mapped.displayMethod === 'Pix' && <QrCode size={12} className="text-teal-500" />}
-                                            {mapped.displayMethod && mapped.displayMethod.includes('Cartão') && <CreditCard size={12} className="text-indigo-500" />}
-                                            {mapped.displayMethod || '-'}
-                                        </td>
-                                        <td className={`p-4 font-bold text-right ${mapped.displayType === 'Sangria' ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'
-                                            }`}>
-                                            {mapped.displayType === 'Sangria' ? '-' : '+'} R$ {mapped.amount.toFixed(2)}
-                                        </td>
-                                    </tr>
-                                );
-                            })}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-
-            {/* --- MODAL: HISTORY --- */}
-            {showHistoryModal && (
-                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-                    <div className="absolute inset-0 bg-gray-900/50 backdrop-blur-sm" onClick={() => setShowHistoryModal(false)}></div>
-                    <div className="bg-white dark:bg-gray-800 w-full max-w-5xl h-[85vh] rounded-xl shadow-2xl relative flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-                        {/* Modal Header */}
-                        <div className="p-5 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center bg-gray-50 dark:bg-gray-700/30">
-                            <h3 className="font-bold text-xl text-gray-800 dark:text-white flex items-center gap-2">
-                                <History className="text-[#ffc8cb]" /> Histórico de Movimentações
-                            </h3>
-                            <div className="flex items-center gap-2">
-                                <span className="text-sm text-gray-500 dark:text-gray-400">{filteredMovements.length} registro(s)</span>
-                                <button onClick={() => setShowHistoryModal(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full p-1 transition-colors">
-                                    <X size={24} />
-                                </button>
-                            </div>
-                        </div>
-
-                        {/* Filters */}
-                        <div className="p-4 border-b border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800 flex flex-col md:flex-row gap-3">
-                            {/* Date picker */}
-                            <div className="flex items-center gap-2">
-                                <div className="relative">
-                                    <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
-                                    <input
-                                        type="date"
-                                        className="pl-9 pr-3 py-2 border border-gray-200 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-[#ffc8cb]/50 outline-none bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white text-sm"
-                                        value={historyFilters.date}
-                                        onChange={(e) => setHistoryFilters({ ...historyFilters, date: e.target.value })}
-                                    />
-                                </div>
-                                {historyFilters.date !== today && (
-                                    <button
-                                        onClick={() => setHistoryFilters({ ...historyFilters, date: today })}
-                                        className="text-xs font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20 px-2 py-1.5 rounded-lg hover:bg-indigo-100 transition-colors whitespace-nowrap"
-                                    >
-                                        Hoje
-                                    </button>
-                                )}
-                                <button
-                                    onClick={() => setHistoryFilters({ ...historyFilters, date: '' })}
-                                    className="text-xs font-bold text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700 px-2 py-1.5 rounded-lg hover:bg-gray-200 transition-colors whitespace-nowrap"
-                                >
-                                    Todos
-                                </button>
-                            </div>
-                            {/* Search */}
-                            <div className="flex-1 relative">
-                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
-                                <input
-                                    type="text"
-                                    placeholder="Filtrar por descrição..."
-                                    className="w-full pl-9 pr-4 py-2 border border-gray-200 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-[#ffc8cb]/50 outline-none bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white text-sm"
-                                    value={historyFilters.search}
-                                    onChange={(e) => setHistoryFilters({ ...historyFilters, search: e.target.value })}
-                                />
-                            </div>
-                            {/* Method */}
-                            <div className="relative">
-                                <Filter className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
-                                <select
-                                    className="pl-9 pr-8 py-2 border border-gray-200 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-[#ffc8cb]/50 outline-none appearance-none bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white text-sm"
-                                    value={historyFilters.method}
-                                    onChange={(e) => setHistoryFilters({ ...historyFilters, method: e.target.value })}
-                                >
-                                    <option value="Todos">Todos</option>
-                                    <option value="Dinheiro">Dinheiro</option>
-                                    <option value="Pix">Pix</option>
-                                    <option value="Cartão Crédito">Cartão Crédito</option>
-                                    <option value="Cartão Débito">Cartão Débito</option>
-                                </select>
-                            </div>
-                        </div>
-
-                        {/* Full Table */}
-                        <div className="flex-1 overflow-auto bg-gray-50/50 dark:bg-gray-900/50">
-                            {historyLoading ? (
-                                <div className="flex items-center justify-center h-48">
-                                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500"></div>
-                                </div>
-                            ) : (
-                                <table className="w-full text-left">
-                                    <thead className="bg-white dark:bg-gray-800 text-gray-500 dark:text-gray-400 uppercase text-xs sticky top-0 shadow-sm">
-                                        <tr>
-                                            <th className="p-4 font-semibold">Data/Hora</th>
-                                            <th className="p-4 font-semibold">Tipo</th>
-                                            <th className="p-4 font-semibold">Descrição</th>
-                                            <th className="p-4 font-semibold">Pagamento</th>
-                                            <th className="p-4 font-semibold text-right">Valor</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                                        {paginatedMovements.length > 0 ? (
-                                            paginatedMovements.map((mov) => {
-                                                const mapped = mapCashMovementForDisplay(mov);
-                                                const isNeg = mapped.displayType === 'Sangria';
-                                                return (
-                                                    <tr key={mov.id} className="hover:bg-white dark:hover:bg-gray-700 transition-colors bg-white/50 dark:bg-gray-800/50">
-                                                        <td className="p-4 text-gray-600 dark:text-gray-300 font-mono text-sm">
-                                                            {mapped.dateStr} <span className="text-gray-400">|</span> {mapped.timeStr}
-                                                        </td>
-                                                        <td className="p-4">
-                                                            <span className={`px-2 py-1 rounded text-xs font-bold ${mapped.displayType === 'Venda' ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400' :
-                                                                    mapped.displayType === 'Sangria' ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400' :
-                                                                        mapped.displayType === 'Suprimento' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' :
-                                                                            'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
-                                                                }`}>
-                                                                {mapped.displayType}
-                                                            </span>
-                                                        </td>
-                                                        <td className="p-4 text-gray-800 dark:text-white font-medium">{mov.description}</td>
-                                                        <td className="p-4 text-gray-500 dark:text-gray-400">
-                                                            <span className="flex items-center gap-1">
-                                                                {mapped.displayMethod === 'Pix' && <QrCode size={13} className="text-teal-500" />}
-                                                                {mapped.displayMethod?.includes('Cartão') && <CreditCard size={13} className="text-indigo-500" />}
-                                                                {!mapped.displayMethod?.includes('Pix') && !mapped.displayMethod?.includes('Cartão') && mapped.displayMethod === 'Dinheiro' && <Banknote size={13} className="text-emerald-500" />}
-                                                                {mapped.displayMethod || '-'}
-                                                            </span>
-                                                        </td>
-                                                        <td className={`p-4 font-bold text-right ${isNeg ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
-                                                            {isNeg ? '-' : '+'} R$ {mapped.amount.toFixed(2)}
-                                                        </td>
-                                                    </tr>
-                                                );
-                                            })
-                                        ) : (
-                                            <tr>
-                                                <td colSpan={5} className="p-12 text-center">
-                                                    <History size={32} className="mx-auto text-gray-300 dark:text-gray-600 mb-2" />
-                                                    <p className="text-gray-400">Nenhum registro encontrado.</p>
-                                                    {historyFilters.date && <p className="text-xs text-gray-400 mt-1">Tente selecionar outra data ou clique em "Todos".</p>}
-                                                </td>
-                                            </tr>
-                                        )}
-                                    </tbody>
-                                </table>
-                            )}
-                        </div>
-
-                        {/* Pagination Footer */}
-                        <div className="p-3 border-t border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800 flex items-center justify-between">
-                            <p className="text-xs text-gray-500 dark:text-gray-400">
-                                Página {historyPage} de {totalPages} &middot; {filteredMovements.length} movimentação(ões)
-                            </p>
-                            <div className="flex items-center gap-1">
-                                <button
-                                    onClick={() => setHistoryPage(p => Math.max(1, p - 1))}
-                                    disabled={historyPage === 1}
-                                    className="p-1.5 rounded-lg border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                                >
-                                    <ChevronLeft size={16} />
-                                </button>
-                                {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                                    const pageNum = totalPages <= 5 ? i + 1 : Math.max(1, Math.min(historyPage - 2, totalPages - 4)) + i;
-                                    return (
-                                        <button
-                                            key={pageNum}
-                                            onClick={() => setHistoryPage(pageNum)}
-                                            className={`w-8 h-8 rounded-lg text-xs font-bold transition-colors ${historyPage === pageNum
-                                                    ? 'bg-indigo-600 text-white'
-                                                    : 'border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
-                                                }`}
-                                        >
-                                            {pageNum}
-                                        </button>
-                                    );
-                                })}
-                                <button
-                                    onClick={() => setHistoryPage(p => Math.min(totalPages, p + 1))}
-                                    disabled={historyPage === totalPages}
-                                    className="p-1.5 rounded-lg border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                                >
-                                    <ChevronRight size={16} />
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* --- MODAL: OPEN REGISTER --- */}
-            {showOpenModal && (
-                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-                    <div className="absolute inset-0 bg-gray-900/60 backdrop-blur-sm" onClick={() => setShowOpenModal(false)}></div>
-                    <div className="bg-white dark:bg-gray-800 w-full max-w-md rounded-xl shadow-2xl relative animate-in fade-in zoom-in-95 duration-200">
-                        <div className="p-5 border-b border-gray-100 dark:border-gray-700">
-                            <h3 className="font-bold text-xl text-gray-800 dark:text-white flex items-center gap-2">
-                                <Unlock className="text-emerald-500" /> Abertura de Caixa
-                            </h3>
-                            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                                Informe o valor disponível em dinheiro na gaveta para iniciar as operações.
-                            </p>
-                        </div>
-
-                        <div className="p-6">
-                            <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Fundo de Troco (R$)</label>
-                            <input
-                                type="number"
-                                className="w-full p-4 text-2xl font-bold border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-4 focus:ring-emerald-100 dark:focus:ring-emerald-900 focus:border-emerald-500 outline-none bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white"
-                                placeholder="0,00"
-                                value={openingFloat || ''}
-                                onChange={(e) => setOpeningFloat(parseFloat(e.target.value))}
-                                autoFocus
-                            />
-                        </div>
-
-                        <div className="p-4 border-t border-gray-100 dark:border-gray-700 flex gap-3">
-                            <button
-                                onClick={() => setShowOpenModal(false)}
-                                className="flex-1 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 py-3 rounded-lg font-medium hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
-                            >
-                                Cancelar
-                            </button>
-                            <button
-                                onClick={handleOpenRegister}
-                                className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white py-3 rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
-                            >
-                                <CheckCircle size={18} /> Confirmar Abertura
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* --- MODAL: CLOSE REGISTER --- */}
-            {showCloseModal && (
-                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-                    <div className="absolute inset-0 bg-gray-900/60 backdrop-blur-sm" onClick={() => setShowCloseModal(false)}></div>
-                    <div className="bg-white dark:bg-gray-800 w-full max-w-md rounded-xl shadow-2xl relative animate-in fade-in zoom-in-95 duration-200">
-                        <div className="p-5 border-b border-gray-100 dark:border-gray-700">
-                            <h3 className="font-bold text-xl text-gray-800 dark:text-white flex items-center gap-2">
-                                <Lock className="text-rose-500" /> Fechamento de Caixa
-                            </h3>
-                            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                                Confira o valor físico em dinheiro na gaveta e registre o fechamento.
-                            </p>
-                        </div>
-
-                        <div className="p-6 space-y-4">
-                            <div className="bg-gray-50 dark:bg-gray-700/50 p-4 rounded-lg">
-                                <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Saldo Esperado (Dinheiro)</p>
-                                <p className="text-2xl font-bold text-gray-800 dark:text-white">R$ {totals.currentDrawerBalance.toFixed(2)}</p>
-                            </div>
-
-                            <div>
-                                <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Valor Contado na Gaveta (R$)</label>
-                                <input
-                                    type="number"
-                                    className="w-full p-4 text-2xl font-bold border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-4 focus:ring-rose-100 dark:focus:ring-rose-900 focus:border-rose-500 outline-none bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white"
-                                    placeholder="0,00"
-                                    value={closingCount || ''}
-                                    onChange={(e) => setClosingCount(parseFloat(e.target.value))}
-                                    autoFocus
-                                />
-                            </div>
-
-                            {closingCount > 0 && (
-                                <div className={`p-3 rounded-lg ${closingCount === totals.currentDrawerBalance ? 'bg-emerald-50 dark:bg-emerald-900/20' : 'bg-amber-50 dark:bg-amber-900/20'}`}>
-                                    <p className="text-xs font-medium mb-1 text-gray-600 dark:text-gray-400">Diferença</p>
-                                    <p className={`text-xl font-bold ${closingCount === totals.currentDrawerBalance ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>
-                                        {closingCount > totals.currentDrawerBalance ? '+' : ''} R$ {(closingCount - totals.currentDrawerBalance).toFixed(2)}
-                                    </p>
-                                </div>
-                            )}
-                        </div>
-
-                        <div className="p-4 border-t border-gray-100 dark:border-gray-700 flex gap-3">
-                            <button
-                                onClick={() => setShowCloseModal(false)}
-                                className="flex-1 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 py-3 rounded-lg font-medium hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
-                            >
-                                Cancelar
-                            </button>
-                            <button
-                                onClick={handleCloseRegister}
-                                className="flex-1 bg-rose-600 hover:bg-rose-700 text-white py-3 rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
-                            >
-                                <Lock size={18} /> Confirmar Fechamento
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* --- MODAL: SANGRIA --- */}
-            {showSangriaModal && (
-                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-                    <div className="absolute inset-0 bg-gray-900/60 backdrop-blur-sm" onClick={() => setShowSangriaModal(false)}></div>
-                    <div className="bg-white dark:bg-gray-800 w-full max-w-md rounded-xl shadow-2xl relative animate-in fade-in zoom-in-95 duration-200">
-                        <div className="p-5 border-b border-gray-100 dark:border-gray-700">
-                            <h3 className="font-bold text-xl text-gray-800 dark:text-white flex items-center gap-2">
-                                <ArrowDownCircle className="text-rose-500" /> Sangria de Caixa
-                            </h3>
-                            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                                Registre a retirada de dinheiro do caixa para depósito ou outro fim.
-                            </p>
-                        </div>
-
-                        <div className="p-6 space-y-4">
-                            <div className="bg-rose-50 dark:bg-rose-900/20 p-4 rounded-lg">
-                                <p className="text-xs text-rose-600 dark:text-rose-400 mb-1">Saldo Disponível (Dinheiro)</p>
-                                <p className="text-2xl font-bold text-rose-700 dark:text-rose-300">R$ {totals.currentDrawerBalance.toFixed(2)}</p>
-                            </div>
-
-                            <div>
-                                <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Tipo de Retirada</label>
-                                <select
-                                    className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-rose-500 outline-none bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white"
-                                    value={sangriaForm.type}
-                                    onChange={(e) => setSangriaForm({ ...sangriaForm, type: e.target.value })}
-                                >
-                                    <option value="sangria">Sangria (Depósito/Cofre)</option>
-                                    <option value="retirada">Retirada (Outros)</option>
-                                </select>
-                            </div>
-
-                            <div>
-                                <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Valor (R$)</label>
-                                <input
-                                    type="number"
-                                    className="w-full p-4 text-2xl font-bold border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-4 focus:ring-rose-100 dark:focus:ring-rose-900 focus:border-rose-500 outline-none bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white"
-                                    placeholder="0,00"
-                                    value={sangriaForm.amount}
-                                    onChange={(e) => setSangriaForm({ ...sangriaForm, amount: e.target.value })}
-                                    autoFocus
-                                />
-                            </div>
-
-                            <div>
-                                <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Descrição</label>
-                                <input
-                                    type="text"
-                                    className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-rose-500 outline-none bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white"
-                                    placeholder="Ex: Depósito bancário, Pagamento fornecedor..."
-                                    value={sangriaForm.description}
-                                    onChange={(e) => setSangriaForm({ ...sangriaForm, description: e.target.value })}
-                                />
-                            </div>
-                        </div>
-
-                        <div className="p-4 border-t border-gray-100 dark:border-gray-700 flex gap-3">
-                            <button
-                                onClick={() => setShowSangriaModal(false)}
-                                className="flex-1 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 py-3 rounded-lg font-medium hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
-                            >
-                                Cancelar
-                            </button>
-                            <button
-                                onClick={handleSaveSangria}
-                                className="flex-1 bg-rose-600 hover:bg-rose-700 text-white py-3 rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
-                            >
-                                <Save size={18} /> Confirmar Sangria
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* --- MODAL: SUPRIMENTO --- */}
-            {showSuprimentoModal && (
-                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-                    <div className="absolute inset-0 bg-gray-900/60 backdrop-blur-sm" onClick={() => setShowSuprimentoModal(false)}></div>
-                    <div className="bg-white dark:bg-gray-800 w-full max-w-md rounded-xl shadow-2xl relative animate-in fade-in zoom-in-95 duration-200">
-                        <div className="p-5 border-b border-gray-100 dark:border-gray-700">
-                            <h3 className="font-bold text-xl text-gray-800 dark:text-white flex items-center gap-2">
-                                <ArrowUpCircle className="text-emerald-500" /> Suprimento de Caixa
-                            </h3>
-                            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                                Registre a entrada de dinheiro extra no caixa (troco, aporte, etc).
-                            </p>
-                        </div>
-
-                        <div className="p-6 space-y-4">
-                            <div className="bg-emerald-50 dark:bg-emerald-900/20 p-4 rounded-lg">
-                                <p className="text-xs text-emerald-600 dark:text-emerald-400 mb-1">Saldo Atual (Dinheiro)</p>
-                                <p className="text-2xl font-bold text-emerald-700 dark:text-emerald-300">R$ {totals.currentDrawerBalance.toFixed(2)}</p>
-                            </div>
-
-                            <div>
-                                <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Valor (R$)</label>
-                                <input
-                                    type="number"
-                                    className="w-full p-4 text-2xl font-bold border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-4 focus:ring-emerald-100 dark:focus:ring-emerald-900 focus:border-emerald-500 outline-none bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white"
-                                    placeholder="0,00"
-                                    value={suprimentoForm.amount}
-                                    onChange={(e) => setSuprimentoForm({ ...suprimentoForm, amount: e.target.value })}
-                                    autoFocus
-                                />
-                            </div>
-
-                            <div>
-                                <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Descrição</label>
-                                <input
-                                    type="text"
-                                    className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white"
-                                    placeholder="Ex: Aporte de troco..."
-                                    value={suprimentoForm.description}
-                                    onChange={(e) => setSuprimentoForm({ ...suprimentoForm, description: e.target.value })}
-                                />
-                            </div>
-                        </div>
-
-                        <div className="p-4 border-t border-gray-100 dark:border-gray-700 flex gap-3">
-                            <button
-                                onClick={() => setShowSuprimentoModal(false)}
-                                className="flex-1 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 py-3 rounded-lg font-medium hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
-                            >
-                                Cancelar
-                            </button>
-                            <button
-                                onClick={handleSaveSuprimento}
-                                className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white py-3 rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
-                            >
-                                <Save size={18} /> Confirmar Suprimento
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
+      <div className="flex h-96 items-center justify-center rounded-[32px] border border-rose-100 bg-white">
+        <div className="text-center">
+          <div className="mx-auto mb-4 h-12 w-12 animate-spin rounded-full border-2 border-rose-100 border-t-rose-300" />
+          <p className="text-sm font-medium text-slate-500">Carregando caixa...</p>
         </div>
+      </div>
     );
+  }
+
+  return (
+    <div className="space-y-6 bg-[var(--cash-page-tone,#fff9fa)] text-slate-800">
+      <section className="overflow-hidden rounded-[34px] border border-rose-100 bg-[linear-gradient(180deg,#fff7f8_0%,#fffefe_100%)] shadow-[0_20px_60px_rgba(255,200,203,0.25)]">
+        <div className="space-y-6 p-5 sm:p-6 lg:p-8">
+          <div className="grid gap-5 xl:grid-cols-[1.1fr_0.9fr] xl:items-start">
+            <div className="space-y-4">
+              <div className="inline-flex items-center gap-2 rounded-full border border-rose-200 bg-white px-3.5 py-1.5 text-xs font-semibold tracking-[0.08em] text-slate-600 shadow-sm">
+                <Sparkles size={14} className="text-rose-400" />
+                Caixa inteligente
+              </div>
+
+              <div>
+                <h2 className="text-3xl font-semibold tracking-tight text-slate-900 md:text-[2.7rem]">
+                  Controle de Caixa
+                </h2>
+                <p className="mt-3 max-w-2xl text-[15px] leading-7 text-slate-600">
+                  Um painel operacional claro e sofisticado para abertura, conferência,
+                  acompanhamento e decisões rápidas do caixa, com linguagem totalmente branca e rosa.
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <ActionCard
+                title={isOpen ? 'Fechar caixa' : 'Abrir caixa'}
+                subtitle={isOpen ? 'Encerrar operação' : 'Iniciar operação'}
+                icon={isOpen ? <Lock size={16} /> : <Unlock size={16} />}
+                onClick={() => (isOpen ? setShowCloseModal(true) : setShowOpenModal(true))}
+                cardTone="slate"
+              />
+              <ActionCard
+                title="Suprimento"
+                subtitle="Entrada manual"
+                icon={<ArrowUpCircle size={16} />}
+                onClick={() => setShowSuprimentoModal(true)}
+                disabled={!isOpen}
+                cardTone="emerald"
+              />
+              <ActionCard
+                title="Sangria"
+                subtitle="Saída controlada"
+                icon={<ArrowDownCircle size={16} />}
+                onClick={() => setShowSangriaModal(true)}
+                disabled={!isOpen}
+                cardTone="red"
+              />
+              <ActionCard
+                title="Atualizar"
+                subtitle="Sincronização"
+                icon={<RefreshCw size={16} />}
+                onClick={() => {
+                  refresh();
+                  toast.success('Dados do caixa atualizados.');
+                }}
+                iconTone="slate"
+              />
+            </div>
+          </div>
+
+          <div className="grid gap-4 xl:grid-cols-[1.25fr_0.95fr]">
+            <div className={`${glassCard} p-5 sm:p-6`}>
+              <div className="grid gap-4 lg:grid-cols-[1fr_auto] lg:items-start">
+                <div>
+                  <StatusPill open={isOpen} />
+                  <p className="mt-4 text-sm leading-6 text-slate-500">
+                    {currentRegister
+                      ? `Aberto em ${new Date(currentRegister.openedAt).toLocaleString('pt-BR')}`
+                      : 'Nenhum caixa aberto no momento.'}
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 sm:min-w-[320px]">
+                  <CompactStat
+                    label="Saldo em gaveta"
+                    value={formatCurrency(totals.currentDrawerBalance)}
+                    helper="Valor físico disponível"
+                    emphasis
+                  />
+                  <CompactStat
+                    label="Vendas totais"
+                    value={formatCurrency(totals.totalSales)}
+                    helper="Receita acumulada"
+                  />
+                </div>
+              </div>
+
+              <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                <CompactStat
+                  label="Dinheiro"
+                  value={formatCurrency(totals.cashSales)}
+                  helper={`${Math.round(metrics.cashShare)}% das vendas`}
+                  emphasis
+                />
+                <CompactStat
+                  label="Digital"
+                  value={formatCurrency(metrics.digitalTotal)}
+                  helper="Pix + cartões"
+                />
+                <CompactStat
+                  label="Ticket médio"
+                  value={formatCurrency(metrics.averageTicket)}
+                  helper={`${metrics.salesCount} venda(s)`}
+                />
+                <CompactStat
+                  label="Tempo aberto"
+                  value={isOpen ? `${Math.floor(metrics.registerOpenMinutes / 60)}h ${metrics.registerOpenMinutes % 60}m` : '--'}
+                  helper="Monitoramento operacional"
+                />
+              </div>
+            </div>
+
+            <div className={`${softPinkCard} p-5 sm:p-6`}>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className={tinyLabel}>Saúde do caixa</p>
+                  <h3 className="mt-2 text-[1.7rem] font-semibold tracking-tight text-slate-900">
+                    Leitura rápida da operação
+                  </h3>
+                  <p className="mt-2 text-sm leading-6 text-slate-500">
+                    Destaques operacionais e pontos de atenção com foco em leitura imediata.
+                  </p>
+                </div>
+                <div className="rounded-[18px] border border-rose-100 bg-white p-2.5 text-rose-400 shadow-sm">
+                  <ShieldAlert size={18} />
+                </div>
+              </div>
+
+              <div className="mt-5 space-y-3">
+                {metrics.alerts.length > 0 ? (
+                  metrics.alerts.map((alert) => (
+                    <div key={alert} className="rounded-[22px] border border-rose-100 bg-white px-4 py-4 shadow-sm">
+                      <p className="text-sm leading-6 text-slate-700">{alert}</p>
+                    </div>
+                  ))
+                ) : (
+                  <div className="rounded-[22px] border border-emerald-100 bg-emerald-50 px-4 py-4 shadow-sm">
+                    <p className="text-sm font-semibold text-emerald-700">Operação saudável</p>
+                    <p className="mt-1 text-sm leading-6 text-slate-600">
+                      Nenhum alerta operacional relevante neste momento.
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              <div className="mt-5 grid grid-cols-2 gap-3">
+                <InfoRow label="Sangrias" value={String(metrics.withdrawalsCount)} />
+                <InfoRow label="Suprimentos" value={String(metrics.suppliesCount)} />
+                <InfoRow label="Meta gaveta" value={formatCurrency(metrics.drawerTarget)} />
+                <InfoRow
+                  label="Último movimento"
+                  value={
+                    metrics.lastMovement
+                      ? new Date(metrics.lastMovement.createdAt).toLocaleTimeString('pt-BR')
+                      : '--'
+                  }
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <KpiCard
+          label="Saldo inicial"
+          value={formatCurrency(totals.opening)}
+          helper="Fundo configurado na abertura do caixa."
+          icon={<Wallet size={20} />}
+          tone="rose"
+        />
+        <KpiCard
+          label="Entradas em espécie"
+          value={formatCurrency(totals.cashSales)}
+          helper={`${metrics.salesCount} venda(s) registradas hoje.`}
+          icon={<Banknote size={20} />}
+          tone="emerald"
+        />
+        <KpiCard
+          label="Saídas e sangrias"
+          value={formatCurrency(totals.withdrawals)}
+          helper="Controle de retiradas e proteção de gaveta."
+          icon={<ArrowDownCircle size={20} />}
+          tone="rose"
+        />
+        <KpiCard
+          label="Pix e cartões"
+          value={formatCurrency(metrics.digitalTotal)}
+          helper="Receita digital fora do saldo físico da gaveta."
+          icon={<CreditCard size={20} />}
+          tone="slate"
+        />
+      </section>
+
+      <section className="grid gap-4 xl:grid-cols-[1.35fr_0.85fr]">
+        <div className={`${glassCard} overflow-hidden`}>
+          <div className="flex flex-col gap-4 border-b border-rose-100 px-5 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+            <div>
+              <h3 className={titleClass}>Movimentações recentes</h3>
+              <p className={descClass}>
+                Últimos registros do caixa atual, organizados para leitura rápida em desktop e mobile.
+              </p>
+            </div>
+            <button
+              onClick={() => setShowHistoryModal(true)}
+              className="inline-flex items-center justify-center gap-2 rounded-full border border-rose-200 bg-[#fff4f5] px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-[#ffe8ea]"
+            >
+              <History size={16} className="text-rose-400" />
+              Ver histórico completo
+            </button>
+          </div>
+
+          <div className="divide-y divide-rose-100/80">
+            {movements.length > 0 ? (
+              movements
+                .slice()
+                .reverse()
+                .slice(0, 6)
+                .map((mov) => {
+                  const mapped = mapCashMovementForDisplay(mov);
+                  const isNegative = mapped.displayType === 'Sangria';
+
+                  return (
+                    <div
+                      key={mov.id}
+                      className="flex flex-col gap-4 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span
+                            className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${mapped.displayType === 'Venda'
+                                ? 'bg-slate-100 text-slate-700'
+                                : mapped.displayType === 'Sangria'
+                                  ? 'bg-rose-100 text-rose-700'
+                                  : mapped.displayType === 'Suprimento'
+                                    ? 'bg-emerald-100 text-emerald-700'
+                                    : 'bg-amber-100 text-amber-700'
+                              }`}
+                          >
+                            {mapped.displayType}
+                          </span>
+                          <span className="text-xs text-slate-400">
+                            {mapped.dateStr} · {mapped.timeStr}
+                          </span>
+                        </div>
+
+                        <p className="mt-2 truncate text-sm font-semibold text-slate-900">{mov.description}</p>
+
+                        <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                          {mapped.displayMethod === 'Pix' && <QrCode size={12} className="text-teal-500" />}
+                          {mapped.displayMethod?.includes('Cartão') && (
+                            <CreditCard size={12} className="text-slate-600" />
+                          )}
+                          {mapped.displayMethod === 'Dinheiro' && (
+                            <Banknote size={12} className="text-emerald-500" />
+                          )}
+                          <span>{mapped.displayMethod || 'Sem método'}</span>
+                        </div>
+                      </div>
+
+                      <div className="text-right">
+                        <p className={`text-sm font-semibold ${isNegative ? 'text-rose-600' : 'text-emerald-600'}`}>
+                          {isNegative ? '-' : '+'} {formatCurrency(mapped.amount)}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })
+            ) : (
+              <div className="px-5 py-12 sm:px-6">
+                <EmptyState
+                  title="Sem movimentações no caixa atual"
+                  description="Quando houver vendas, suprimentos ou sangrias, elas aparecerão aqui."
+                />
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className={`${softPinkCard} p-5 sm:p-6`}>
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className={tinyLabel}>Fechamento</p>
+              <h3 className="mt-2 text-[1.7rem] font-semibold tracking-tight text-slate-900">
+                Fechamento assistido
+              </h3>
+              <p className="mt-2 text-sm leading-6 text-slate-500">
+                Resumo objetivo para conferência antes de encerrar a operação.
+              </p>
+            </div>
+            <div className="rounded-[18px] border border-rose-100 bg-white p-2.5 text-rose-400 shadow-sm">
+              <FileText size={18} />
+            </div>
+          </div>
+
+          <div className="mt-5 space-y-3">
+            <CompactStat
+              label="Saldo esperado"
+              value={formatCurrency(totals.currentDrawerBalance)}
+              helper="Valor físico previsto na conferência"
+              emphasis
+            />
+            <CompactStat
+              label="Suprimentos lançados"
+              value={formatCurrency(totals.supplies)}
+              helper="Entradas manuais registradas"
+            />
+            <CompactStat
+              label="Saídas registradas"
+              value={formatCurrency(totals.withdrawals)}
+              helper="Sangrias e retiradas do período"
+            />
+            <button
+              onClick={() => setShowCloseModal(true)}
+              disabled={!isOpen}
+              className="inline-flex w-full items-center justify-center gap-2 rounded-[22px] bg-[linear-gradient(180deg,#ffd8da_0%,#ffc8cb_100%)] px-4 py-3.5 text-sm font-semibold text-slate-900 shadow-[0_18px_30px_rgba(255,200,203,0.36)] transition hover:-translate-y-0.5 hover:shadow-[0_22px_34px_rgba(255,200,203,0.44)] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <Lock size={16} />
+              Conferir e fechar caixa
+            </button>
+          </div>
+        </div>
+      </section>
+
+      {showHistoryModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-[rgba(15,23,42,0.28)] backdrop-blur-sm" onClick={() => setShowHistoryModal(false)} />
+          <div className="relative flex h-[85vh] w-full max-w-5xl flex-col overflow-hidden rounded-[32px] border border-rose-100 bg-white shadow-[0_32px_80px_rgba(15,23,42,0.14)]">
+            <div className="flex items-start justify-between border-b border-rose-100 bg-[linear-gradient(180deg,#fff7f8_0%,#ffffff_100%)] px-5 py-4 sm:px-6">
+              <div>
+                <h3 className="flex items-center gap-2 text-xl font-semibold tracking-tight text-slate-900">
+                  <History size={18} className="text-rose-400" />
+                  Histórico de movimentações
+                </h3>
+                <p className="mt-1 text-sm text-slate-500">{filteredMovements.length} registro(s) encontrados.</p>
+              </div>
+              <button
+                onClick={() => setShowHistoryModal(false)}
+                className="rounded-full p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="flex flex-col gap-3 border-b border-rose-100 px-5 py-4 md:flex-row md:items-center md:px-6">
+              <div className="relative">
+                <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                <input
+                  type="date"
+                  className="rounded-2xl border border-rose-100 bg-[#fff8f8] py-2.5 pl-10 pr-3 text-sm text-slate-900 outline-none transition focus:border-rose-200 focus:bg-white"
+                  value={historyFilters.date}
+                  onChange={(e) => setHistoryFilters({ ...historyFilters, date: e.target.value })}
+                />
+              </div>
+
+              <div className="flex gap-2">
+                {historyFilters.date !== today && (
+                  <button
+                    onClick={() => setHistoryFilters({ ...historyFilters, date: today })}
+                    className="rounded-full border border-rose-200 bg-[#fff4f5] px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-[#ffe8ea]"
+                  >
+                    Hoje
+                  </button>
+                )}
+                <button
+                  onClick={() => setHistoryFilters({ ...historyFilters, date: '' })}
+                  className="rounded-full border border-rose-100 bg-white px-3 py-2 text-xs font-semibold text-slate-600 transition hover:bg-[#fff8f8]"
+                >
+                  Todos
+                </button>
+              </div>
+
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                <input
+                  type="text"
+                  placeholder="Buscar por descrição ou tipo..."
+                  className="w-full rounded-2xl border border-rose-100 bg-[#fff8f8] py-2.5 pl-10 pr-3 text-sm text-slate-900 outline-none transition focus:border-rose-200 focus:bg-white"
+                  value={historyFilters.search}
+                  onChange={(e) => setHistoryFilters({ ...historyFilters, search: e.target.value })}
+                />
+              </div>
+
+              <div className="relative min-w-[200px]">
+                <Filter className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                <CustomDropdown
+                  value={historyFilters.method}
+                  onChange={(value) => setHistoryFilters({ ...historyFilters, method: value })}
+                  options={[
+                    { value: 'Todos', label: 'Todos' },
+                    { value: 'Dinheiro', label: 'Dinheiro' },
+                    { value: 'Pix', label: 'Pix' },
+                    { value: 'Cartão Crédito', label: 'Cartão Crédito' },
+                    { value: 'Cartão Débito', label: 'Cartão Débito' },
+                  ]}
+                  placeholder="Método"
+                />
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-auto bg-[#fffafa]">
+              {historyLoading ? (
+                <div className="flex h-48 items-center justify-center">
+                  <div className="h-8 w-8 animate-spin rounded-full border-2 border-rose-100 border-t-rose-300" />
+                </div>
+              ) : paginatedMovements.length > 0 ? (
+                <div className="divide-y divide-rose-100/80">
+                  {paginatedMovements.map((mov) => {
+                    const mapped = mapCashMovementForDisplay(mov);
+                    const isNegative = mapped.displayType === 'Sangria';
+                    const isToday = getLocalDate(mov.createdAt) === today;
+
+                    return (
+                      <div
+                        key={mov.id}
+                        className="flex flex-col gap-3 bg-white px-5 py-4 md:flex-row md:items-center md:justify-between md:px-6"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-sm font-semibold text-slate-900">{mov.description}</span>
+                            {isToday && (
+                              <span className="rounded-full bg-rose-50 px-2 py-1 text-[11px] font-semibold text-rose-700">
+                                Hoje
+                              </span>
+                            )}
+                          </div>
+                          <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                            <span>{mapped.dateStr}</span>
+                            <span>•</span>
+                            <span>{mapped.timeStr}</span>
+                            <span>•</span>
+                            <span>{mapped.displayMethod || 'Sem método'}</span>
+                            <span>•</span>
+                            <span>{mapped.displayType}</span>
+                          </div>
+                        </div>
+                        <div className={`text-right text-sm font-semibold ${isNegative ? 'text-rose-600' : 'text-emerald-600'}`}>
+                          {isNegative ? '-' : '+'} {formatCurrency(mapped.amount)}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="p-12">
+                  <EmptyState title="Nenhum registro encontrado" description="Ajuste os filtros ou selecione outra data." />
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-between border-t border-rose-100 bg-white px-5 py-3 sm:px-6">
+              <p className="text-xs text-slate-500">
+                Página {historyPage} de {totalPages} · {filteredMovements.length} movimentação(ões)
+              </p>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setHistoryPage((page) => Math.max(1, page - 1))}
+                  disabled={historyPage === 1}
+                  className="rounded-xl border border-rose-100 p-2 text-slate-600 transition hover:bg-[#fff8f8] disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <ChevronLeft size={16} />
+                </button>
+                {Array.from({ length: Math.min(5, totalPages) }, (_, index) => {
+                  const pageNumber =
+                    totalPages <= 5 ? index + 1 : Math.max(1, Math.min(historyPage - 2, totalPages - 4)) + index;
+
+                  return (
+                    <button
+                      key={pageNumber}
+                      onClick={() => setHistoryPage(pageNumber)}
+                      className={`h-8 w-8 rounded-xl text-xs font-semibold transition ${historyPage === pageNumber
+                          ? 'bg-[#ffc8cb] text-slate-900'
+                          : 'border border-rose-100 text-slate-600 hover:bg-[#fff8f8]'
+                        }`}
+                    >
+                      {pageNumber}
+                    </button>
+                  );
+                })}
+                <button
+                  onClick={() => setHistoryPage((page) => Math.min(totalPages, page + 1))}
+                  disabled={historyPage === totalPages}
+                  className="rounded-xl border border-rose-100 p-2 text-slate-600 transition hover:bg-[#fff8f8] disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <ChevronRight size={16} />
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <ModalShell
+        open={showOpenModal}
+        onClose={() => setShowOpenModal(false)}
+        title="Abertura de caixa"
+        description="Informe o fundo de troco disponível para iniciar a operação."
+        icon={<Unlock className="text-rose-400" size={18} />}
+        footer={
+          <>
+            <button
+              onClick={() => setShowOpenModal(false)}
+              className="flex-1 rounded-2xl border border-rose-100 bg-white py-3 text-sm font-semibold text-slate-700 transition hover:bg-[#fff8f8]"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={handleOpenRegister}
+              className="flex-1 rounded-2xl bg-[linear-gradient(180deg,#ffd8da_0%,#ffc8cb_100%)] py-3 text-sm font-semibold text-slate-900 transition hover:brightness-[0.99]"
+            >
+              Confirmar abertura
+            </button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <div className="rounded-2xl bg-[#fff7f8] p-4">
+            <p className="text-xs font-medium text-slate-500">Sugestão com base no fechamento anterior</p>
+            <p className="mt-1 text-lg font-semibold text-slate-900">{formatCurrency(openingFloat || 0)}</p>
+          </div>
+          <div>
+            <label className="mb-2 block text-sm font-semibold text-slate-700">Fundo de troco</label>
+            <input
+              type="number"
+              className="w-full rounded-2xl border border-rose-100 bg-[#fff9fa] p-4 text-2xl font-semibold text-slate-900 outline-none transition focus:border-rose-200 focus:bg-white"
+              placeholder="0,00"
+              value={openingFloat || ''}
+              onChange={(e) => setOpeningFloat(parseFloat(e.target.value))}
+              autoFocus
+            />
+          </div>
+        </div>
+      </ModalShell>
+
+      <ModalShell
+        open={showCloseModal}
+        onClose={() => setShowCloseModal(false)}
+        title="Fechamento de caixa"
+        description="Confira o dinheiro físico e registre a diferença do fechamento."
+        icon={<Lock className="text-rose-400" size={18} />}
+        footer={
+          <>
+            <button
+              onClick={() => setShowCloseModal(false)}
+              className="flex-1 rounded-2xl border border-rose-100 bg-white py-3 text-sm font-semibold text-slate-700 transition hover:bg-[#fff8f8]"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={handleCloseRegister}
+              className="flex-1 rounded-2xl bg-[linear-gradient(180deg,#ffd8da_0%,#ffc8cb_100%)] py-3 text-sm font-semibold text-slate-900 transition hover:brightness-[0.99]"
+            >
+              Confirmar fechamento
+            </button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <div className="rounded-2xl bg-[#fff7f8] p-4">
+            <p className="text-xs font-medium text-slate-500">Saldo esperado</p>
+            <p className="mt-1 text-2xl font-semibold text-slate-900">{formatCurrency(totals.currentDrawerBalance)}</p>
+          </div>
+          <div>
+            <label className="mb-2 block text-sm font-semibold text-slate-700">Valor contado na gaveta</label>
+            <input
+              type="number"
+              className="w-full rounded-2xl border border-rose-100 bg-[#fff9fa] p-4 text-2xl font-semibold text-slate-900 outline-none transition focus:border-rose-200 focus:bg-white"
+              placeholder="0,00"
+              value={closingCount || ''}
+              onChange={(e) => setClosingCount(parseFloat(e.target.value))}
+              autoFocus
+            />
+          </div>
+          {closingCount > 0 && (
+            <div className={`rounded-2xl p-4 ${closeDifference === 0 ? 'bg-emerald-50' : 'bg-amber-50'}`}>
+              <p className="text-xs font-medium text-slate-500">Diferença apurada</p>
+              <p className={`mt-1 text-xl font-semibold ${closeDifference === 0 ? 'text-emerald-600' : 'text-amber-600'}`}>
+                {closeDifference > 0 ? '+' : ''}
+                {formatCurrency(closeDifference)}
+              </p>
+            </div>
+          )}
+        </div>
+      </ModalShell>
+
+      <ModalShell
+        open={showSangriaModal}
+        onClose={() => setShowSangriaModal(false)}
+        title="Sangria de caixa"
+        description="Registre retiradas para cofre, banco ou outras finalidades."
+        icon={<ArrowDownCircle className="text-rose-400" size={18} />}
+        footer={
+          <>
+            <button
+              onClick={() => setShowSangriaModal(false)}
+              className="flex-1 rounded-2xl border border-rose-100 bg-white py-3 text-sm font-semibold text-slate-700 transition hover:bg-[#fff8f8]"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={handleSaveSangria}
+              className="flex-1 rounded-2xl bg-[linear-gradient(180deg,#ffd8da_0%,#ffc8cb_100%)] py-3 text-sm font-semibold text-slate-900 transition hover:brightness-[0.99]"
+            >
+              Confirmar sangria
+            </button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <div className="rounded-2xl bg-[#fff7f8] p-4">
+            <p className="text-xs font-medium text-slate-500">Saldo disponível</p>
+            <p className="mt-1 text-2xl font-semibold text-slate-900">{formatCurrency(totals.currentDrawerBalance)}</p>
+          </div>
+          <div>
+            <label className="mb-2 block text-sm font-semibold text-slate-700">Tipo de retirada</label>
+            <CustomDropdown
+              value={sangriaForm.type}
+              onChange={(value) => setSangriaForm({ ...sangriaForm, type: value })}
+              options={[
+                { value: 'sangria', label: 'Sangria (cofre / banco)' },
+                { value: 'retirada', label: 'Retirada (outros)' },
+              ]}
+              placeholder="Tipo de retirada"
+            />
+          </div>
+          <div>
+            <label className="mb-2 block text-sm font-semibold text-slate-700">Valor</label>
+            <input
+              type="number"
+              className="w-full rounded-2xl border border-rose-100 bg-[#fff9fa] p-4 text-2xl font-semibold text-slate-900 outline-none transition focus:border-rose-200 focus:bg-white"
+              placeholder="0,00"
+              value={sangriaForm.amount}
+              onChange={(e) => setSangriaForm({ ...sangriaForm, amount: e.target.value })}
+              autoFocus
+            />
+          </div>
+          <div>
+            <label className="mb-2 block text-sm font-semibold text-slate-700">Descrição</label>
+            <input
+              type="text"
+              className="w-full rounded-2xl border border-rose-100 bg-[#fff9fa] p-3.5 text-sm text-slate-900 outline-none transition focus:border-rose-200 focus:bg-white"
+              placeholder="Ex: depósito bancário"
+              value={sangriaForm.description}
+              onChange={(e) => setSangriaForm({ ...sangriaForm, description: e.target.value })}
+            />
+          </div>
+        </div>
+      </ModalShell>
+
+      <ModalShell
+        open={showSuprimentoModal}
+        onClose={() => setShowSuprimentoModal(false)}
+        title="Suprimento de caixa"
+        description="Registre entradas manuais de dinheiro para reforço de troco."
+        icon={<ArrowUpCircle className="text-rose-400" size={18} />}
+        footer={
+          <>
+            <button
+              onClick={() => setShowSuprimentoModal(false)}
+              className="flex-1 rounded-2xl border border-rose-100 bg-white py-3 text-sm font-semibold text-slate-700 transition hover:bg-[#fff8f8]"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={handleSaveSuprimento}
+              className="flex-1 rounded-2xl bg-[linear-gradient(180deg,#ffd8da_0%,#ffc8cb_100%)] py-3 text-sm font-semibold text-slate-900 transition hover:brightness-[0.99]"
+            >
+              Confirmar suprimento
+            </button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <div className="rounded-2xl bg-[#fff7f8] p-4">
+            <p className="text-xs font-medium text-slate-500">Saldo atual</p>
+            <p className="mt-1 text-2xl font-semibold text-slate-900">{formatCurrency(totals.currentDrawerBalance)}</p>
+          </div>
+          <div>
+            <label className="mb-2 block text-sm font-semibold text-slate-700">Valor</label>
+            <input
+              type="number"
+              className="w-full rounded-2xl border border-rose-100 bg-[#fff9fa] p-4 text-2xl font-semibold text-slate-900 outline-none transition focus:border-rose-200 focus:bg-white"
+              placeholder="0,00"
+              value={suprimentoForm.amount}
+              onChange={(e) => setSuprimentoForm({ ...suprimentoForm, amount: e.target.value })}
+              autoFocus
+            />
+          </div>
+          <div>
+            <label className="mb-2 block text-sm font-semibold text-slate-700">Descrição</label>
+            <input
+              type="text"
+              className="w-full rounded-2xl border border-rose-100 bg-[#fff9fa] p-3.5 text-sm text-slate-900 outline-none transition focus:border-rose-200 focus:bg-white"
+              placeholder="Ex: aporte de troco"
+              value={suprimentoForm.description}
+              onChange={(e) => setSuprimentoForm({ ...suprimentoForm, description: e.target.value })}
+            />
+          </div>
+        </div>
+      </ModalShell>
+    </div>
+  );
 };
 
 export default Cash;

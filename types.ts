@@ -123,6 +123,7 @@ export interface DeliveryOrder {
     payoutStatus?: 'Pending' | 'Paid'; // Status do repasse para o motoboy
     paymentMethod?: string; // Forma de pagamento (PIX, Dinheiro, Cartão, etc)
     routeOrder?: number | null; // Ordem na rota do motoboy (1, 2, 3...)
+    transactionId?: string; // FK para transactions.id
 }
 
 export interface CartItem extends Product {
@@ -188,7 +189,7 @@ export interface CashRegister {
 export interface CashMovement {
     id: string;
     cashRegisterId: string;
-    type: 'opening' | 'sale' | 'withdrawal' | 'supply';
+    type: 'opening' | 'sale' | 'withdrawal' | 'supply' | 'refund';
     description: string;
     amount: number;
     paymentMethod: 'cash' | 'credit' | 'debit' | 'pix';
